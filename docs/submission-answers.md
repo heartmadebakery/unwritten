@@ -20,7 +20,11 @@ about the project from @tinio).
 > most. Unwritten Craft catches those tricks. A teacher (in our demo, a
 > baker of 30 years) shows a move and explains it briefly; the app writes
 > the **card** in the teacher's own words and is forbidden from adding
-> anything she didn't say. Then a second model — the Apprentice, which
+> anything she didn't say. Four short questions then draw out her
+> *judgment* — how she knows when it's right, what goes wrong, what
+> forty years changed, who taught her — recorded in her words as **What
+> the teacher knows**, because for elder teachers the wisdom matters as
+> much as the steps. Then a second model — the Apprentice, which
 > receives *only* the card, never the interview — commits to exactly what
 > it would do. Its mistakes are the map of her unwritten knowledge: they
 > are drawn onto her real photo, she corrects them once ("No! Tilt it —
@@ -28,7 +32,12 @@ about the project from @tinio).
 > **Trick** on the card, tagged **Craft** (it works) or **Lineage**
 > (who taught her). The result is one shareable page a real person can
 > actually learn from — the card, the Tricks, her voice, and the
-> student's own attempt beside hers.
+> student's own attempt beside hers. Nothing in the system is specific
+> to bread: the same card and the same apprentice contract (motion,
+> material, heat) are process-tested on a pecan tart and on rolling
+> lumpia, and built for home crafts generally — cooking, sewing,
+> gardening, repair — anywhere a lifetime of judgment lives in
+> someone's hands.
 
 ## Public GitHub Repository *
 `https://github.com/tinio/unwritten`

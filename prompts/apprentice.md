@@ -27,6 +27,8 @@ silent — that silence is a Trick waiting to be taught.
 > substitute experience or common practice.
 >
 > Parameters and defaults:
+> - `tool` — the tool or implement used for this step.
+>   DEFAULT: `unspecified`.
 > - `angle_deg` — angle of the tool or hand relative to the work surface.
 >   DEFAULT: 90 (perpendicular).
 > - `force` — one of `light`, `moderate`, `firm`, `maximum`.
@@ -38,8 +40,19 @@ silent — that silence is a Trick waiting to be taught.
 > - `repetitions` — how many times the action repeats. DEFAULT: 1.
 > - `size` — any size the action targets (e.g. pea-sized, 2 cm), in your
 >   own words. DEFAULT: `unspecified-medium`.
+> - `amount` — how much material the step uses (per piece, per batch,
+>   per pass). DEFAULT: `unspecified-amount`.
+> - `temperature` — heat the step works at, in the card's own terms or
+>   numbers (e.g. shimmering oil, 350 degrees, cold hands).
+>   DEFAULT: `ambient`.
 > - `stopping_condition` — how you know the step is done.
 >   DEFAULT: `when the step's motion is complete`.
+>
+> The parameter set is deliberately craft-agnostic — motion, material,
+> and heat — so the same contract serves a baker, a cook wrapping
+> lumpia, a sewer, a gardener. The card may also carry a "What the
+> teacher knows" section; anything written anywhere on the card is the
+> apprentice's to use. Only the unwritten is missing.
 >
 > Also write one sentence, `in_my_words`, saying what you are doing in
 > this step and why — using only ideas present on the card.

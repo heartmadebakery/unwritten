@@ -8,9 +8,10 @@ from apprentice import parse_commitments, analyze, gap_score, is_default
 
 
 def run(angle=90, force="moderate", sentence="I do the step."):
-    return [{"step": 1, "angle_deg": angle, "force": force,
+    return [{"step": 1, "tool": "unspecified", "angle_deg": angle, "force": force,
              "force_location": "center", "duration_s": 10, "repetitions": 1,
-             "size": "unspecified-medium",
+             "size": "unspecified-medium", "amount": "unspecified-amount",
+             "temperature": "ambient",
              "stopping_condition": "when the step's motion is complete",
              "in_my_words": sentence}]
 
@@ -33,8 +34,9 @@ class AnalyzeTests(unittest.TestCase):
     def test_all_default_step_scores_high(self):
         report = analyze([run(), run()])
         self.assertEqual(report[0]["defaults"],
-                         ["angle_deg", "force", "force_location", "duration_s",
-                          "repetitions", "size", "stopping_condition"])
+                         ["tool", "angle_deg", "force", "force_location", "duration_s",
+                          "repetitions", "size", "amount", "temperature",
+                          "stopping_condition"])
         self.assertGreater(gap_score(report[0]), 10)
 
     def test_divergence_detected(self):
@@ -43,9 +45,10 @@ class AnalyzeTests(unittest.TestCase):
         self.assertNotIn("angle_deg", report[0]["defaults"])
 
     def test_specified_consistent_step_is_quiet(self):
-        specified = [{"step": 1, "angle_deg": 30, "force": "light",
+        specified = [{"step": 1, "tool": "lame", "angle_deg": 30, "force": "light",
                       "force_location": "edge", "duration_s": 3,
                       "repetitions": 2, "size": "pea-sized",
+                      "amount": "one spoonful", "temperature": "hot oven",
                       "stopping_condition": "when the seam opens",
                       "in_my_words": "I cut shallow."}]
         report = analyze([specified, specified])

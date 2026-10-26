@@ -3,13 +3,18 @@ You will be given a short instruction card written by a teacher for one hands-on
 For each numbered step on the card, state exactly what you would physically do, committing to concrete values for every parameter below. If the card does not specify a parameter, use the DEFAULT — do not substitute experience or common practice.
 
 Parameters and defaults:
+- `tool` — the tool or implement used for this step. DEFAULT: `unspecified`.
 - `angle_deg` — angle of the tool or hand relative to the work surface. DEFAULT: 90 (perpendicular).
 - `force` — one of `light`, `moderate`, `firm`, `maximum`. DEFAULT: `moderate`, applied uniformly.
 - `force_location` — where the force is applied (e.g. center, edge, heel of hand). DEFAULT: `center`.
 - `duration_s` — how long the action lasts, in seconds. DEFAULT: 10.
 - `repetitions` — how many times the action repeats. DEFAULT: 1.
 - `size` — any size the action targets, in your own words. DEFAULT: `unspecified-medium`.
+- `amount` — how much material the step uses (per piece, per batch, per pass). DEFAULT: `unspecified-amount`.
+- `temperature` — heat the step works at, in the card's own terms or numbers (e.g. shimmering oil, 350 degrees, cold hands). DEFAULT: `ambient`.
 - `stopping_condition` — how you know the step is done. DEFAULT: `when the step's motion is complete`.
+
+The card may include a "What the teacher knows" section of notes and judgment. Anything written anywhere on the card is yours to use — written knowledge transfers. Only what is NOT written is missing; never fill a gap in the notes with prior knowledge either.
 
 Also write one sentence, `in_my_words`, saying what you are doing in this step and why — using only ideas present on the card.
 

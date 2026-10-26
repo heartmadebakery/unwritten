@@ -8,14 +8,20 @@ silence in the card: knowledge the teacher has but never wrote down.
 import json
 import re
 
-# Must match prompts/apprentice.md exactly.
+# Must match prompts/apprentice.md + prompts/apprentice_instruction.txt exactly.
+# Craft-agnostic on purpose: motion (angle/force/duration/repetitions),
+# material (tool/size/amount), and heat (temperature) — so the same
+# contract serves baking, cooking, sewing, gardening, home repair.
 DEFAULTS = {
+    "tool": "unspecified",
     "angle_deg": 90,
     "force": "moderate",
     "force_location": "center",
     "duration_s": 10,
     "repetitions": 1,
     "size": "unspecified-medium",
+    "amount": "unspecified-amount",
+    "temperature": "ambient",
     "stopping_condition": "when the step's motion is complete",
 }
 

@@ -34,11 +34,14 @@ force, center): the cartoon depicts the verified mechanic.
 
 1. **Show & teach.** The teacher photographs the work and talks briefly
    (~45 seconds of "index card" capture, plus one opening question about any
-   visible wear in the photo — a burn mark, a scar in the tool). Muse Spark
-   drafts the **card**: a short instruction sheet.
+   visible wear in the photo — a burn mark, a scar in the tool). Four short
+   **wisdom questions** follow (see Design rules). Muse Spark drafts the
+   **card**: the steps, plus a *What the teacher knows* section carrying her
+   judgment in her own words.
 2. **The apprentice tries.** A blind learner model receives *only* the card
-   and must commit to concrete mechanical parameters (angle, force, duration,
-   contact area, stopping condition). Anything the card does not specify falls
+   and must commit to concrete parameters — motion (angle, force, duration),
+   material (tool, size, amount), and heat (temperature), plus a stopping
+   condition. Anything the card does not specify falls
    back to a geometric-neutral default — so the apprentice fails exactly where
    the teacher left physics unspoken, honestly, with no "play dumb" prompt.
    The misreading is shown on the teacher's real photo: SAM 3.1 highlights the
@@ -67,6 +70,24 @@ force, center): the cartoon depicts the verified mechanic.
 - **Step 1 stays short.** A long, curious interview extracts the tacit
   knowledge up front and the mechanic dies. One soulful opening question,
   then "give me the quick steps like you're jotting them on an index card."
+- **Ask for wisdom, briefly, on purpose.** Steps capture the move; they
+  rarely capture the judgment. After the steps, the session asks up to
+  four short questions — *How do you know when it's right? What goes
+  wrong the other way? What do you do differently now than when you
+  started? Who taught you this?* — and Spark files the answers, in her
+  words, under **What the teacher knows**. For elder teachers especially,
+  this is the difference between recording a recipe and rescuing a
+  lifetime's judgment before it disappears. The questions are fixed and
+  few on purpose: the apprentice mechanic still needs the steps to be
+  under-specified.
+- **Any craft, not just bread.** Nothing in the prompts, the parameter
+  set, or the pipeline is specific to one task: the card format and the
+  apprentice contract (motion + material + heat) serve baking, cooking,
+  sewing, gardening, home repair — any work a teacher can show with
+  their hands. `samples/` carries three fictional sessions proving it:
+  scoring a boule, a pecan tart, and rolling lumpia. The demo's hero is
+  one family's bread; the system is built for the home, and the same
+  shape extends to trades and manufacturing later.
 - **The overlay is the primary visual.** SAM-highlight + the apprentice's
   sentence on the real photo — designed, not a fallback. Inpainted hands are
   enhancement only.
