@@ -86,10 +86,11 @@ session):
 > The core mechanic is an *information boundary between models*, and it
 > only works if each model plays its role with discipline. Spark must
 > follow an instruction that runs against its training — be a
-> stenographer, not an expert — and in our testing it held that line
-> completely (a drafted card with zero added technique). Wonder must be
-> a genuine second mind: a separate model whose context provably never
-> contained the interview, so its wrong answer is evidence, not theater.
+> stenographer, not an expert — and in our first end-to-end test, on a
+> scripted transcript, the drafted card added zero technique. Wonder must be
+> a genuine second mind: a separate model whose entire input is the
+> card — by construction it never contains the interview, and the demo
+> shows that input on camera — so its wrong answer is evidence, not theater.
 > SAM grounds the whole exchange in the teacher's real photograph
 > instead of a generated stand-in, which is what makes a correction
 > feel like it belongs to *her* loaf. Remove any one of these and the

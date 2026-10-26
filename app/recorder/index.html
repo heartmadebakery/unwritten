@@ -100,6 +100,7 @@
     <video id="view" autoplay playsinline muted></video>
     <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
   </div>
+  <div id="micwarn" class="hidden" style="background:var(--red);color:#fff;font-size:17px;padding:12px 16px;line-height:1.4;">🎤 <b>No microphone.</b> Her words won't be recorded — and her words are the whole point. Check Chrome's site settings (🔒 → microphone → Allow), or use the camera-app option in a step below.</div>
   <main>
     <div id="promptcard"></div>
     <div id="donecard" class="hidden"></div>
@@ -170,6 +171,13 @@ async function openCamera(){
     catch(e2){ $("fallback").classList.remove("hidden"); return; }
   }
   $("view").srcObject = state.stream;
+  /* A video-only stream must never be silent about being silent: steps 2
+     and 3 ARE her words. (Claude review, Oct 26.) */
+  var hasAudio = state.stream.getAudioTracks().length > 0;
+  $("micwarn").classList.toggle("hidden", hasAudio);
+  if(hasAudio){
+    state.stream.getAudioTracks()[0].onended = function(){ $("micwarn").classList.remove("hidden"); };
+  }
   if(typeof MediaRecorder === "undefined") $("fallback").classList.remove("hidden");
 }
 function fmt(s){ return Math.floor(s/60) + ":" + ("0" + (s%60)).slice(-2); }
