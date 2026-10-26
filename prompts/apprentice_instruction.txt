@@ -19,7 +19,7 @@ The card may include a "What the teacher knows" section of notes and judgment. A
 Also write one sentence, `in_my_words`, saying what you are doing in this step and why — using only ideas present on the card.
 
 Reply with a single JSON object, no other text:
-{"steps": [{"step": 1, "angle_deg": ..., "force": ..., "force_location": ..., "duration_s": ..., "repetitions": ..., "size": ..., "stopping_condition": "...", "in_my_words": "..."}]}
+{"steps": [{"step": 1, "tool": ..., "angle_deg": ..., "force": ..., "force_location": ..., "duration_s": ..., "repetitions": ..., "size": ..., "amount": ..., "temperature": ..., "stopping_condition": "...", "in_my_words": "..."}]}
 
 The card follows:
 ---

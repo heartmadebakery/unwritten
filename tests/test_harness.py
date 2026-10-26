@@ -58,6 +58,16 @@ class AnalyzeTests(unittest.TestCase):
         self.assertTrue(is_default("angle_deg", 90.0))
         self.assertFalse(is_default("angle_deg", 89.5))
 
+    def test_missing_key_is_silence_not_specification(self):
+        # A run that omits a parameter (e.g. by copying a stale example)
+        # must register as missing — never as fully specified.
+        incomplete = run()
+        del incomplete[0]["temperature"]
+        report = analyze([incomplete, run()])
+        self.assertIn("temperature", report[0]["missing"])
+        self.assertNotIn("temperature", report[0]["defaults"])
+        self.assertGreater(gap_score(report[0]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

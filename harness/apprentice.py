@@ -63,9 +63,11 @@ def analyze(runs):
 
     Returns a list of per-step dicts:
       {step, defaults: [params at default in EVERY run],
+       missing: [params ABSENT from at least one run — the run failed to
+                 commit, which is silence too, never "fully specified"],
        divergences: {param: [distinct values across runs]},
        sentences: [in_my_words from each run]}
-    A step with many defaults/divergences is where the card is silent.
+    A step with many defaults/divergences/missing is where the card is silent.
     """
     if not runs:
         return []
@@ -74,8 +76,11 @@ def analyze(runs):
     for idx in range(n_steps):
         step_no = idx + 1
         present = [r[idx] for r in runs if len(r) > idx]
-        defaults, divergences = [], {}
+        defaults, divergences, missing = [], {}, []
         for param in PARAMETERS:
+            if any(param not in s for s in present):
+                missing.append(param)
+                continue
             values = [s.get(param) for s in present]
             if values and all(is_default(param, v) for v in values):
                 defaults.append(param)
@@ -85,6 +90,7 @@ def analyze(runs):
         report.append({
             "step": step_no,
             "defaults": defaults,
+            "missing": missing,
             "divergences": divergences,
             "sentences": [s.get("in_my_words", "") for s in present],
         })
@@ -92,8 +98,9 @@ def analyze(runs):
 
 
 def gap_score(step_report):
-    """Silence score for one step: defaults count double, divergences single."""
-    return 2 * len(step_report["defaults"]) + len(step_report["divergences"])
+    """Silence score: defaults and missing count double, divergences single."""
+    return (2 * len(step_report["defaults"]) + 2 * len(step_report.get("missing", []))
+            + len(step_report["divergences"]))
 
 
 def render_report(card_title, runs, analysis):
@@ -111,9 +118,11 @@ def render_report(card_title, runs, analysis):
         lines.append(f"## Step {s['step']} — silence score {gap_score(s)}")
         if s["defaults"]:
             lines.append(f"- At default in every run: {', '.join(s['defaults'])}")
+        if s.get("missing"):
+            lines.append(f"- Missing from a run (no commitment made): {', '.join(s['missing'])}")
         for param, values in s["divergences"].items():
             lines.append(f"- Diverges across runs — {param}: {' | '.join(values)}")
-        if not s["defaults"] and not s["divergences"]:
+        if not s["defaults"] and not s["divergences"] and not s.get("missing"):
             lines.append("- Fully specified and consistent: the card carries this step.")
         for sent in s["sentences"]:
             if sent:

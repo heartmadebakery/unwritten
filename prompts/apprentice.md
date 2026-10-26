@@ -48,17 +48,16 @@ silent — that silence is a Trick waiting to be taught.
 > - `stopping_condition` — how you know the step is done.
 >   DEFAULT: `when the step's motion is complete`.
 >
-> The parameter set is deliberately craft-agnostic — motion, material,
-> and heat — so the same contract serves a baker, a cook wrapping
-> lumpia, a sewer, a gardener. The card may also carry a "What the
-> teacher knows" section; anything written anywhere on the card is the
-> apprentice's to use. Only the unwritten is missing.
+> The card may include a "What the teacher knows" section of notes and
+> judgment. Anything written anywhere on the card is yours to use —
+> written knowledge transfers. Only what is NOT written is missing;
+> never fill a gap in the notes with prior knowledge either.
 >
 > Also write one sentence, `in_my_words`, saying what you are doing in
 > this step and why — using only ideas present on the card.
 >
 > Reply with a single JSON object, no other text:
-> `{"steps": [{"step": 1, "angle_deg": ..., "force": ..., "force_location": ..., "duration_s": ..., "repetitions": ..., "size": ..., "stopping_condition": "...", "in_my_words": "..."}]}`
+> `{"steps": [{"step": 1, "tool": ..., "angle_deg": ..., "force": ..., "force_location": ..., "duration_s": ..., "repetitions": ..., "size": ..., "amount": ..., "temperature": ..., "stopping_condition": "...", "in_my_words": "..."}]}`
 >
 > The card follows:
 > ---
