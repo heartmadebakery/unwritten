@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Unwritten Craft — Apprentice</title>
+<style>
+  :root{
+    --bg:#17130e; --panel:#241c12; --ink:#f5ead6; --dim:#b8a888;
+    --accent:#e8a13a; --red:#e5484d; --green:#46a758; --card:#2e2416;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:Georgia,'Times New Roman',serif; height:100%;}
+  button{font-family:inherit; cursor:pointer; border:none; border-radius:14px;}
+  .hidden{display:none !important;}
+  #home{min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; padding:24px; text-align:center;}
+  .face{width:210px;height:210px;background:var(--panel);border-radius:48px;
+    border:3px solid var(--accent); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:26px; margin-bottom:8px;}
+  .eyes{display:flex; gap:52px;}
+  .eye{width:30px;height:38px;background:var(--accent);border-radius:50%;
+    animation:blink 4.6s infinite; transform-origin:center;}
+  @keyframes blink{0%,92%,100%{transform:scaleY(1);}95%{transform:scaleY(.08);}}
+  .mouth{width:64px;height:10px;background:var(--accent);border-radius:6px;}
+  h1{font-size:30px;margin:14px 0 2px;font-weight:normal;letter-spacing:.5px;}
+  .sub{color:var(--dim);font-size:17px;margin:0 0 26px;font-style:italic;}
+  .bigbtn{background:var(--accent);color:#1d1508;font-size:22px;font-weight:bold;
+    padding:18px 34px;width:100%;max-width:420px;margin:6px 0;}
+  .ghostbtn{background:transparent;color:var(--dim);border:1.5px solid var(--dim);
+    font-size:16px;padding:12px 20px;width:100%;max-width:420px;margin:6px 0;}
+  .note{color:var(--dim);font-size:14px;max-width:420px;line-height:1.45;margin-top:14px;}
+  #session{min-height:100vh;display:flex;flex-direction:column;}
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;background:var(--panel);border-bottom:2px solid var(--accent);}
+  header .stepname{font-size:18px;}
+  header .dots{font-size:15px;color:var(--dim);letter-spacing:3px;}
+  header .dots .on{color:var(--accent);}
+  #stage{position:relative;background:#000;}
+  #view{width:100%;height:44vh;object-fit:cover;display:block;background:#000;}
+  #recbadge{position:absolute;top:12px;left:12px;background:rgba(0,0,0,.55);
+    padding:6px 12px;border-radius:20px;font-size:16px;display:flex;gap:8px;align-items:center;}
+  #recdot{width:12px;height:12px;border-radius:50%;background:var(--red);
+    animation:pulse 1.1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+  #timer{font-variant-numeric:tabular-nums;}
+  main{padding:16px;flex:1;}
+  #promptcard{background:var(--card);border-left:5px solid var(--accent);
+    border-radius:10px;padding:14px 16px;font-size:19px;line-height:1.5;margin-bottom:14px;}
+  #promptcard .ask{color:var(--accent);font-style:italic;}
+  .controls{display:flex;gap:10px;flex-wrap:wrap;}
+  #recbtn{flex:1;min-width:150px;background:var(--red);color:#fff;font-size:21px;
+    font-weight:bold;padding:18px 10px;}
+  #recbtn.stop{background:#fff;color:var(--red);border:2.5px solid var(--red);}
+  #photobtn{flex:1;min-width:120px;background:var(--panel);color:var(--ink);
+    border:1.5px solid var(--accent);font-size:18px;padding:18px 10px;}
+  #nextbtn{width:100%;background:var(--green);color:#fff;font-size:20px;
+    font-weight:bold;padding:16px;margin-top:12px;}
+  #backbtn{background:transparent;color:var(--dim);font-size:15px;padding:10px;margin-top:4px;}
+  #fallback{color:var(--dim);font-size:14px;margin-top:12px;line-height:1.5;}
+  #fallback a{color:var(--accent);}
+  #library{padding:0 16px 20px;}
+  #library h3{font-weight:normal;color:var(--dim);font-size:16px;margin:14px 0 6px;}
+  .clip{font-size:15px;padding:6px 0;border-bottom:1px solid #33291780;}
+  .clip a{color:var(--accent);text-decoration:none;}
+  .togglerow{display:flex;gap:10px;justify-content:center;margin-top:8px;flex-wrap:wrap;}
+  .toggle{background:var(--panel);color:var(--dim);border:1.5px solid var(--dim);
+    padding:9px 16px;font-size:15px;border-radius:20px;}
+  .toggle.on{color:var(--accent);border-color:var(--accent);}
+  #donecard{background:var(--card);border-radius:12px;padding:18px;font-size:18px;
+    line-height:1.55;margin-bottom:14px;}
+</style>
+</head>
+<body>
+
+<!-- ============ HOME ============ -->
+<div id="home">
+  <div class="face" id="face"><div class="eyes"><div class="eye"></div><div class="eye"></div></div><div class="mouth"></div></div>
+  <h1>The Apprentice</h1>
+  <p class="sub">Unwritten Craft — I learn by watching, then I try.</p>
+  <button class="bigbtn" id="startbtn">▶&nbsp; Start a session</button>
+  <div class="togglerow">
+    <button class="toggle on" id="ttstoggle">🔊 Robot voice: on</button>
+    <button class="toggle on" id="camtoggle">📷 Back camera</button>
+  </div>
+  <p class="note">Prop this phone where it can see her hands. It walks you through
+  four short recordings: her doing it, her explaining it, her correcting the
+  apprentice, and your try. Everything is saved on this phone only — nothing is uploaded.</p>
+</div>
+
+<!-- ============ SESSION ============ -->
+<div id="session" class="hidden">
+  <header>
+    <span class="stepname" id="stepname">1 · Show me</span>
+    <span class="dots" id="dots"></span>
+  </header>
+  <div id="stage">
+    <video id="view" autoplay playsinline muted></video>
+    <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
+  </div>
+  <main>
+    <div id="promptcard"></div>
+    <div id="donecard" class="hidden"></div>
+    <div class="controls" id="controls">
+      <button id="recbtn">●&nbsp; Record</button>
+      <button id="photobtn">📸&nbsp; Photo</button>
+    </div>
+    <div id="fallback" class="hidden">This browser can't record in the page.
+      Use <a href="#" id="fallbacklink">the camera app</a> instead — the clip
+      still lands in the library below.
+      <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden"></div>
+    <button id="nextbtn"></button>
+    <button id="backbtn">← back</button>
+  </main>
+  <div id="library"><h3>Saved this session</h3><div id="clips"><div class="clip" style="color:var(--dim)">Nothing yet.</div></div></div>
+</div>
+
+<canvas id="snap" class="hidden"></canvas>
+
+<script>
+"use strict";
+/* Unwritten Craft — the Apprentice recorder.
+   A session guide + camera for capturing a teacher session on a spare phone.
+   Steps mirror the product: Show -> Teach -> React -> Attempt.
+   React uses the REAL blind-apprentice commitments measured in the Day-1
+   harness test (docs/process-test-2026-10-26-muse-stack.md): the apprentice,
+   given only the card, defaults to 90 degrees / moderate / center. */
+
+var STEPS = [
+  { key:"show", name:"1 · Show me",
+    prompt:"Prop the phone so it sees her hands. Ask her to <b>just do the move once</b>, start to finish, without explaining — like I wasn't here. Film the whole thing.",
+    speak:"Please show me once how you always do it.",
+    next:"Next: her words →" },
+  { key:"teach", name:"2 · Teach me",
+    prompt:"Now ask her to explain it, quick — and ask the one question first.<br><span class='ask'>“I see a mark on this tool — tell me about it.”</span><br>Then: <span class='ask'>“Now the quick steps, like jotting them on an index card.”</span> About 45 seconds is perfect. Don't help her fill in the gaps — the gaps are the point.",
+    speak:"Now tell me how you do it, in your own words.",
+    next:"Next: I try →" },
+  { key:"react", name:"3 · I try",
+    prompt:"Read this to her — it's what the apprentice (who only read her words) said it would do. Then hit Record and film her reaction:<br><span class='ask'>“From your card alone, I'd cut straight down — blade at 90 degrees, medium pressure, right in the center, one smooth pass.”</span>",
+    speak:"Here is what I would do, from your words alone.",
+    next:"Next: your try →" },
+  { key:"attempt", name:"4 · Your try",
+    prompt:"Last one. <b>You</b> do the move now, following only the card — she watches, no coaching. Then take a photo of the two results side by side.",
+    speak:"Now your son will try it — from your words only.",
+    next:"Finish ✓" }
+];
+
+var state = { step:0, stream:null, recorder:null, chunks:[], recording:false,
+              timerInt:null, t0:0, clips:[], tts:true, facing:"environment" };
+var $ = function(id){ return document.getElementById(id); };
+
+function speak(text){
+  if(!state.tts || !("speechSynthesis" in window)) return;
+  try{ speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text); u.rate = .96; speechSynthesis.speak(u);
+  }catch(e){}
+}
+async function wakeLock(){
+  try{ if("wakeLock" in navigator) await navigator.wakeLock.request("screen"); }catch(e){}
+}
+async function openCamera(){
+  if(state.stream){ state.stream.getTracks().forEach(function(t){ t.stop(); }); }
+  var opts = { video:{ facingMode: state.facing, width:{ideal:1280}, height:{ideal:720} }, audio:true };
+  try{ state.stream = await navigator.mediaDevices.getUserMedia(opts); }
+  catch(e){
+    /* A denied/busy microphone must not cost the video too (Wonder P1). */
+    try{ state.stream = await navigator.mediaDevices.getUserMedia({ video: opts.video, audio:false }); }
+    catch(e2){ $("fallback").classList.remove("hidden"); return; }
+  }
+  $("view").srcObject = state.stream;
+  if(typeof MediaRecorder === "undefined") $("fallback").classList.remove("hidden");
+}
+function fmt(s){ return Math.floor(s/60) + ":" + ("0" + (s%60)).slice(-2); }
+/* Clips persist in IndexedDB so a reload, crash, or discarded tab cannot
+   lose them (Wonder review, P0). Downloads are a convenience copy. */
+function idbOpen(){
+  return new Promise(function(res, rej){
+    var r = indexedDB.open("unwritten-clips", 1);
+    r.onupgradeneeded = function(){ r.result.createObjectStore("clips", {keyPath:"name"}); };
+    r.onsuccess = function(){ res(r.result); };
+    r.onerror = function(){ rej(r.error); };
+  });
+}
+async function idbPut(name, blob){
+  try{ var db = await idbOpen();
+    await new Promise(function(res, rej){
+      var tx = db.transaction("clips", "readwrite");
+      tx.objectStore("clips").put({name:name, blob:blob, ts:Date.now()});
+      tx.oncomplete = res; tx.onerror = function(){ rej(tx.error); };
+    });
+  }catch(e){ /* download copy still happened; library marks persistence in name list */ }
+}
+async function idbRestore(){
+  try{ var db = await idbOpen();
+    var items = await new Promise(function(res, rej){
+      var out = [], cur = db.transaction("clips").objectStore("clips").openCursor();
+      cur.onsuccess = function(){ var c = cur.result; if(c){ out.push(c.value); c.continue(); } else res(out); };
+      cur.onerror = function(){ rej(cur.error); };
+    });
+    items.forEach(function(it){
+      if(!state.clips.some(function(c){ return c.name === it.name; }))
+        state.clips.push({name:it.name, url:URL.createObjectURL(it.blob), persisted:true});
+    });
+    renderClips();
+  }catch(e){}
+}
+function saveBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  state.clips.push({name:name, url:url, persisted:false});
+  renderClips();
+  idbPut(name, blob).then(function(){
+    var c = state.clips.find(function(x){ return x.name === name; });
+    if(c){ c.persisted = true; renderClips(); }
+  });
+  var a = document.createElement("a"); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+}
+function renderClips(){
+  $("clips").innerHTML = state.clips.map(function(c){
+    return "<div class='clip'>" + (c.persisted ? "✅" : "🎬") + " <a href='" + c.url + "' download='" + c.name + "'>" + c.name + "</a>" + (c.persisted ? "" : " <span style='color:var(--dim)'>(saving…)</span>") + "</div>";
+  }).join("") || "<div class='clip' style='color:var(--dim)'>Nothing yet.</div>";
+}
+function startRec(){
+  if(!state.stream){ $("fallback").classList.remove("hidden"); return; }
+  /* VP8 before VP9: the Pixel 2's hardware handles VP8 far more kindly. */
+  var types = ["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm","video/mp4"];
+  var mime = types.find(function(t){ try{ return MediaRecorder.isTypeSupported(t); }catch(e){ return false; } }) || "";
+  state.chunks = [];
+  try{ state.recorder = new MediaRecorder(state.stream, mime ? {mimeType:mime, videoBitsPerSecond:2500000} : undefined); }
+  catch(e){ $("fallback").classList.remove("hidden"); return; }
+  /* Capture everything the async onstop needs NOW: the user may tap Next
+     before onstop fires, and the clip must keep its own step's name. */
+  var rec = state.recorder, recChunks = state.chunks, recStep = STEPS[state.step].key;
+  rec.ondataavailable = function(e){ if(e.data && e.data.size) recChunks.push(e.data); };
+  rec.onerror = function(){ stopRec(); $("promptcard").innerHTML = "⚠️ <b>Recording hit a problem</b> — the phone may have been interrupted. Check the library below for the clip, then record this step again."; };
+  rec.onstop = function(){
+    var blob = new Blob(recChunks, {type: rec.mimeType || "video/webm"});
+    var ext = (rec.mimeType || "").indexOf("mp4") >= 0 ? "mp4" : "webm";
+    saveBlob(blob, "unwritten_" + recStep + "_" + new Date().toISOString().slice(11,19).replace(/:/g,"") + "." + ext);
+  };
+  rec.start(250);
+  state.recording = true;
+  $("recbtn").textContent = "■  Stop"; $("recbtn").classList.add("stop");
+  $("recbadge").classList.remove("hidden");
+  state.t0 = Date.now();
+  $("timer").textContent = "0:00";
+  state.timerInt = setInterval(function(){ $("timer").textContent = fmt(Math.floor((Date.now()-state.t0)/1000)); }, 500);
+}
+function stopRec(){
+  if(state.recorder && state.recording) state.recorder.stop();
+  state.recording = false;
+  $("recbtn").innerHTML = "●&nbsp; Record"; $("recbtn").classList.remove("stop");
+  $("recbadge").classList.add("hidden");
+  clearInterval(state.timerInt);
+}
+function takePhoto(){
+  var v = $("view"); if(!v.videoWidth){ $("fallback").classList.remove("hidden"); return; }
+  var c = $("snap"); c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  c.toBlob(function(b){ if(b) saveBlob(b, "unwritten_" + STEPS[state.step].key + "_" + new Date().toISOString().slice(11,19).replace(/:/g,"") + ".jpg"); }, "image/jpeg", .92);
+}
+function renderStep(){
+  var s = STEPS[state.step];
+  $("stepname").textContent = s.name;
+  $("dots").innerHTML = STEPS.map(function(_, i){ return "<span class='" + (i===state.step ? "on" : "") + "'>●</span>"; }).join("");
+  $("promptcard").innerHTML = s.prompt;
+  $("nextbtn").textContent = s.next;
+  $("donecard").classList.add("hidden"); $("promptcard").classList.remove("hidden");
+  $("controls").classList.remove("hidden"); $("nextbtn").classList.remove("hidden");
+  speak(s.speak);
+}
+function finish(){
+  if(state.recording) stopRec();
+  $("promptcard").classList.add("hidden"); $("controls").classList.add("hidden");
+  $("nextbtn").classList.add("hidden");
+  var d = $("donecard"); d.classList.remove("hidden");
+  d.innerHTML = "🎉 <b>Session captured.</b><br>All clips and photos are saved on this phone (check the downloads and the list below). Send them to the builder and they become the card, the apprentice's try, and the hand-it-on page.<br><br>Thank her — she just taught the future something.";
+  $("stepname").textContent = "Done ✓";
+  speak("All done. Thank you for teaching me.");
+}
+$("startbtn").onclick = async function(){
+  $("home").classList.add("hidden"); $("session").classList.remove("hidden");
+  wakeLock(); idbRestore(); await openCamera(); renderStep();
+};
+document.addEventListener("visibilitychange", function(){
+  if(document.hidden && state.recording) stopRec();
+  if(!document.hidden) wakeLock();
+});
+$("recbtn").onclick = function(){ state.recording ? stopRec() : startRec(); };
+$("photobtn").onclick = takePhoto;
+/* While recording, the first tap on Next/Back only stops and keeps the
+   clip — navigation never silently eats a take (Wonder review, P0). */
+$("nextbtn").onclick = function(){ if(state.recording){ stopRec(); return; } state.step < STEPS.length - 1 ? (state.step++, renderStep()) : finish(); };
+$("backbtn").onclick = function(){ if(state.recording){ stopRec(); return; } if(state.step > 0){ state.step--; renderStep(); } };
+$("ttstoggle").onclick = function(){ state.tts = !state.tts; this.textContent = state.tts ? "🔊 Robot voice: on" : "🔇 Robot voice: off"; this.classList.toggle("on", state.tts); if(state.tts) speak("Voice on."); };
+$("camtoggle").onclick = async function(){ state.facing = state.facing === "environment" ? "user" : "environment"; this.textContent = state.facing === "environment" ? "📷 Back camera" : "🤳 Front camera"; if(!$("session").classList.contains("hidden")) await openCamera(); };
+$("fallbacklink").onclick = function(e){ e.preventDefault(); $("fileinput").click(); };
+$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ var ext = (f.name.split(".").pop() || "mp4").toLowerCase(); saveBlob(f, "unwritten_" + STEPS[state.step].key + "_camera-app." + ext); } };
+</script>
+</body>
+</html>
