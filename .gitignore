@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+responses.json
+report.md
+.env
