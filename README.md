@@ -13,6 +13,23 @@ Built for the Meta Global AI Developer Hackathon 2026 (Indie, solo).
 Build window: Oct 26 – Nov 4, 2026. Submission is public by the organizer's
 terms — this repo contains no private code from any other project.
 
+## Explainer (10 seconds, ELI5)
+
+[Watch the vision video](https://muse.ai/files/471196432735854/1109151131711720/btttvfzuf1f61fpwgnezpprs/media-generation-unwritten-craft-eli5-explainer-0-61a07ebe-6401-4dbe-8c4b-5b8cc420d6e0.mp4)
+— a cartoon grandma, a robot apprentice, one wrong cut, one correction.
+Hosted outside this repo (temporary link, expires Oct 28, 2026; a durable
+host is needed before submission).
+
+The robot is a metaphor, and the video is the storyboard: every scene maps
+to a real screen in the build. There is no physical robot. In the app, the
+"robot" is the blind apprentice **model**: it reads only the card, commits
+to exactly what it would do, and its mistake is drawn onto the teacher's
+real photo (SAM 3.1 highlight + its own sentence pinned to the region),
+with Muse Image rendering the consequence beside it. Notably, the video's
+wrong move — the knife held perfectly upright, cutting straight down — is
+literally what the apprentice committed to in testing (90°, moderate
+force, center): the cartoon depicts the verified mechanic.
+
 ## The four steps
 
 1. **Show & teach.** The teacher photographs the work and talks briefly
