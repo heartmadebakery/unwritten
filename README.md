@@ -69,13 +69,22 @@ terms — this repo contains no private code from any other project.
 ## Running the mechanic test
 
 ```bash
-# 1. Put teacher words in a card file (see samples/sample_card.md).
-# 2. Collect N fresh apprentice responses (each call sees ONLY the card):
-#    any model backend works — the harness consumes raw response text.
+# 1. Draft the card from the teacher's words with Muse Spark constrained
+#    by prompts/card_drafter.md (see samples/sample_card_spark.md).
+# 2. Collect fresh apprentice responses from Muse Wonder — each `muse
+#    exec` call is a fresh context that sees ONLY the card:
+python3 harness/apprentice_muse.py --card samples/sample_card_spark.md \
+    --runs 3 --model muse-wonder-1.0 --out responses.json
 # 3. Analyze:
-python3 harness/run_test.py --card samples/sample_card.md \
+python3 harness/run_test.py --card samples/sample_card_spark.md \
     --responses responses.json --out report.md
 ```
+
+Stack roles are fixed: **Spark** interviews and drafts (it has seen the
+teacher, so it is never the apprentice); **Wonder** is the blind apprentice
+(it has seen only the card). The harness itself is model-agnostic — it
+consumes raw response text — but runs on non-Muse backends are process
+checks only and count for nothing toward the hackathon stack.
 
 `responses.json` is a JSON list of raw model output strings. Each response
 must contain the JSON commitment object specified in `prompts/apprentice.md`
