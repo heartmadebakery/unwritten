@@ -12,7 +12,10 @@ session folder (off the Pixel)
 manifest.json
    ├─ teach/react media ─► transcribe.py ─► transcript.txt   (local Whisper)
    ├─ show video ────────► frames.py ─────► keyframes (hero = middle frame)
-   ├─ teach transcript ──► draft_card.py ─► card.md          (Muse Spark)
+   ├─ teach transcript ──► draft_card.py ─► card.md          (Muse Spark;
+   │                             wisdom section sourced from the attempt
+   │                             clip, which opens with the post-reaction
+   │                             wisdom Q&A)
    ├─ card ──────────────► harness/apprentice_muse.py ─► gap_report.md
    │                                                  (Muse Wonder, card only)
    ├─ hero/photo + top-gap sentence ─► sam_overlay.py ─► overlay.png (SAM)

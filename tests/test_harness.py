@@ -4,7 +4,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "harness"))
-from apprentice import parse_commitments, analyze, gap_score, is_default
+from apprentice import parse_commitments, analyze, gap_score, is_default, strip_wisdom
 
 
 def run(angle=90, force="moderate", sentence="I do the step."):
@@ -57,6 +57,15 @@ class AnalyzeTests(unittest.TestCase):
     def test_is_default_numeric_tolerance(self):
         self.assertTrue(is_default("angle_deg", 90.0))
         self.assertFalse(is_default("angle_deg", 89.5))
+
+    def test_strip_wisdom(self):
+        card = ("# Rosa's Boule — the card\n\n1. Dust the top.\n2. One line.\n\n"
+                "## What Rosa knows\n\n- It should tear a little.\n")
+        stripped = strip_wisdom(card)
+        self.assertIn("1. Dust the top.", stripped)
+        self.assertNotIn("What Rosa knows", stripped)
+        self.assertNotIn("tear a little", stripped)
+        self.assertEqual(strip_wisdom(stripped), stripped)  # no-op without a section
 
     def test_missing_key_is_silence_not_specification(self):
         # A run that omits a parameter (e.g. by copying a stale example)

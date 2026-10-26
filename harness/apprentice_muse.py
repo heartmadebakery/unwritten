@@ -22,6 +22,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MUSE_BIN = os.path.expanduser("~/.local/bin/muse")
 
 
 def build_prompt(card_text):
@@ -34,7 +35,7 @@ def one_run(prompt, model):
     with open("/tmp/.unwritten_apprentice_prompt.txt", "w") as fh:
         fh.write(prompt)
     proc = subprocess.run(
-        ["muse", "exec", "--contributor-mode", "on", "--model", model,
+        [MUSE_BIN, "exec", "--contributor-mode", "on", "--model", model,
          "--prompt-file", "/tmp/.unwritten_apprentice_prompt.txt"],
         capture_output=True, text=True, timeout=600)
     if proc.returncode != 0:
@@ -48,10 +49,24 @@ def main():
     ap.add_argument("--runs", type=int, default=3)
     ap.add_argument("--model", default="muse-wonder-1.0")
     ap.add_argument("--out", default="responses.json")
+    ap.add_argument("--keep-wisdom", action="store_true",
+                    help="send the card WITH its wisdom section (the "
+                         "wisdom-transfer check). Default: steps only — "
+                         "the first attempt must not be pre-armed with "
+                         "the teacher's judgment.")
     args = ap.parse_args()
 
     with open(args.card) as fh:
-        prompt = build_prompt(fh.read())
+        card_text = fh.read()
+    if not args.keep_wisdom:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from apprentice import strip_wisdom
+        stripped = strip_wisdom(card_text)
+        if stripped != card_text:
+            print("wisdom section withheld from the apprentice "
+                  "(steps-only card)", file=sys.stderr)
+        card_text = stripped
+    prompt = build_prompt(card_text)
 
     responses = []
     for i in range(1, args.runs + 1):

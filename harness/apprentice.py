@@ -28,6 +28,23 @@ DEFAULTS = {
 PARAMETERS = list(DEFAULTS.keys())
 
 
+def strip_wisdom(card_text):
+    """Remove the card's '## What ... knows' wisdom section.
+
+    The apprentice's first attempt runs on the steps only — the wisdom
+    section is the teacher's judgment layer, captured AFTER her reaction
+    (see the recorder flow), and it is withheld here so that "written
+    wisdom transfers" stays a testable claim: run once steps-only, then
+    once with --keep-wisdom, and compare. The wisdom section is always
+    the card's last section, so everything from its heading on is cut.
+    """
+    lines = card_text.splitlines()
+    for i, line in enumerate(lines):
+        if line.strip().startswith("## What ") and " know" in line:
+            return "\n".join(lines[:i]).rstrip() + "\n"
+    return card_text
+
+
 def parse_commitments(raw):
     """Extract the commitment object from a raw model response.
 

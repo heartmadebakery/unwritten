@@ -20,17 +20,19 @@ about the project from @tinio).
 > most. Unwritten Craft catches those tricks. A teacher (in our demo, a
 > baker of 30 years) shows a move and explains it briefly; the app writes
 > the **card** in the teacher's own words and is forbidden from adding
-> anything she didn't say. Four short questions then draw out her
-> *judgment* — how she knows when it's right, what goes wrong, what
-> forty years changed, who taught her — recorded in her words as **What
-> the teacher knows**, because for elder teachers the wisdom matters as
-> much as the steps. Then a second model — the Apprentice, which
-> receives *only* the card, never the interview — commits to exactly what
-> it would do. Its mistakes are the map of her unwritten knowledge: they
-> are drawn onto her real photo, she corrects them once ("No! Tilt it —
-> quick — it should tear a little"), and each correction becomes a
-> **Trick** on the card, tagged **Craft** (it works) or **Lineage**
-> (who taught her). The result is one shareable page a real person can
+> anything she didn't say. Then a second model — the Apprentice, which
+> receives *only* the steps on the card, never the interview — commits
+> to exactly what it would do. Its mistakes are the map of her
+> unwritten knowledge: they are drawn onto her real photo, she corrects
+> them once ("No! Tilt it — quick — it should tear a little"), and each
+> correction becomes a **Trick** on the card, tagged **Craft** (it
+> works) or **Lineage** (who taught her). Only after she has reacted
+> does the app ask the four wisdom questions — how she knows when it's
+> right, what goes wrong, what forty years changed, who taught her —
+> recorded in her words as **What the teacher knows**, deliberately
+> kept from the Apprentice's first attempt so it cannot rescue the
+> very gaps the session exists to find. For elder teachers, that
+> judgment matters as much as the steps. The result is one shareable page a real person can
 > actually learn from — the card, the Tricks, her voice, and the
 > student's own attempt beside hers. Nothing in the system is specific
 > to bread: the same card and the same apprentice contract (motion,

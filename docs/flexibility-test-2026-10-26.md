@@ -65,3 +65,23 @@ layers (the move, and the judgment), and the apprentice proves which
 layer each piece of knowledge lives in. For elder teachers, that is
 the whole point: the steps are the easy part to lose; the judgment —
 and who it came from — is what disappears first.
+
+## Addendum — Claude review, same day (the wisdom moves)
+
+Claude's first-pass review landed a hit this doc's own data supports:
+asked *before* the apprentice runs, three of the four wisdom questions
+hand it exactly what it was built to miss — a "how do you know" answer
+is a stopping condition, a "what goes wrong" answer pre-explains its
+failure, and Nadia's "toast the pecans" was a Trick delivered early.
+The saturation above (silence 17–20 everywhere) is partly that effect,
+not only tacit knowledge.
+
+**Adopted (user's call):** the wisdom questions now come *after* the
+teacher's reaction (they open the recorder's "Your try" step), and the
+harness strips the wisdom section before the apprentice's first
+attempt — `--keep-wisdom` runs the deliberate transfer check this doc
+accidentally performed. Wisdom is still captured in full, in her
+words, on the final card; it simply can't rescue the gaps the session
+exists to find. Codex's second pass was blocked by its usage limit
+(resets Nov 1) and remains owed.
+

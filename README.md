@@ -34,10 +34,10 @@ force, center): the cartoon depicts the verified mechanic.
 
 1. **Show & teach.** The teacher photographs the work and talks briefly
    (~45 seconds of "index card" capture, plus one opening question about any
-   visible wear in the photo — a burn mark, a scar in the tool). Four short
-   **wisdom questions** follow (see Design rules). Muse Spark drafts the
-   **card**: the steps, plus a *What the teacher knows* section carrying her
-   judgment in her own words.
+   visible wear in the photo — a burn mark, a scar in the tool). Muse Spark
+   drafts the **card** from her steps. Her **wisdom** — the judgment layer —
+   is captured later, after she has reacted to the apprentice (see step 4),
+   and filed on the card under *What the teacher knows*, in her own words.
 2. **The apprentice tries.** A blind learner model receives *only* the card
    and must commit to concrete parameters — motion (angle, force, duration),
    material (tool, size, amount), and heat (temperature), plus a stopping
@@ -70,16 +70,21 @@ force, center): the cartoon depicts the verified mechanic.
 - **Step 1 stays short.** A long, curious interview extracts the tacit
   knowledge up front and the mechanic dies. One soulful opening question,
   then "give me the quick steps like you're jotting them on an index card."
-- **Ask for wisdom, briefly, on purpose.** Steps capture the move; they
-  rarely capture the judgment. After the steps, the session asks up to
-  four short questions — *How do you know when it's right? What goes
-  wrong the other way? What do you do differently now than when you
-  started? Who taught you this?* — and Spark files the answers, in her
-  words, under **What the teacher knows**. For elder teachers especially,
-  this is the difference between recording a recipe and rescuing a
-  lifetime's judgment before it disappears. The questions are fixed and
-  few on purpose: the apprentice mechanic still needs the steps to be
-  under-specified.
+- **Ask for wisdom — after the reaction, never before.** Steps capture
+  the move; they rarely capture the judgment. But ask for judgment too
+  early and it pre-arms the apprentice with exactly what it was built
+  to miss (a "how do you know?" answer *is* a stopping condition; a
+  "what goes wrong?" answer pre-explains its failure — Claude review,
+  Oct 26). So the four wisdom questions — *How do you know when it's
+  right? What goes wrong the other way? What do you do differently now
+  than when you started? Who taught you this?* — are asked only after
+  the teacher has reacted to the apprentice's attempt, and the
+  apprentice's first run always sees the steps-only card (the harness
+  strips the wisdom section; `--keep-wisdom` exists for the deliberate
+  transfer check: same card, wisdom unsealed, compare the gaps). For
+  elder teachers especially, this section is the difference between
+  recording a recipe and rescuing a lifetime's judgment before it
+  disappears.
 - **Any craft, not just bread.** Nothing in the prompts, the parameter
   set, or the pipeline is specific to one task: the card format and the
   apprentice contract (motion + material + heat) serve baking, cooking,

@@ -39,7 +39,7 @@ def run(mod_args, use_venv=False, **kw):
 
 def stage_transcripts(work, manifest):
     out = {}
-    for step in ("teach", "react"):
+    for step in ("teach", "react", "attempt"):
         media = manifest.get(step) or []
         if media:
             tdir = os.path.join(work, f"transcript_{step}")
@@ -80,10 +80,15 @@ def main():
     if manifest.get("photos"):
         hero = manifest["photos"][0]
 
-    # 4. card (Spark) — needs the teach transcript
+    # 4. card (Spark) — steps from the teach transcript; the wisdom
+    # section from the post-reaction wisdom Q&A, which opens the
+    # attempt clip under the current recorder flow.
     card_path = os.path.join(work, "card.md")
     if "teach" in transcripts:
-        run([os.path.join(HERE, "draft_card.py"), transcripts["teach"], card_path])
+        cmd = [os.path.join(HERE, "draft_card.py"), transcripts["teach"], card_path]
+        if "attempt" in transcripts:
+            cmd += ["--wisdom", transcripts["attempt"]]
+        run(cmd)
     else:
         print("\n=== card skipped: no teach recording ===")
 
