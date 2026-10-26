@@ -45,6 +45,14 @@ def stage_transcripts(work, manifest):
             tdir = os.path.join(work, f"transcript_{step}")
             run([os.path.join(HERE, "transcribe.py"), media[0], tdir], use_venv=True)
             out[step] = os.path.join(tdir, "transcript.txt")
+    # A companion's dialogue take covers the whole session in one clean
+    # track: transcribe it too. It is the fallback wisdom source (and a
+    # cross-check on the step clips' audio) — see the card stage.
+    dialogue = manifest.get("dialogue") or []
+    if dialogue:
+        tdir = os.path.join(work, "transcript_dialogue")
+        run([os.path.join(HERE, "transcribe.py"), dialogue[0], tdir], use_venv=True)
+        out["dialogue"] = os.path.join(tdir, "transcript.txt")
     return out
 
 
@@ -86,8 +94,9 @@ def main():
     card_path = os.path.join(work, "card.md")
     if "teach" in transcripts:
         cmd = [os.path.join(HERE, "draft_card.py"), transcripts["teach"], card_path]
-        if "attempt" in transcripts:
-            cmd += ["--wisdom", transcripts["attempt"]]
+        wisdom_src = transcripts.get("attempt") or transcripts.get("dialogue")
+        if wisdom_src:
+            cmd += ["--wisdom", wisdom_src]
         run(cmd)
     else:
         print("\n=== card skipped: no teach recording ===")
