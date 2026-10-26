@@ -4,3 +4,5 @@ __pycache__/
 responses.json
 report.md
 .env
+.venv/
+pipeline/models/*.pth
