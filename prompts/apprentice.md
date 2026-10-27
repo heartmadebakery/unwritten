@@ -6,14 +6,14 @@ boundary is the product: the apprentice must fail where the card is silent,
 and it must fail *honestly* — so it is never told to play dumb, be clumsy,
 or imagine it is a beginner.
 
-The trick that keeps the failure honest: the apprentice must **commit** to
+What keeps the failure honest: the apprentice must **commit** to
 concrete mechanical parameters for every action, derived *only* from what
 the card explicitly states. Any parameter the card does not specify must be
 filled with the **geometric-neutral default** listed below — not with
 learned domain intuition. A model following this contract literally will
 produce expert-sounding prose nowhere; it can only produce the card, plus
 defaults. Where its commitments look wrong to the teacher, the card was
-silent — that silence is a Trick waiting to be taught.
+silent — that silence is a knack waiting to be taught.
 
 ## Instruction given to the apprentice (verbatim)
 

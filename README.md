@@ -6,7 +6,7 @@ down the way the teacher actually said it; then a *blind apprentice* — a model
 that receives **only** the written card, never the interview — tries to follow
 it and commits to exactly what it would do. Where the apprentice fails is where
 the teacher's tacit knowledge lives. The teacher corrects it once, and those
-corrections — the **Tricks** — become the artifact: a shareable page a real
+corrections — the **Knack** — become the artifact: a shareable page a real
 person can learn from.
 
 Built for the Meta Global AI Developer Hackathon 2026 (Indie, solo).
@@ -47,11 +47,11 @@ force, center): the cartoon depicts the verified mechanic.
    The misreading is shown on the teacher's real photo: SAM 3.1 highlights the
    region and the apprentice's own sentence is pinned to it. (Muse Image may
    render the *consequence* beside it — what the mistake produces.)
-3. **Correct once.** The teacher reacts. Each correction becomes a **Trick**
-   on the card. For each Trick, one question is asked — *"Is that for the
-   bread, or because of who taught you?"* — and the Trick is tagged
+3. **Correct once.** The teacher reacts. Each correction becomes a **knack**
+   on the card. For each one, one question is asked — *"Is that for the
+   bread, or because of who taught you?"* — and the knack is tagged
    **Craft** (it works) or **Lineage** (it's inherited).
-4. **Hand it on.** One shareable page: the card, the Tricks, the teacher's
+4. **Hand it on.** One shareable page: the card, the knacks, the teacher's
    voice clips, and the recipient's real attempt placed beside the teacher's
    original.
 

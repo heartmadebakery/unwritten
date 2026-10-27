@@ -19,7 +19,7 @@ manifest.json
    ├─ card ──────────────► harness/apprentice_muse.py ─► gap_report.md
    │                                                  (Muse Wonder, card only)
    ├─ hero/photo + top-gap sentence ─► sam_overlay.py ─► overlay.png (SAM)
-   └─ react transcript ──► tricks draft + handiton.py ─► page.html
+   └─ react transcript ──► knacks draft + handiton.py ─► page.html
 ```
 
 Run it: `pipeline/run_pipeline.py <session_dir> <work_dir> [--title ...]
@@ -35,7 +35,7 @@ faster-whisper); the runner re-invokes the heavy stages under it.
   int8, CPU) — a teacher's raw voice never leaves the machine for a
   third-party transcription service. `UNWRITTEN_WHISPER_MODEL=small`
   trades speed for accuracy. The transcript feeds two places: Spark's
-  card draft, and the tricks miner that drafts correction candidates
+  card draft, and the knack miner that drafts correction candidates
   from the reaction clip (lines starting "No / Don't / Never / Wait" —
   a draft the teacher confirms, never gospel).
 - **Card drafting** is `draft_card.py`: transcript + the stenographer
