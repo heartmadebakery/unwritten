@@ -6,3 +6,8 @@ report.md
 .env
 .venv/
 pipeline/models/*.pth
+app/android/build-manual/
+app/android/local.properties
+app/android/debug.keystore
+app/android/.gradle/
+app/android/app/build/
