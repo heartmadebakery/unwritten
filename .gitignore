@@ -11,3 +11,4 @@ app/android/local.properties
 app/android/debug.keystore
 app/android/.gradle/
 app/android/app/build/
+.certs/
