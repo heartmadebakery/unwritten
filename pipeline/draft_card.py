@@ -3,16 +3,23 @@
 Spark runs under prompts/card_drafter.md — the stenographer constraint.
 The teacher's words in, the card out; Spark's own knowledge stays out.
 
-Usage: draft_card.py <transcript_file> <card_out.md> [--teacher-name NAME]
-The transcript file may be plain text or the recorder's transcript.txt.
+Usage: draft_card.py <transcript_file> <card_out.md> [--wisdom FILE]
+The wisdom file is the transcript of the post-reaction wisdom Q&A
+(the recorder's attempt clip opens with it; a companion dialogue take
+may serve instead). Only the teacher's answers to the four wisdom
+questions may be used from it.
 """
 import argparse
+import os
+import re
+import shutil
 import subprocess
 import sys
-import os
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MUSE_BIN = os.path.expanduser("~/.local/bin/muse")
+MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
+            or os.path.expanduser("~/.local/bin/muse"))
 
 
 def draft(transcript, wisdom=""):
@@ -20,18 +27,34 @@ def draft(transcript, wisdom=""):
         rules = fh.read()
     prompt = (rules + "\n\n=== TEACHER TRANSCRIPT (her steps) ===\n" + transcript.strip())
     if wisdom.strip():
-        prompt += ("\n\n=== WISDOM Q&A (asked AFTER her reaction — her "
-                   "judgment, for the wisdom section) ===\n" + wisdom.strip())
+        prompt += ("\n\n=== WISDOM Q&A — recorded AFTER her reaction; this "
+                   "audio may also contain the student's attempt and room "
+                   "chatter. Use ONLY her answers to the wisdom questions "
+                   "(how she knows when it's right, what goes wrong, what "
+                   "she changed over the years, who taught her) ===\n"
+                   + wisdom.strip())
     prompt += "\n\nDraft the card now, following the rules above exactly."
-    with open("/tmp/.unwritten_drafter_prompt.txt", "w") as fh:
-        fh.write(prompt)
-    proc = subprocess.run(
-        [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
-         "muse-spark-1.3", "--prompt-file", "/tmp/.unwritten_drafter_prompt.txt"],
-        capture_output=True, text=True, timeout=600)
+    fd, prompt_path = tempfile.mkstemp(prefix="unwritten_drafter_", suffix=".txt")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            fh.write(prompt)
+        proc = subprocess.run(
+            [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
+             "muse-spark-1.3", "--prompt-file", prompt_path],
+            capture_output=True, text=True, timeout=600)
+    finally:
+        try:
+            os.unlink(prompt_path)
+        except OSError:
+            pass
     if proc.returncode != 0:
         sys.exit(f"Spark drafting failed: {proc.stderr[-300:]}")
-    return proc.stdout.strip()
+    card = proc.stdout.strip()
+    if not re.search(r"^\s*\d+[.)]\s+\S", card, re.MULTILINE):
+        # Never write a non-card as card.md (Wonder review).
+        sys.exit("Spark drafting produced no numbered steps — refusing "
+                 "to write it as a card. Raw output kept in stderr log.")
+    return card
 
 
 def main():

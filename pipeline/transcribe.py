@@ -45,9 +45,19 @@ def transcribe(media):
         extract_audio(media, wav)
         audio = load_wav_numpy(wav)
         model = WhisperModel(model_name, device="cpu", compute_type="int8")
-        segments, _info = model.transcribe(audio, beam_size=1)
+        segments, info = model.transcribe(audio, beam_size=1, vad_filter=True)
         segs = [{"start": round(s.start, 2), "end": round(s.end, 2),
                  "text": s.text.strip()} for s in segments]
+    text = " ".join(s["text"] for s in segs).strip()
+    if not text:
+        # An empty transcript must never become an "empty teacher" the
+        # card drafter then invents steps for (Wonder review).
+        raise RuntimeError(
+            f"no speech recognized in {os.path.basename(media)} "
+            f"(language={info.language}, p={info.language_probability:.2f}) — "
+            "silent or wrong file; refusing to transcribe emptiness")
+    print(f"  language={info.language} (p={info.language_probability:.2f})",
+          file=sys.stderr)
     return segs
 
 

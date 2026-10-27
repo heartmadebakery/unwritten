@@ -121,6 +121,7 @@
 
   <div class="codebox">Session code: <b id="code">····</b></div>
   <p class="note" style="margin-top:4px;">Companions enter this code so all the clips belong to one session.</p>
+  <button class="ghostbtn" id="newcodebtn" style="max-width:460px;">↻&nbsp; New session (new code)</button>
 
   <button class="bigbtn" id="startbtn">▶&nbsp; Start</button>
   <div class="togglerow">
@@ -142,6 +143,7 @@
   <header>
     <span class="stepname" id="stepname">1 · Show me</span>
     <span class="dots" id="dots"></span>
+    <button id="homebtn" style="background:transparent;color:var(--dim);font-size:15px;padding:6px 4px;">⌂ role</button>
   </header>
   <div id="stage">
     <video id="view" autoplay playsinline muted></video>
@@ -185,6 +187,13 @@
   <p class="note" style="max-width:none;">When the lead device says “sync”, tap the button. This device counts down, beeps and flashes at zero, then records one long take until you stop it. The flash and beep are how the clips line up later.</p>
   <button class="bigbtn" id="syncbtn" style="max-width:none;">🔔&nbsp; Sync &amp; start recording</button>
   <button class="bigbtn hidden" id="cstopbtn" style="max-width:none;background:var(--red);color:#fff;">■&nbsp; Stop</button>
+  <div class="controls hidden" id="ccapcontrols" style="margin-top:10px;">
+    <button class="capbtn" id="ccapvideo">🎥&nbsp; Record video (camera app)</button>
+    <button class="capbtn" id="ccapaudio">🎙&nbsp; Record audio (voice app)</button>
+  </div>
+  <p class="note hidden" id="ccapnote" style="max-width:none;">This device can't record in the page, so its own camera / voice apps do the capturing — one long take each. The takes are named with the session code, like the lead device's clips.</p>
+  <input type="file" id="cfilevideo" accept="video/*" capture="environment" class="hidden">
+  <input type="file" id="cfileaudio" accept="audio/*" capture class="hidden">
   <p id="cstatus" class="note" style="max-width:none;"></p>
   <div class="library" style="padding:0;"><h3>Saved on this device</h3><div id="cclips"><div class="clip" style="color:var(--dim)">Nothing yet.</div></div></div>
   <button class="ghostbtn" id="chomebtn" style="max-width:none;">← Change role</button>
@@ -216,7 +225,7 @@ function probe(){
     idb: (typeof indexedDB !== "undefined"),
     tts: ("speechSynthesis" in window),
     secure: !!window.isSecureContext,
-    bigScreen: (window.innerWidth >= 1024),
+    bigScreen: (window.innerWidth >= 900),
     audioCtx: !!((window.AudioContext || window.webkitAudioContext))
   };
   caps.inPageRecording = caps.mediaRecorder && caps.gum;
@@ -251,12 +260,19 @@ function makeCode(){
 var state = { step:0, stream:null, recorder:null, chunks:[], recording:false,
               timerInt:null, t0:0, clips:[], tts:true, facing:"environment",
               role:"interviewer", code:makeCode(), cmode:"broll",
-              crecorder:null, crecording:false, cchunks:[], cstream:null };
+              crecorder:null, crecording:false, cchunks:[], cstream:null,
+              starting:false, syncing:false, syncInt:null, actx:null,
+              done:false, pendingSaves:0 };
 try{
   state.role = localStorage.getItem("uw_role") || CAPS.suggestedRole;
-  state.code = localStorage.getItem("uw_code") || state.code;
+  var storedCode = localStorage.getItem("uw_code");
+  if(storedCode){ state.code = storedCode; }
+  else{ localStorage.setItem("uw_code", state.code); } /* persist at creation —
+    a reload must not change the code a companion already entered (W2 #13) */
   var savedLine = localStorage.getItem("uw_appr_line");
   if(savedLine) document.getElementById("apprline").value = savedLine;
+  var savedStep = parseInt(localStorage.getItem("uw_step") || "0", 10);
+  if(savedStep > 0 && savedStep < 4) state.step = savedStep;
 }catch(e){ state.role = CAPS.suggestedRole; }
 var $ = function(id){ return document.getElementById(id); };
 
@@ -288,13 +304,18 @@ async function openCamera(){
   if(hasAudio){
     state.stream.getAudioTracks()[0].onended = function(){ $("micwarn").classList.remove("hidden"); };
   }
-  if(!CAPS.mediaRecorder) showCaptureControls();
+  if(!CAPS.mediaRecorder) showCaptureControls(); else hideCaptureControls();
 }
 function showCaptureControls(){
   /* Old-device path: native camera / voice apps do the recording. */
   $("fallback").classList.remove("hidden");
   $("controls").classList.add("hidden");
   $("capcontrols").classList.remove("hidden");
+}
+function hideCaptureControls(){
+  $("fallback").classList.add("hidden");
+  $("capcontrols").classList.add("hidden");
+  $("controls").classList.remove("hidden");
 }
 function fmt(s){ return Math.floor(s/60) + ":" + ("0" + (s%60)).slice(-2); }
 /* Clips persist in IndexedDB so a reload, crash, or discarded tab cannot
@@ -307,6 +328,7 @@ function idbOpen(){
     r.onupgradeneeded = function(){ r.result.createObjectStore("clips", {keyPath:"name"}); };
     r.onsuccess = function(){ res(r.result); };
     r.onerror = function(){ rej(r.error); };
+    r.onblocked = function(){ rej(new Error("idb blocked")); }; /* never hang (W2 #23) */
   });
 }
 async function idbPut(name, blob){
@@ -314,7 +336,7 @@ async function idbPut(name, blob){
   try{ var db = await idbOpen();
     await new Promise(function(res, rej){
       var tx = db.transaction("clips", "readwrite");
-      tx.objectStore("clips").put({name:name, blob:blob, ts:Date.now()});
+      tx.objectStore("clips").put({name:name, blob:blob, ts:Date.now(), code:state.code});
       tx.oncomplete = res; tx.onerror = function(){ rej(tx.error); };
     });
   }catch(e){ /* download copy still happened */ }
@@ -327,7 +349,12 @@ async function idbRestore(){
       cur.onsuccess = function(){ var c = cur.result; if(c){ out.push(c.value); c.continue(); } else res(out); };
       cur.onerror = function(){ rej(cur.error); };
     });
-    items.forEach(function(it){
+    /* Only THIS session's clips come back (records carry the code since
+       v6.1; older records without one are adopted into the current
+       session rather than lost). Sorted by capture time, not name. */
+    items.filter(function(it){ return !it.code || it.code === state.code; })
+         .sort(function(a, b){ return (a.ts || 0) - (b.ts || 0); })
+         .forEach(function(it){
       if(!state.clips.some(function(c){ return c.name === it.name; }))
         state.clips.push({name:it.name, url:URL.createObjectURL(it.blob), persisted:true});
     });
@@ -352,7 +379,24 @@ function renderClips(){
   var html = state.clips.map(clipHTML).join("") || "<div class='clip' style='color:var(--dim)'>Nothing yet.</div>";
   $("clips").innerHTML = html; $("cclips").innerHTML = html;
 }
-function stamp(){ return new Date().toISOString().slice(11,19).replace(/:/g,""); }
+function stamp(){
+  /* Full date + time + milliseconds + session code in every filename:
+     takes can never collide across steps, days, or sessions in the
+     IndexedDB vault (keyPath is the name). (Wonder pass 2, #1/#2.) */
+  var d = new Date(), p = function(n, w){ return ("000" + n).slice(-(w || 2)); };
+  return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + "-" +
+         p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + "-" + p(d.getMilliseconds(), 3);
+}
+function extFor(file, fallback){
+  var t = (file && file.type) || "";
+  var map = { "video/quicktime":"mov", "video/mp4":"mp4", "video/webm":"webm",
+              "audio/mp4":"m4a", "audio/x-m4a":"m4a", "audio/mpeg":"mp3",
+              "audio/webm":"webm", "audio/ogg":"ogg", "image/jpeg":"jpg", "image/png":"png" };
+  if(map[t]) return map[t];
+  var n = (file && file.name) || "";
+  var e = n.indexOf(".") >= 0 ? n.split(".").pop().toLowerCase() : "";
+  return (/^[a-z0-9]{2,5}$/.test(e) && e !== "video" && e !== "audio") ? e : fallback;
+}
 function pickMime(types){
   for(var i=0;i<types.length;i++){
     try{ if(MediaRecorder.isTypeSupported(types[i])) return types[i]; }catch(e){}
@@ -369,15 +413,19 @@ function startRec(){
   catch(e){ showCaptureControls(); return; }
   /* Capture everything the async onstop needs NOW: the user may tap Next
      before onstop fires, and the clip must keep its own step's name. */
-  var rec = state.recorder, recChunks = state.chunks, recStep = STEPS[state.step].key;
+  var rec = state.recorder, recChunks = state.chunks, recStep = STEPS[state.step].key, recCode = state.code;
   rec.ondataavailable = function(e){ if(e.data && e.data.size) recChunks.push(e.data); };
   rec.onerror = function(){ stopRec(); $("promptcard").innerHTML = "⚠️ <b>Recording hit a problem</b> — the device may have been interrupted. Check the library below for the clip, then record this step again."; };
   rec.onstop = function(){
+    state.pendingSaves--;
     var blob = new Blob(recChunks, {type: rec.mimeType || "video/webm"});
+    if(!blob.size){ $("promptcard").innerHTML = "⚠️ <b>That take was empty</b> — nothing was captured. Record this step again."; maybeManifest(); return; }
     var ext = (rec.mimeType || "").indexOf("mp4") >= 0 ? "mp4" : "webm";
-    saveBlob(blob, "unwritten_" + recStep + "_" + stamp() + "." + ext);
+    saveBlob(blob, "unwritten_" + recStep + "_" + recCode + "_" + stamp() + "." + ext);
+    maybeManifest();
   };
-  try{ rec.start(250); }catch(e){ try{ rec.start(); }catch(e2){ showCaptureControls(); return; } }
+  state.pendingSaves++;
+  try{ rec.start(250); }catch(e){ try{ rec.start(); }catch(e2){ state.pendingSaves--; showCaptureControls(); return; } }
   state.recording = true;
   $("recbtn").textContent = "■  Stop"; $("recbtn").classList.add("stop");
   $("recbadge").classList.remove("hidden");
@@ -394,28 +442,52 @@ function stopRec(){
 }
 function takePhoto(){
   var v = $("view"); if(!v.videoWidth){ showCaptureControls(); return; }
+  /* Capture the step NOW — the toBlob callback is async and must not
+     inherit a later step's name (Wonder pass 2, #4; same class as the
+     v5 onstop fix). */
+  var photoStep = STEPS[state.step].key, photoCode = state.code;
   var c = $("snap"); c.width = v.videoWidth; c.height = v.videoHeight;
   c.getContext("2d").drawImage(v, 0, 0);
-  c.toBlob(function(b){ if(b) saveBlob(b, "unwritten_" + STEPS[state.step].key + "_" + stamp() + ".jpg"); }, "image/jpeg", .92);
+  var name = "unwritten_" + photoStep + "_" + photoCode + "_" + stamp() + ".jpg";
+  if(c.toBlob){
+    c.toBlob(function(b){ if(b) saveBlob(b, name); }, "image/jpeg", .92);
+  }else{ /* older WebKit without canvas.toBlob */
+    var a = document.createElement("a"); a.href = c.toDataURL("image/jpeg", .92);
+    a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    state.clips.push({name:name, url:a.href, persisted:false}); renderClips();
+  }
 }
 function renderStep(){
   var s = STEPS[state.step];
+  try{ localStorage.setItem("uw_step", String(state.step)); }catch(e){}
   $("stepname").textContent = s.name;
   $("dots").innerHTML = STEPS.map(function(_, i){ return "<span class='" + (i===state.step ? "on" : "") + "'>●</span>"; }).join("");
   $("promptcard").innerHTML = s.prompt;
   var rl = $("reactline");
-  if(rl) rl.textContent = "“" + $("apprline").value.trim() + "”";
+  if(rl){
+    var line = $("apprline").value.trim();
+    rl.textContent = line ? "“" + line + "”"
+      : "(No apprentice line pasted — go back to the home screen and fill it in, or read her your best guess of what it would do.)";
+  }
   $("nextbtn").textContent = s.next;
   $("donecard").classList.add("hidden"); $("promptcard").classList.remove("hidden");
-  $("nextbtn").classList.remove("hidden");
-  if(!CAPS.inPageRecording) showCaptureControls(); else $("controls").classList.remove("hidden");
+  $("nextbtn").classList.remove("hidden"); $("manifestbtn").classList.add("hidden");
+  $("backbtn").classList.remove("hidden");
+  if(!CAPS.inPageRecording) showCaptureControls(); else { hideCaptureControls(); }
   speak(s.speak);
+}
+function maybeManifest(){
+  /* The manifest button appears only once the session is done AND the
+     final take's onstop has actually saved it (Wonder pass 2, #6). */
+  if(state.done && state.pendingSaves <= 0) $("manifestbtn").classList.remove("hidden");
 }
 function finish(){
   if(state.recording) stopRec();
+  state.done = true;
   $("promptcard").classList.add("hidden"); $("controls").classList.add("hidden");
   $("capcontrols").classList.add("hidden"); $("nextbtn").classList.add("hidden");
-  $("manifestbtn").classList.remove("hidden");
+  $("backbtn").classList.add("hidden");
+  maybeManifest();
   var d = $("donecard"); d.classList.remove("hidden");
   d.innerHTML = "🎉 <b>Session captured.</b><br>All clips and photos are saved on this device (check the downloads and the list below). Send them to the builder and they become the card, the apprentice's try, and the hand-it-on page.<br><br>Session code: <b>" + state.code + "</b> — companions using this code belong to this session.<br><br>Thank her — she just taught the future something.";
   $("stepname").textContent = "Done ✓";
@@ -435,70 +507,112 @@ function downloadManifest(){
 
 /* ---------- companion mode ---------- */
 function beep(freq, ms){
-  if(!CAPS.audioCtx) return;
+  /* One shared AudioContext, created + resumed inside the tap handler:
+     a fresh context per beep, created from a timer, starts suspended
+     and silent on iOS (Wonder pass 2, #9/#22). */
+  if(!state.actx) return;
   try{
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    var ctx = new Ctx(), o = ctx.createOscillator(), g = ctx.createGain();
+    var ctx = state.actx, o = ctx.createOscillator(), g = ctx.createGain();
     o.frequency.value = freq; o.connect(g); g.connect(ctx.destination);
     g.gain.setValueAtTime(0.25, ctx.currentTime);
     o.start(); o.stop(ctx.currentTime + ms/1000);
   }catch(e){}
 }
+function setCmodeEnabled(on){
+  for(var k=0;k<cmodeBtns.length;k++) cmodeBtns[k].disabled = !on;
+}
 async function companionStart(){
+  if(state.syncing || state.crecording) return; /* double-tap guard (W2 #3) */
   var code = ($("ccode").value || "").toUpperCase().replace(/[^A-Z]/g,"").slice(0,6);
   if(code.length < 3){ $("cstatus").textContent = "Enter the session code from the lead device first (3+ letters)."; return; }
   state.code = code;
   try{ localStorage.setItem("uw_code", code); }catch(e){}
   if(!CAPS.gum || !CAPS.mediaRecorder){
-    $("cstatus").textContent = "This device can't record in the page — use the lead device's camera-app option for this angle instead.";
+    /* No in-page recording (old iOS): the native-app path, named like
+       every other companion take (Wonder pass 2, #21). */
+    $("ccapcontrols").classList.remove("hidden");
+    $("ccapnote").classList.remove("hidden");
+    $("syncbtn").classList.add("hidden");
+    $("cstatus").textContent = "Use the buttons above — one long take from the device's own apps. Session " + code + ".";
     return;
   }
-  var wantAudioOnly = (state.cmode === "dialogue");
+  state.syncing = true; $("syncbtn").disabled = true;
+  wakeLock();
+  /* Create/resume the shared AudioContext inside this user gesture. */
+  if(CAPS.audioCtx && !state.actx){
+    try{ state.actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){}
+  }
+  if(state.actx && state.actx.resume) state.actx.resume();
+  var recMode = state.cmode; /* captured NOW — the buttons may change later (W2 #8) */
+  setCmodeEnabled(false);
+  var wantAudioOnly = (recMode === "dialogue");
   try{
     state.cstream = await navigator.mediaDevices.getUserMedia(
       wantAudioOnly ? { audio:true } : { video:{ facingMode:"environment" }, audio:true });
-  }catch(e){ $("cstatus").textContent = "Camera/microphone was not allowed on this device."; return; }
+  }catch(e){
+    if(!wantAudioOnly){
+      /* A denied mic must not cost the second angle (mirror of the lead path). */
+      try{ state.cstream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:"environment" }, audio:false });
+        $("cstatus").textContent = "No microphone allowed — recording a silent angle."; }
+      catch(e2){ companionAbort("Camera/microphone was not allowed on this device."); return; }
+    } else { companionAbort("Microphone was not allowed on this device."); return; }
+  }
   if(!wantAudioOnly){ $("cview").classList.remove("hidden"); $("cview").srcObject = state.cstream; }
-  /* Sync: 3-2-1 countdown, beep + full-screen flash at zero, then roll.
-     The flash/beep pair is the alignment marker for the pipeline. */
-  $("cstatus").textContent = "Syncing in 3…";
+  /* Start recording FIRST (pre-roll), then run the countdown: the beep +
+     flash at zero land fully inside the take (Wonder pass 2, #9). */
+  if(!companionRecord(recMode)){ companionAbort("Recording failed to start on this device."); return; }
+  $("cstatus").textContent = "● Recording — sync flash in 3…";
   beep(660, 120);
   var flash = $("syncflash");
   var n = 3;
-  var iv = setInterval(function(){
+  state.syncInt = setInterval(function(){
     n--;
-    if(n > 0){ $("cstatus").textContent = "Syncing in " + n + "…"; beep(660, 120); return; }
-    clearInterval(iv);
+    if(n > 0){ $("cstatus").textContent = "● Recording — sync flash in " + n + "…"; beep(660, 120); return; }
+    clearInterval(state.syncInt); state.syncInt = null;
     flash.textContent = "●"; flash.classList.remove("hidden");
     beep(1320, 350);
     setTimeout(function(){ flash.classList.add("hidden"); }, 450);
-    companionRecord();
+    $("cstatus").textContent = "● Recording " + (recMode === "dialogue" ? "audio" : "video") + " — session " + state.code + ". The flash + beep just marked time zero. Stop it when the session ends.";
+    state.syncing = false;
   }, 1000);
 }
-function companionRecord(){
-  var audioOnly = (state.cmode === "dialogue");
+function companionAbort(msg){
+  state.syncing = false; $("syncbtn").disabled = false;
+  setCmodeEnabled(true);
+  if(state.syncInt){ clearInterval(state.syncInt); state.syncInt = null; }
+  if(state.cstream){ state.cstream.getTracks().forEach(function(t){ t.stop(); }); state.cstream = null; }
+  $("cstatus").textContent = msg;
+}
+function companionRecord(recMode){
+  var audioOnly = (recMode === "dialogue");
   var mime = audioOnly
     ? pickMime(["audio/mp4","audio/webm;codecs=opus","audio/webm","audio/ogg"])
     : pickMime(["video/webm;codecs=vp8,opus","video/webm","video/mp4"]);
   state.cchunks = [];
   try{ state.crecorder = new MediaRecorder(state.cstream, mime ? {mimeType:mime} : undefined); }
-  catch(e){ $("cstatus").textContent = "Recording failed to start on this device."; return; }
+  catch(e){ return false; }
   var rec = state.crecorder, chunks = state.cchunks;
   var kind = audioOnly ? "dialogue" : "broll", code = state.code;
   rec.ondataavailable = function(e){ if(e.data && e.data.size) chunks.push(e.data); };
+  rec.onerror = function(){ companionStop(); $("cstatus").textContent = "⚠️ Recording hit a problem and stopped — check the library below, then sync again."; };
   rec.onstop = function(){
     var type = rec.mimeType || (audioOnly ? "audio/webm" : "video/webm");
+    var blob = new Blob(chunks, {type:type});
+    if(!blob.size){ $("cstatus").textContent = "⚠️ That take was empty — nothing was captured. Sync again."; return; }
     var ext = type.indexOf("mp4") >= 0 ? (audioOnly ? "m4a" : "mp4")
             : type.indexOf("ogg") >= 0 ? "ogg" : "webm";
-    saveBlob(new Blob(chunks, {type:type}), "unwritten_" + kind + "_" + code + "_" + stamp() + "." + ext);
-    $("cstatus").textContent = "Saved. It lines up with the lead device's clips by the flash + beep at the start.";
+    saveBlob(blob, "unwritten_" + kind + "_" + code + "_" + stamp() + "." + ext);
+    $("cstatus").textContent = "Saved. It lines up with the lead device's clips by the flash + beep near the start.";
   };
-  try{ rec.start(500); }catch(e){ try{ rec.start(); }catch(e2){ $("cstatus").textContent = "Recording failed to start on this device."; return; } }
+  try{ rec.start(500); }catch(e){ try{ rec.start(); }catch(e2){ return false; } }
   state.crecording = true;
   $("syncbtn").classList.add("hidden"); $("cstopbtn").classList.remove("hidden");
-  $("cstatus").textContent = "● Recording " + (audioOnly ? "audio" : "video") + " — session " + code + ". Stop it when the session ends.";
+  return true;
 }
 function companionStop(){
+  if(state.syncInt){ clearInterval(state.syncInt); state.syncInt = null; } /* no hidden recordings (W2 #11) */
+  state.syncing = false; $("syncbtn").disabled = false;
+  setCmodeEnabled(true);
   if(state.crecorder && state.crecording){ try{ state.crecorder.stop(); }catch(e){} }
   state.crecording = false;
   if(state.cstream){ state.cstream.getTracks().forEach(function(t){ t.stop(); }); state.cstream = null; }
@@ -511,7 +625,7 @@ function paintRoles(){
   var btns = document.querySelectorAll("#roles .rolebtn");
   for(var i=0;i<btns.length;i++)
     btns[i].classList.toggle("on", btns[i].getAttribute("data-role") === state.role);
-  $("apprfield").classList.toggle("hidden", state.role !== "interviewer");
+  $("apprfield").classList.toggle("hidden", state.role === "companion"); /* recorder sessions read the line too (W2 #12) */
   $("camtoggle").classList.toggle("hidden", state.role === "companion");
   $("ttstoggle").classList.toggle("hidden", state.role === "recorder");
   $("code").textContent = state.code;
@@ -533,6 +647,7 @@ for(var j=0;j<cmodeBtns.length;j++){
 }
 $("caps").innerHTML = "This device: " +
   (CAPS.inPageRecording ? "can record in the page ✓" : "no in-page recording — native camera/voice apps will be used") +
+  " · " + (CAPS.secure ? "secure page ✓" : "⚠️ not a secure page (in-page camera needs https or a local file)") +
   " · " + (CAPS.tts ? "robot voice ✓" : "no robot voice") +
   " · " + (CAPS.idb ? "on-device clip vault ✓" : "no clip vault (downloads only)") +
   " · " + (CAPS.bigScreen ? "big screen — interviewer layout" : "small screen") +
@@ -540,14 +655,29 @@ $("caps").innerHTML = "This device: " +
 paintRoles();
 
 $("startbtn").onclick = async function(){
+  if(state.starting) return; state.starting = true; /* double-tap guard (W2 #3) */
   try{ localStorage.setItem("uw_appr_line", $("apprline").value); }catch(e){}
   if(state.role === "companion"){
     $("home").classList.add("hidden"); $("companion").classList.remove("hidden");
     $("ccode").value = "";
-    idbRestore(); return;
+    wakeLock(); idbRestore(); state.starting = false; return;
   }
   $("home").classList.add("hidden"); $("session").classList.remove("hidden");
   wakeLock(); idbRestore(); await openCamera(); renderStep();
+  state.starting = false;
+};
+$("newcodebtn").onclick = function(){
+  /* Rotate the session: new code, fresh step + clip view. The old
+     session's clips stay in the vault under their own code. */
+  if(state.recording) stopRec();
+  state.code = makeCode(); state.step = 0; state.clips = []; state.done = false;
+  try{ localStorage.setItem("uw_code", state.code); localStorage.setItem("uw_step", "0"); }catch(e){}
+  renderClips(); paintRoles();
+};
+$("homebtn").onclick = function(){
+  if(state.recording){ stopRec(); return; } /* first tap only stops, as ever */
+  if(state.stream){ state.stream.getTracks().forEach(function(t){ t.stop(); }); state.stream = null; }
+  $("session").classList.add("hidden"); $("home").classList.remove("hidden");
 };
 $("chomebtn").onclick = function(){
   if(state.crecording) companionStop();
@@ -571,10 +701,15 @@ $("ttstoggle").onclick = function(){ state.tts = !state.tts; this.textContent = 
 $("camtoggle").onclick = async function(){ state.facing = state.facing === "environment" ? "user" : "environment"; this.textContent = state.facing === "environment" ? "📷 Back camera" : "🤳 Front camera"; if(!$("session").classList.contains("hidden")) await openCamera(); };
 $("capvideo").onclick = function(){ $("fileinput").click(); };
 $("capaudio").onclick = function(){ $("audioinput").click(); };
-$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ var ext = (f.name.split(".").pop() || "mp4").toLowerCase(); saveBlob(f, "unwritten_" + STEPS[state.step].key + "_camera-app." + ext); } };
-$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ var ext = (f.name.split(".").pop() || "m4a").toLowerCase(); saveBlob(f, "unwritten_" + STEPS[state.step].key + "_voice-app." + ext); } };
+$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_" + STEPS[state.step].key + "_camera-app_" + state.code + "_" + stamp() + "." + extFor(f, "mp4")); } };
+$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_" + STEPS[state.step].key + "_voice-app_" + state.code + "_" + stamp() + "." + extFor(f, "m4a")); } };
+$("ccapvideo").onclick = function(){ $("cfilevideo").click(); };
+$("ccapaudio").onclick = function(){ $("cfileaudio").click(); };
+$("cfilevideo").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_broll_" + state.code + "_" + stamp() + "." + extFor(f, "mp4")); $("cstatus").textContent = "Saved the second-angle take for session " + state.code + "."; } };
+$("cfileaudio").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_dialogue_" + state.code + "_" + stamp() + "." + extFor(f, "m4a")); $("cstatus").textContent = "Saved the dialogue take for session " + state.code + "."; } };
 document.addEventListener("keydown", function(e){
-  if($("session").classList.contains("hidden")) return;
+  if($("session").classList.contains("hidden") || state.done) return;
+  if(e.metaKey || e.ctrlKey || e.altKey || e.repeat) return; /* never hijack Ctrl+R or a held key (W2 #18) */
   var tag = (e.target && e.target.tagName) || "";
   if(tag === "TEXTAREA" || tag === "INPUT") return;
   if(e.key === "ArrowRight") $("nextbtn").click();

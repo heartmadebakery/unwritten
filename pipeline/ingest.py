@@ -23,20 +23,22 @@ STEPS = ("show", "teach", "react", "attempt")
 # Companion-device takes (see app/recorder): one long second-angle video
 # and/or one clean dialogue track, named with the session code.
 EXTRA = ("dialogue", "broll")
-PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 
 
 def classify(path):
     name = os.path.basename(path).lower()
     ext = os.path.splitext(name)[1]
-    m = re.search(r"unwritten_([a-z-]+)", name)
+    # The step token is LETTERS ONLY: recorder names glue suffixes onto
+    # it (unwritten_teach_camera-app_CODE_..., unwritten_teach_CODE_...),
+    # and a hyphen-greedy token swallows "teach-camera-app" whole,
+    # misclassifying every native-app clip as unknown (Wonder review).
+    m = re.match(r"unwritten_([a-z]+)", name)
     step = m.group(1) if m else None
     if step in STEPS:
         return "photos" if ext in PHOTO_EXTS else step
     if step in EXTRA:
         return step
-    if step == "camera-app":
-        return "unknown"
     if ext in PHOTO_EXTS:
         return "photos"
     return "unknown"
@@ -44,9 +46,9 @@ def classify(path):
 
 def ingest(session_dir):
     manifest = {k: [] for k in STEPS + EXTRA + ("photos", "unknown")}
-    for entry in sorted(os.listdir(session_dir)):
-        full = os.path.join(session_dir, entry)
-        if os.path.isfile(full):
+    for root, _dirs, files in os.walk(session_dir):
+        for entry in files:
+            full = os.path.join(root, entry)
             manifest[classify(full)].append(full)
     for key in manifest:
         manifest[key].sort()

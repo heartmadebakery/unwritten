@@ -26,7 +26,7 @@ import os
 import sys
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
 CHECKPOINT = os.path.join(MODELS_DIR, "sam_vit_b_01ec64.pth")
@@ -102,11 +102,28 @@ def main():
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
-    image = Image.open(args.image).convert("RGB")
+    parts = args.point.split(",")
+    if len(parts) != 2:
+        sys.exit("--point must be X,Y (normalized, 0..1)")
+    try:
+        px, py = (float(v) for v in parts)
+    except ValueError:
+        sys.exit("--point must be numeric X,Y")
+    if not (0.0 <= px <= 1.0 and 0.0 <= py <= 1.0):
+        sys.exit("--point coordinates must be within 0..1")
+
+    # EXIF orientation first: portrait phone photos store rotated
+    # pixels, and the point must map onto the image as displayed.
+    image = ImageOps.exif_transpose(Image.open(args.image)).convert("RGB")
     rgb = np.array(image)
-    px, py = (float(v) for v in args.point.split(","))
     point = (px * rgb.shape[1], py * rgb.shape[0])
     mask, score = segment(load_predictor(), rgb, point)
+    if mask.mean() == 0 or score < 0.5:
+        # A fake overlay (untinted photo presented as the Apprentice's
+        # try) is worse than no overlay (Wonder review).
+        sys.exit(f"SAM found no confident region at that point "
+                 f"(score={score:.2f}, mask={float(mask.mean()):.4f}) — "
+                 "no overlay written; try a point on the object itself.")
     size = render_overlay(image, mask, args.label, args.out)
     stats = {"image": args.image, "point_normalized": [px, py],
              "mask_score": round(score, 3),

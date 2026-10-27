@@ -41,8 +41,12 @@ role; the holder can override, and the choice persists.
    after her reaction), then the student attempts the move from the
    card only; photograph both results side by side.
 
-Clips are named `unwritten_<step>_<time>.webm/mp4`, photos `.jpg`,
-listed in an on-page library with a ✅ once persisted to IndexedDB.
+Clips are named `unwritten_<step>_<SESSIONCODE>_<YYYYMMDD-HHMMSS-mmm>.webm/mp4`,
+photos `.jpg`, native-app takes `unwritten_<step>_camera-app_<CODE>_…` /
+`_voice-app_…` — every name carries the session code and a full timestamp,
+so takes never collide in the vault. Listed in an on-page library with a
+✅ once persisted to IndexedDB. **↻ New session** on the home screen rotates
+the code and starts fresh (old clips stay in the vault under their code).
 
 ## Design decisions (from a Muse Wonder review, Oct 26)
 

@@ -1,30 +1,51 @@
 """Hand-it-on page generator (Step 4).
 
-Renders the shareable page as one self-contained HTML file: the card,
-the Tricks (the teacher's corrections), the overlay of the Apprentice's
-misreading, and the student's attempt beside the teacher's original.
-Images are referenced by relative path (they sit beside the page in the
-work dir); nothing is uploaded anywhere by this module.
+Renders the shareable page as one HTML file beside its images in the
+work dir: the card's steps, the card's wisdom section, the Tricks (the
+teacher's corrections — headed as a DRAFT until she confirms them),
+the overlay of the Apprentice's misreading, and the student's attempt
+beside the teacher's original (hero). run_pipeline copies the images
+into the work dir under canonical names (hero.*, attempt_photo.*,
+overlay.png); this module only references files that exist.
 
 Usage: handiton.py --work DIR --title "Mom's Bread" [--tricks TRICKS.md]
-Reads from the work dir: card.md, overlay.png (optional), frames/
-(teacher original = hero frame), attempt photos from the manifest.
 Writes <work>/page.html.
 """
 import argparse
 import html
-import json
 import os
+import re
 
 
-def md_list(md_text):
-    items = []
+def card_sections(md_text):
+    """Split a card into (steps, wisdom bullets). Steps are numbered
+    lines before the first '## ' heading — the wisdom section's bullets
+    are NOT steps (Wonder review)."""
+    steps, wisdom, in_wisdom = [], [], False
     for line in md_text.splitlines():
-        line = line.strip()
-        if line and (line[0].isdigit() or line.startswith("- ")):
-            items.append(line.split(".", 1)[-1].strip() if line[0].isdigit()
-                         else line[2:].strip())
-    return items
+        s = line.strip()
+        if s.startswith("## "):
+            in_wisdom = "know" in s.lower()
+            continue
+        if in_wisdom:
+            if s.startswith("- "):
+                wisdom.append(s[2:].strip())
+        elif re.match(r"^\d+[.)]\s+", s):
+            steps.append(re.sub(r"^\d+[.)]\s+", "", s))
+    return steps, wisdom
+
+
+def bullet_list(md_text):
+    return [ln.strip()[2:].strip() for ln in md_text.splitlines()
+            if ln.strip().startswith("- ")]
+
+
+def find_local(work, stem):
+    for entry in sorted(os.listdir(work)):
+        if os.path.splitext(entry)[0] == stem and \
+                os.path.splitext(entry)[1].lower() in (".jpg", ".jpeg", ".png", ".webp"):
+            return entry
+    return ""
 
 
 def main():
@@ -36,27 +57,30 @@ def main():
     work = args.work
 
     with open(os.path.join(work, "card.md")) as fh:
-        card_md = fh.read()
-    steps = md_list(card_md)
-    tricks = []
+        steps, wisdom = card_sections(fh.read())
+    tricks, tricks_draft = [], False
     if args.tricks and os.path.exists(args.tricks):
         with open(args.tricks) as fh:
-            tricks = md_list(fh.read())
+            tricks_text = fh.read()
+        tricks = bullet_list(tricks_text)
+        tricks_draft = "DRAFT" in tricks_text[:200]
 
     overlay = "overlay.png" if os.path.exists(os.path.join(work, "overlay.png")) else ""
-    manifest_path = os.path.join(work, "manifest.json")
-    attempt = ""
-    if os.path.exists(manifest_path):
-        with open(manifest_path) as fh:
-            manifest = json.load(fh)
-        if manifest.get("photos"):
-            attempt = os.path.basename(manifest["photos"][-1])
+    hero = find_local(work, "hero")
+    attempt = find_local(work, "attempt_photo")
+
+    def img(name, alt):
+        return (f'<img src="{html.escape(name, quote=True)}" '
+                f'alt="{html.escape(alt, quote=True)}">') if name else ""
 
     steps_html = "".join(f"<li>{html.escape(s)}</li>" for s in steps)
+    wisdom_html = "".join(f"<li>{html.escape(w)}</li>" for w in wisdom)
     tricks_html = "".join(f"<li>{html.escape(t)}</li>" for t in tricks) or \
         "<li><em>Corrections land here after the teacher reacts.</em></li>"
-    overlay_html = f'<img src="{overlay}" alt="The Apprentice\'s misreading">' if overlay else ""
-    attempt_html = f'<img src="{attempt}" alt="The student\'s attempt">' if attempt else ""
+    tricks_title = "The Tricks — what was never written down" + \
+        (" (draft — the teacher confirms these)" if tricks_draft else "")
+    overlay_html = img(overlay, "The Apprentice's misreading")
+    wisdom_block = f"<h2>What the teacher knows</h2><ul>{wisdom_html}</ul>" if wisdom else ""
 
     page = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
@@ -72,9 +96,10 @@ footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
 <h1>{html.escape(args.title)}</h1>
 <p><em>Taught once, written as it was said, corrected once — handed on.</em></p>
 <h2>The card</h2><ol>{steps_html}</ol>
+{wisdom_block}
 <h2>The Apprentice's try</h2>{overlay_html}
-<h2>The Tricks — what was never written down</h2><ul>{tricks_html}</ul>
-<h2>Handed on</h2><div class="duo">{overlay_html}{attempt_html}</div>
+<h2>{html.escape(tricks_title)}</h2><ul>{tricks_html}</ul>
+<h2>Handed on</h2><div class="duo">{img(hero, "The teacher's original")}{img(attempt, "The student's attempt")}</div>
 <footer>Unwritten Craft — teach what must not disappear.</footer>
 </body></html>"""
     out = os.path.join(work, "page.html")
