@@ -1,0 +1,12 @@
+# Unwritten Craft — pipeline dependencies (Python 3.12, CPU)
+# Recreate:  uv venv .venv && uv pip install --python .venv/bin/python -r requirements.txt
+# torch/torchvision CPU wheels come from the PyTorch CPU index:
+#   uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch torchvision
+# then: uv pip install --python .venv/bin/python faster-whisper segment-anything Pillow numpy
+# System tools also needed on PATH: ffmpeg + ffprobe (see docs/PIPELINE.md).
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+faster-whisper==1.2.1
+segment-anything==1.0
+pillow==12.3.0
+numpy==2.5.2
