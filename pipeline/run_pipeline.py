@@ -46,10 +46,16 @@ STALE = ("card.md", "overlay.png", "page.html", "gap_report.md",
 
 
 def py():
+    """Interpreter for heavy stages: the project .venv if present."""
     return VENV_PY if os.path.exists(VENV_PY) else sys.executable
 
 
 def run(cmd, stage, fatal=True):
+    """Run one stage subprocess, echo its output, and handle failure.
+
+    Fatal stages stop the pipeline (earlier outputs are kept); non-fatal
+    stages log the failure and return None so the run continues.
+    """
     print(f"[{stage}] {' '.join(os.path.basename(c) if i == 0 else c for i, c in enumerate(cmd))}")
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           env={**os.environ, "PATH": os.environ.get("PATH", "")})
@@ -77,6 +83,7 @@ def pick_take(files, step):
 
 
 def photo_with_step(photos, *steps):
+    """First photo whose name carries one of the given step tokens."""
     for step in steps:
         for p in photos:
             if f"_{step}_" in os.path.basename(p) or f"_{step}-" in os.path.basename(p):
@@ -85,13 +92,16 @@ def photo_with_step(photos, *steps):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("session_dir")
-    ap.add_argument("work_dir")
-    ap.add_argument("--title", default="Unwritten Craft")
+    ap = argparse.ArgumentParser(
+        description="Run the full session pipeline: clips in, page out.")
+    ap.add_argument("session_dir", help="folder of recorder clips")
+    ap.add_argument("work_dir", help="where pipeline outputs are written")
+    ap.add_argument("--title", default="Unwritten Craft",
+                    help="title for the hand-it-on page")
     ap.add_argument("--point", default="0.5,0.45",
                     help="normalized SAM point prompt on the hero image")
-    ap.add_argument("--apprentice-runs", type=int, default=3)
+    ap.add_argument("--apprentice-runs", type=int, default=3,
+                    help="how many fresh apprentice calls to make")
     args = ap.parse_args()
 
     parts = args.point.split(",")

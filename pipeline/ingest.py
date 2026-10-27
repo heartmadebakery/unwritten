@@ -27,6 +27,7 @@ PHOTO_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".heic"}
 
 
 def classify(path):
+    """Bucket one file: a step name, 'dialogue'/'broll', 'photos', 'unknown'."""
     name = os.path.basename(path).lower()
     ext = os.path.splitext(name)[1]
     # The step token is LETTERS ONLY: recorder names glue suffixes onto
@@ -45,6 +46,7 @@ def classify(path):
 
 
 def ingest(session_dir):
+    """Walk a session folder and return {bucket: [paths, sorted]}."""
     manifest = {k: [] for k in STEPS + EXTRA + ("photos", "unknown")}
     for root, _dirs, files in os.walk(session_dir):
         for entry in files:

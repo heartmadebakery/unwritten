@@ -16,6 +16,7 @@ import tempfile
 
 
 def extract_audio(media, wav):
+    """Pull the audio track out of `media` as 16 kHz mono WAV at `wav`."""
     subprocess.run(
         ["ffmpeg", "-y", "-v", "error", "-i", media, "-vn",
          "-ac", "1", "-ar", "16000", wav],
@@ -23,8 +24,12 @@ def extract_audio(media, wav):
 
 
 def load_wav_numpy(wav):
-    """Decode a 16kHz mono WAV with the stdlib (avoids a PyAV/faster-whisper
-    version clash in decode_audio) and return float32 samples in [-1, 1]."""
+    """Decode a 16 kHz mono WAV with the stdlib and return float32 samples.
+
+    Reading the WAV ourselves (instead of faster-whisper's decode_audio)
+    avoids a PyAV/faster-whisper version clash. Samples come back as
+    float32 in [-1, 1].
+    """
     import wave
     import numpy as np
     with wave.open(wav, "rb") as wf:
@@ -38,6 +43,12 @@ def load_wav_numpy(wav):
 
 
 def transcribe(media):
+    """Transcribe one media file. Returns [{start, end, text}, ...].
+
+    Raises RuntimeError when no speech is recognized: an empty
+    transcript must never become an "empty teacher" the card drafter
+    then invents steps for (Wonder review).
+    """
     from faster_whisper import WhisperModel
     model_name = os.environ.get("UNWRITTEN_WHISPER_MODEL", "base")
     with tempfile.TemporaryDirectory() as td:
@@ -50,8 +61,6 @@ def transcribe(media):
                  "text": s.text.strip()} for s in segments]
     text = " ".join(s["text"] for s in segs).strip()
     if not text:
-        # An empty transcript must never become an "empty teacher" the
-        # card drafter then invents steps for (Wonder review).
         raise RuntimeError(
             f"no speech recognized in {os.path.basename(media)} "
             f"(language={info.language}, p={info.language_probability:.2f}) — "

@@ -23,6 +23,9 @@ MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
 
 
 def draft(transcript, wisdom=""):
+    """Ask Spark for the card. Exits (rather than writing) if the reply
+    is not a card — a non-card must never land in card.md (Wonder review).
+    """
     with open(os.path.join(ROOT, "prompts", "card_drafter.md")) as fh:
         rules = fh.read()
     prompt = (rules + "\n\n=== TEACHER TRANSCRIPT (her steps) ===\n" + transcript.strip())
@@ -51,16 +54,16 @@ def draft(transcript, wisdom=""):
         sys.exit(f"Spark drafting failed: {proc.stderr[-300:]}")
     card = proc.stdout.strip()
     if not re.search(r"^\s*\d+[.)]\s+\S", card, re.MULTILINE):
-        # Never write a non-card as card.md (Wonder review).
         sys.exit("Spark drafting produced no numbered steps — refusing "
                  "to write it as a card. Raw output kept in stderr log.")
     return card
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("transcript")
-    ap.add_argument("out")
+    ap = argparse.ArgumentParser(
+        description="Draft the card from a teach transcript (Muse Spark).")
+    ap.add_argument("transcript", help="the teach transcript text file")
+    ap.add_argument("out", help="where to write the drafted card")
     ap.add_argument("--wisdom", default="",
                     help="transcript of the post-reaction wisdom Q&A")
     args = ap.parse_args()

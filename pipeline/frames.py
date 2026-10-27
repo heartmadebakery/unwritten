@@ -1,9 +1,9 @@
 """Keyframe extraction for the Unwritten Craft pipeline.
 
-Pulls evenly spaced stills from the 'show' video (absolute-time
-sampling when the container carries no duration, as MediaRecorder
-WebMs often don't). The middle frame becomes the hero image the SAM
-overlay draws on.
+Pulls evenly spaced stills from the 'show' video. When the container
+carries no duration — as MediaRecorder WebMs often don't — it falls back
+to absolute-time sampling. The middle frame becomes the hero image the
+SAM overlay draws on.
 
 Usage: frames.py <video> <out_dir> [--count 6]
 Writes <out_dir>/frame_*.jpg and prints the hero frame path last.
@@ -14,6 +14,7 @@ import sys
 
 
 def extract(video, out_dir, count=6):
+    """Extract up to `count` stills. Returns the paths that succeeded."""
     os.makedirs(out_dir, exist_ok=True)
     dur = probe_duration(video)
     frames = []
@@ -37,9 +38,11 @@ def extract(video, out_dir, count=6):
 
 
 def probe_duration(video):
-    """Container duration in seconds, or None if the file doesn't say
-    (ffprobe prints 'N/A' for many WebMs — float() on that used to kill
-    the whole pipeline before the card existed)."""
+    """Container duration in seconds, or None if the file doesn't say.
+
+    ffprobe prints 'N/A' for many WebMs — float() on that used to kill
+    the whole pipeline before the card existed.
+    """
     for entries in ("format=duration", "stream=duration"):
         try:
             out = subprocess.run(

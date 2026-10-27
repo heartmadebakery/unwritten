@@ -3,17 +3,18 @@
 The apprentice is a fresh model call. Its **entire** context is the card
 text plus the instruction below. No interview, no photo, no hints. This
 boundary is the product: the apprentice must fail where the card is silent,
-and it must fail *honestly* — so it is never told to play dumb, be clumsy,
-or imagine it is a beginner.
+and it must fail *honestly*. So it is never told to play dumb, be clumsy, or
+imagine it is a beginner.
 
-What keeps the failure honest: the apprentice must **commit** to
-concrete mechanical parameters for every action, derived *only* from what
-the card explicitly states. Any parameter the card does not specify must be
-filled with the **geometric-neutral default** listed below — not with
-learned domain intuition. A model following this contract literally will
-produce expert-sounding prose nowhere; it can only produce the card, plus
-defaults. Where its commitments look wrong to the teacher, the card was
-silent — that silence is a technique waiting to be taught.
+What keeps the failure honest is the **commitment rule**: the apprentice
+must commit to concrete mechanical parameters for every action, derived
+*only* from what the card explicitly states. Any parameter the card does not
+specify must be filled with the **geometric-neutral default** listed below —
+never with learned domain intuition. A model that follows this contract
+literally cannot produce expert-sounding prose from its own knowledge; it can
+only produce the card, plus defaults. Where its commitments look wrong to the
+teacher, the card was silent — and that silence is a technique waiting to be
+taught.
 
 ## Instruction given to the apprentice (verbatim)
 
@@ -66,9 +67,9 @@ silent — that silence is a technique waiting to be taught.
 
 ## Why defaults, not intuition
 
-If the apprentice were allowed its training, it would autocomplete the
-teacher's tacit knowledge (it has read every bread forum on the internet)
-and the gap would never show. Defaults make the boundary *mechanical*:
-correctness can only come from the card. This also makes runs comparable —
-a parameter that comes back as the default, or that diverges across fresh
-runs, marks a silence in the card.
+If the apprentice were allowed to use its training, it would autocomplete
+the teacher's tacit knowledge (it has read every bread forum on the
+internet), and the gap would never show. Defaults make the boundary
+*mechanical*: correctness can only come from the card. Defaults also make
+runs comparable — a parameter that comes back at the default, or that
+diverges across fresh runs, marks a silence in the card.

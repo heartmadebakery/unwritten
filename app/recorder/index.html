@@ -116,7 +116,7 @@
     <button class="rolebtn" data-role="recorder">🎥 <b>Recorder</b> — just capture
       <small>The same four steps, no fuss. On older phones it uses the built-in camera and voice-memo apps, so nothing is lost.</small></button>
     <button class="rolebtn" data-role="companion">🎧 <b>Companion</b> — a second perspective
-      <small>Prop this device elsewhere in the room: a second camera angle, or audio-only for clean dialogue. Syncs to the lead device with one beep.</small></button>
+      <small>Set this device elsewhere in the room: a second camera angle, or audio-only for clean dialogue. It syncs to the lead device with one beep.</small></button>
   </div>
 
   <div class="codebox">Session code: <b id="code">····</b></div>
@@ -130,7 +130,7 @@
   </div>
 
   <div class="field" id="apprfield">
-    <label>What the apprentice said it would do (read aloud in step 3 — paste the real line for your craft; the bread example is filled in):</label>
+    <label>What the apprentice said it would do — read this aloud in step 3. Paste the real line for your craft; the bread line below is only an example:</label>
     <textarea id="apprline" rows="3">From your card alone, I'd cut straight down — blade at 90 degrees, medium pressure, right in the center, one smooth pass.</textarea>
   </div>
 
@@ -184,7 +184,7 @@
     <button class="rolebtn" data-cmode="dialogue">🎙 <b>Audio only</b><small>Near the teacher — the cleanest dialogue track for transcription.</small></button>
   </div>
   <video id="cview" autoplay playsinline muted style="width:100%;border-radius:12px;background:#000;" class="hidden"></video>
-  <p class="note" style="max-width:none;">When the lead device says “sync”, tap the button. This device counts down, beeps and flashes at zero, then records one long take until you stop it. The flash and beep are how the clips line up later.</p>
+  <p class="note" style="max-width:none;">When the lead device says “sync”, tap the button below. This device counts down, beeps and flashes at zero, then records one long take until you stop it. The beep and flash are how the clips line up later.</p>
   <button class="bigbtn" id="syncbtn" style="max-width:none;">🔔&nbsp; Sync &amp; start recording</button>
   <button class="bigbtn hidden" id="cstopbtn" style="max-width:none;background:var(--red);color:#fff;">■&nbsp; Stop</button>
   <div class="controls hidden" id="ccapcontrols" style="margin-top:10px;">
@@ -236,11 +236,11 @@ var CAPS = probe();
 
 var STEPS = [
   { key:"show", name:"1 · Show me",
-    prompt:"Prop this device so it sees her hands. Ask her to <b>just do the move once</b>, start to finish, without explaining — like I wasn't here. Film the whole thing.",
+    prompt:"Point the camera at her hands. Ask her to <b>just do the move once</b>, start to finish, without explaining — as if you weren't here. Film the whole thing.",
     speak:"Please show me once how you always do it.",
     next:"Next: her words →" },
   { key:"teach", name:"2 · Teach me",
-    prompt:"Now ask her to explain it, quick — and ask the one question first.<br><span class='ask'>“I see a mark on this tool — tell me about it.”</span><br>Then: <span class='ask'>“Now the quick steps, like jotting them on an index card.”</span> About 45 seconds is perfect. Don't help her fill in the gaps — the gaps are the point. <b>Save your other questions for later</b> — her wisdom gets its own moment after she reacts.",
+    prompt:"Now ask her to explain it, quickly. Ask the one opening question first:<br><span class='ask'>“I see a mark on this tool — tell me about it.”</span><br>Then: <span class='ask'>“Now the quick steps, like jotting them on an index card.”</span> About 45 seconds is perfect. Don't help her fill in the gaps — the gaps are the point. <b>Save your other questions for later</b> — her wisdom gets its own moment after she reacts.",
     speak:"Now tell me how you do it, in your own words.",
     next:"Next: I try →" },
   { key:"react", name:"3 · I try",
@@ -248,7 +248,7 @@ var STEPS = [
     speak:"Here is what I would do, from your words alone.",
     next:"Next: your try →" },
   { key:"attempt", name:"4 · Your try",
-    prompt:"First, her <b>wisdom</b> — hit Record and ask these while it rolls. This is where the years live, and it comes now, after she's reacted, so her first teaching stays exactly as she gave it:<br><span class='ask'>“How do you know when it's right?”</span><br><span class='ask'>“What goes wrong if you do it the other way?”</span><br><span class='ask'>“What do you do differently now than when you started?”</span><br><span class='ask'>“Who taught you this?”</span><br><br>Then <b>you</b> do the move, following only the card — she watches, no coaching. Then take a photo of the two results side by side.",
+    prompt:"First, her <b>wisdom</b> — press Record and ask these four questions while it rolls. Ask them now, after she has reacted, so her first teaching stays exactly as she gave it. This is where the years live:<br><span class='ask'>“How do you know when it's right?”</span><br><span class='ask'>“What goes wrong if you do it the other way?”</span><br><span class='ask'>“What do you do differently now than when you started?”</span><br><span class='ask'>“Who taught you this?”</span><br><br>Then <b>you</b> try the move, following only the card — she watches, no coaching. Then take a photo of the two results side by side.",
     speak:"Now your son will try it — from your words only.",
     next:"Finish ✓" }
 ];
@@ -405,7 +405,7 @@ function pickMime(types){
 }
 function startRec(){
   if(!state.stream || !CAPS.mediaRecorder){ showCaptureControls(); return; }
-  /* VP8 before VP9: the Pixel 2's hardware handles VP8 far more kindly.
+  /* VP8 before VP9: old Android hardware handles VP8 far more kindly.
      video/mp4 in the list is what old/new Safari accepts. */
   var mime = pickMime(["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm","video/mp4"]);
   state.chunks = [];
@@ -489,7 +489,7 @@ function finish(){
   $("backbtn").classList.add("hidden");
   maybeManifest();
   var d = $("donecard"); d.classList.remove("hidden");
-  d.innerHTML = "🎉 <b>Session captured.</b><br>All clips and photos are saved on this device (check the downloads and the list below). Send them to the builder and they become the card, the apprentice's try, and the hand-it-on page.<br><br>Session code: <b>" + state.code + "</b> — companions using this code belong to this session.<br><br>Thank her — she just taught the future something.";
+  d.innerHTML = "🎉 <b>Session captured.</b><br>All clips and photos are saved on this device (see Downloads and the list below). Hand them to whoever runs the pipeline, and they become the card, the apprentice's try, and the hand-it-on page.<br><br>Session code: <b>" + state.code + "</b> — companion clips with this code belong to this session.<br><br>Thank her — she just taught the future something.";
   $("stepname").textContent = "Done ✓";
   speak("All done. Thank you for teaching me.");
 }

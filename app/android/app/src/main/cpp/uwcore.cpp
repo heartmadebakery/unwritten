@@ -233,7 +233,7 @@ bool WavRecorder::Start(const std::string& path) {
                 builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
         AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
         /* AAudioStreamBuilder_setInputPreset needs API 28; we target 26
-           (Pixel 2). The preset is only a hint — GENERIC is the default. */
+           (old Android). The preset is only a hint — GENERIC is the default. */
 
         result = AAudioStreamBuilder_openStream(builder, &stream_);
         AAudioStreamBuilder_delete(builder);

@@ -40,8 +40,14 @@ WISDOM_HEADING = re.compile(r"^\s*#{2,}\s+what\b.*\bknow", re.IGNORECASE)
 
 
 def canon(param, value):
-    """Canonical form of a committed value, used for BOTH the default
-    test and divergence detection so the two can never disagree."""
+    """Canonical form of a committed value.
+
+    Used for BOTH the default test and divergence detection, so the two
+    can never disagree: numbers compare as floats (90 == 90.0 == "90")
+    and strings compare stripped and lowercased ("Moderate" ==
+    "moderate"). `param` is currently unused; it stays in the signature
+    so a future per-parameter rule has one place to live.
+    """
     if value is None:
         return None
     if isinstance(value, bool):
@@ -56,6 +62,7 @@ def canon(param, value):
 
 
 def is_missing_value(value):
+    """True when a commitment is absent in effect: None or blank text."""
     return value is None or (isinstance(value, str) and value.strip() == "")
 
 
@@ -68,24 +75,24 @@ def parse_commitments(raw):
     """
     candidates = []
     for block in re.findall(r"```(?:json)?\s*(.*?)```", raw, re.DOTALL):
-        s, e = block.find("{"), block.rfind("}")
-        if s != -1 and e > s:
-            candidates.append(block[s:e + 1])
+        block_start, block_end = block.find("{"), block.rfind("}")
+        if block_start != -1 and block_end > block_start:
+            candidates.append(block[block_start:block_end + 1])
     start, end = raw.find("{"), raw.rfind("}")
     if start != -1 and end > start:
         candidates.append(raw[start:end + 1])
     last_err = None
-    for cand in candidates:
+    for candidate in candidates:
         try:
-            data = json.loads(cand)
+            data = json.loads(candidate)
         except (json.JSONDecodeError, ValueError) as e:
             last_err = e
             continue
         if not isinstance(data, dict) or not isinstance(data.get("steps"), list):
             last_err = ValueError("response JSON has no 'steps' list")
             continue
-        for s in data["steps"]:
-            if not isinstance(s, dict):
+        for step in data["steps"]:
+            if not isinstance(step, dict):
                 raise ValueError("a step is not an object")
         return data["steps"]
     raise ValueError(f"no parseable commitment object ({last_err})")
@@ -99,6 +106,11 @@ def is_default(param, value):
 
 
 def _step_key(step_dict, idx):
+    """Alignment key for a step: its own `step` number when valid.
+
+    Falls back to position (idx + 1) when the number is missing or not a
+    positive int, so malformed runs still align deterministically.
+    """
     n = step_dict.get("step")
     if isinstance(n, int) and not isinstance(n, bool) and n >= 1:
         return n
@@ -189,6 +201,7 @@ def strip_wisdom(card_text):
 
 
 def has_wisdom_section(card_text):
+    """True when the card carries a wisdom heading the strip would cut."""
     return any(WISDOM_HEADING.match(line) for line in card_text.splitlines())
 
 

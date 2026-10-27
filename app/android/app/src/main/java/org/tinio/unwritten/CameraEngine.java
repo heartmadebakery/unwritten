@@ -33,7 +33,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Careful Camera2 wrapper for old devices (Pixel 2 class).
+ * Careful Camera2 wrapper for old Android devices.
  * All camera work runs on a single HandlerThread named "uw-cam".
  * No public method throws.
  */
@@ -573,7 +573,7 @@ public final class CameraEngine {
             byte[] packed = new byte[w * h];
             ByteBuffer dup = buf.duplicate();
             if (pixelStride == 1) {
-                // Tightly packed copy: strip row padding (Pixel 2 Y plane has pixelStride 1).
+                // Tightly packed copy: strip row padding (old-Android Y planes have pixelStride 1).
                 for (int row = 0; row < h; row++) {
                     int srcPos = row * rowStride;
                     if (srcPos >= dup.limit()) break;

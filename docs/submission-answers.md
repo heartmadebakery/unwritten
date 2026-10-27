@@ -9,36 +9,43 @@ true at submission time must be cut, not hoped for.
 **Unwritten Craft**
 
 ## X post link (Most Viral Track) — OPTIONAL
-Leave blank unless entering the viral track (would need a public X post
+Leave blank unless entering the viral track (which would need a public X post
 about the project from @tinio).
 
 ## Project Description *
-> Unwritten Craft teaches what must not disappear. Every craft runs on
-> a knack that was never written down — the angle of a blade, the moment
-> dough "stops fighting you" — and they die with the people who hold them,
-> because experts explaining their work skip exactly the parts that matter
-> most. Unwritten Craft catches that knack, one technique at a time. A teacher (in our demo, a
-> baker of 30 years) shows a move and explains it briefly; the app writes
-> the **card** in the teacher's own words and is forbidden from adding
-> anything she didn't say. Then a second model — the Apprentice, which
-> receives *only* the steps on the card, never the interview — commits
-> to exactly what it would do. Its mistakes are the map of her
-> unwritten knowledge: they are drawn onto her real photo, she corrects
-> them once ("No! Tilt it — quick — it should tear a little"), and each
-> correction becomes a **technique** on the card, tagged **Craft** (it
-> works) or **Lineage** (who taught her). Only after she has reacted
-> does the app ask the four wisdom questions — how she knows when it's
-> right, what goes wrong, what forty years changed, who taught her —
-> recorded in her words as **What the teacher knows**, deliberately
-> kept from the Apprentice's first attempt so it cannot rescue the
-> very gaps the session exists to find. For elder teachers, that
-> judgment matters as much as the steps. The result is one shareable page a real person can
-> actually learn from — the card, her voice, the techniques that make up her knack, and the
-> student's own attempt beside hers. Nothing in the system is specific
-> to bread: the same card and the same apprentice contract (motion,
-> material, heat) are process-tested on a pecan tart and on rolling
-> lumpia, and built for home crafts generally — cooking, sewing,
-> gardening, repair — anywhere a lifetime of judgment lives in
+> Unwritten Craft teaches what must not disappear.
+>
+> Every craft runs on a knack that was never written down — the angle of a
+> blade, the moment dough "stops fighting you." Knacks die with the people
+> who hold them, because experts explaining their work skip exactly the parts
+> that matter most. Unwritten Craft catches the knack, one technique at a
+> time.
+>
+> A teacher (in our demo, a baker of 30 years) shows a move and explains it
+> briefly. The app writes the **card** in the teacher's own words, and it is
+> forbidden from adding anything she didn't say. Then a second model — the
+> Apprentice, which receives *only* the steps on the card, never the
+> interview — commits to exactly what it would do. Its mistakes are the map
+> of her unwritten knowledge. They are drawn onto her real photo, and she
+> corrects them once ("No! Tilt it — quick — it should tear a little"). Each
+> correction becomes a **technique** on the card, tagged **Craft** (it works)
+> or **Lineage** (who taught her).
+>
+> Only after she has reacted does the app ask the four wisdom questions —
+> how she knows when it's right, what goes wrong, what forty years changed,
+> who taught her — recorded in her words as **What the teacher knows**. That
+> section is deliberately kept from the Apprentice's first attempt, so it
+> cannot rescue the very gaps the session exists to find. For elder
+> teachers, that judgment matters as much as the steps.
+>
+> The result is one shareable page a real person can actually learn from:
+> the card, her voice, the techniques that make up her knack, and the
+> student's own attempt beside hers.
+>
+> Nothing in the system is specific to bread. The same card and the same
+> apprentice contract (motion, material, heat) are process-tested on a pecan
+> tart and on rolling lumpia, and built for home crafts generally — cooking,
+> sewing, gardening, repair — anywhere a lifetime of judgment lives in
 > someone's hands.
 
 ## Public GitHub Repository *
@@ -49,7 +56,7 @@ in it — samples are fictional, real teacher media is never committed.
 
 ## 3-Minute Demo Video *
 ⚠️ **Action needed: upload the final demo to YouTube** (the field wants
-a youtube.com link; unlisted is fine unless rules say otherwise).
+a youtube.com link; unlisted is fine unless the rules say otherwise).
 Structure (a 60-second animated storyboard of this exists — beats below;
 the real video replaces cartoon frames with the working app and the real
 session):
@@ -76,22 +83,23 @@ session):
 > negative constraint: transcribe, compress, and order — but never add a
 > step, quantity, or technique the teacher didn't say, and preserve her
 > phrasing verbatim. The product depends on Spark *not* using knowledge
-> it plainly has. **Muse Wonder** is the blind Apprentice: a fresh
-> context that receives only the finished card and must commit to
-> concrete mechanical parameters (angle, force, duration, stopping
-> condition), defaulting to geometric-neutral values wherever the card
-> is silent — so its failures locate the teacher's tacit knowledge
-> mechanically, with no "play dumb" prompting. On the hand-it-on page,
-> Wonder also compares the teacher's and the student's finished results
-> and narrates the visible difference for confirmation. **SAM 3.1**
-> segments the teacher's real photo so the Apprentice's misreading is
-> grounded on the actual work — the highlighted region plus the
-> Apprentice's own sentence pinned to it. **Muse Image** renders the
-> downstream consequence of the mistake beside the overlay (what the
-> error bakes into), and the **Meta Model API** ties the roles together
-> with strict context isolation between them: the boundary between what
-> Spark saw and what Wonder gets is enforced by architecture, not by
-> asking nicely.
+> it plainly has.
+>
+> **Muse Wonder** is the blind Apprentice: a fresh context that receives
+> only the finished card and must commit to concrete mechanical parameters
+> (angle, force, duration, stopping condition). Wherever the card is silent,
+> it defaults to geometric-neutral values — so its failures locate the
+> teacher's tacit knowledge mechanically, with no "play dumb" prompting. On
+> the hand-it-on page, Wonder also compares the teacher's and the student's
+> finished results and narrates the visible difference for confirmation.
+>
+> **SAM 3.1** segments the teacher's real photo, so the Apprentice's
+> misreading is grounded on the actual work — the highlighted region plus
+> the Apprentice's own sentence pinned to it. **Muse Image** renders the
+> downstream consequence of the mistake beside the overlay (what the error
+> bakes into). The **Meta Model API** ties the roles together with strict
+> context isolation between them: the boundary between what Spark saw and
+> what Wonder gets is enforced by architecture, not by asking nicely.
 
 ## Why are Meta's models important to your solution? *
 > The core mechanic is an *information boundary between models*, and it

@@ -1,7 +1,7 @@
 # Android app — work log & handoff (2026-10-26)
 
 **Audience: whoever continues this work** (e.g. Muse on the
-owner's Legion 5). This file records everything that was done for the
+owner's modern PC). This file records everything that was done for the
 native Android recorder, why, and what is verified — so none of it has
 to be rediscovered. The app overview lives in
 [`app/android/README.md`](../app/android/README.md); this file is the
@@ -19,9 +19,9 @@ HEAD was `b4f70b7`.
   https://muse.ai/files/471196432735854/3297278657123126/nek5tru1jl7ontar9akqpok0/unwritten-recorder.apk
   — expires **Oct 29, 2026, 02:47 UTC**. Muse file links expire; the
   repo copy does not.
-- Install on the Pixel 2: `adb install -r app/android/unwritten-recorder.apk`
-  (USB debugging on; the Legion's **left USB-C ports**: use the plain
-  USB-C 3.2 Gen 2 one for the phone — the USB4/Thunderbolt port gains
+- Install on the old Android phone: `adb install -r app/android/unwritten-recorder.apk`
+  (USB debugging on; use the PC's plain USB-C port for the phone —
+  a USB4/Thunderbolt port gains
   nothing, the phone is USB 5 Gbps).
 
 ## What was built (owner's order, Oct 26)
@@ -29,11 +29,11 @@ HEAD was `b4f70b7`.
 The web recorder (`app/recorder/`) stays as the baseline fallback for
 anything with a browser. The owner ordered a **native Android app** so
 older devices can use their hardware efficiently: **C/C++ for the
-critical paths**, **compatible back to a Pixel 2**, and **the code
+critical paths**, **compatible back to old Android**, and **the code
 written by the Muse Wonder model**.
 
-Result: package `org.tinio.unwritten`, **minSdk 26** (the Pixel 2's
-launch OS, Android 8.0), target/compileSdk 34, Java 8, **no AndroidX,
+Result: package `org.tinio.unwritten`, **minSdk 26** (Android 8.0, an
+old-Android-era launch OS), target/compileSdk 34, Java 8, **no AndroidX,
 no Kotlin, no third-party libraries**, programmatic UI (no layout
 XML), one C++17 library (`libuwcore`). APK ≈ 0.5 MB.
 
@@ -94,7 +94,7 @@ Android sessions unchanged — that was the point of the design.
   1. `uwcore.cpp`: `AAudioStreamBuilder_setInputPreset` is unavailable
      below API 28 (marked so in the NDK headers). Removed — it's a
      hint only and GENERIC is the default. This is exactly the class
-     of bug the Pixel 2 target exists to catch.
+     of bug the old-Android target exists to catch.
   2. `MainActivity.java`: the `column(View)` helper was called with
      the Activity at 4 sites; signature widened to `Context`.
   One build-system fix: Wonder's `app/build.gradle` used the plugins
@@ -121,7 +121,7 @@ response` from the sandbox egress proxy — while `curl` to the same
 URLs returned 200. `sdkmanager` fails the same way (its HTTPS
 tunneling throws `NoSuchElementException`). Conclusion: this
 sandbox's proxy speaks something curl tolerates and Java HTTP clients
-don't. **On a normal machine (the Legion) none of this applies** —
+don't. **On a normal machine (a modern PC) none of this applies** —
 the Gradle files are standard AGP 8.5.2 and are expected to just work.
 
 ### The route that produced the committed APK: `app/android/build.sh`
@@ -139,14 +139,14 @@ r26 prebuilt dir ships GNU make but **no ninja binary**; build.sh
 takes ninja from PATH. Another: `/tmp` on the sandbox is a 512 MB
 tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
 
-### Continuing on the Legion (recommended)
+### Continuing on a modern PC (recommended)
 
 1. Clone this repo (it's private: `tinio/unwritten`).
 2. Easiest: Android Studio → open `app/android/` → let it install
    SDK 34 / build-tools 34 / NDK r26 → Build APK. Or from Muse
    in `app/android/`: `gradle assembleDebug` (Gradle 8.9, JDK 17).
 3. Or reuse `./build.sh` — set `JAVA_HOME`, `ANDROID_HOME`,
-   `ANDROID_NDK_HOME` to the Legion's installs; needs cmake + ninja
+   `ANDROID_NDK_HOME` to your installs; needs cmake + ninja
    on PATH.
 4. `local.properties` in the repo points at the sandbox's SDK path —
    it's git-ignored going forward; Android Studio/Gradle will
@@ -170,7 +170,7 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
 ## NOT done yet — the honest gaps
 
 - **No on-device run.** There is no emulator in the sandbox (no KVM),
-  so nothing has executed on a real Pixel 2 yet. First shakeout
+  so nothing has executed on a real old Android phone yet. First shakeout
   checklist: install; grant/deny each permission and confirm the
   video-only fallback; record one clip per step in Recorder role;
   one Companion session against a lead device and confirm the beep +
@@ -178,7 +178,7 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
   one native dialogue WAV and confirm the pipeline transcribes it;
   Export and confirm files appear in `Downloads/Unwritten`.
 - **Gradle route untested** (see above — sandbox-only blocker).
-  First Legion build may surface small AGP complaints; the manifest
+  The first build on a modern PC may surface small AGP complaints; the manifest
   `package=` attribute coexists with `namespace` by design.
 - **No app icon** — the launcher entry uses the default. Add one
   before any public submission.
@@ -186,5 +186,5 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
   create one (and keep it OUT of this repo) before distribution
   beyond sideloading.
 - Camera2 session combinations and AAudio behavior vary per device —
-  if the Pixel 2 misbehaves, those two subsystems are where to look
+  if the old Android phone misbehaves, those two subsystems are where to look
   first (CameraEngine's session setup; uwcore's stream config).

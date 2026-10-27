@@ -18,9 +18,11 @@ import re
 
 
 def card_sections(md_text):
-    """Split a card into (steps, wisdom bullets). Steps are numbered
-    lines before the first '## ' heading — the wisdom section's bullets
-    are NOT steps (Wonder review)."""
+    """Split a card into (steps, wisdom bullets).
+
+    Steps are the numbered lines before the first '## ' heading. The
+    wisdom section's bullets are NOT steps (Wonder review).
+    """
     steps, wisdom, in_wisdom = [], [], False
     for line in md_text.splitlines():
         s = line.strip()
@@ -36,11 +38,13 @@ def card_sections(md_text):
 
 
 def bullet_list(md_text):
+    """The text of every '- ' bullet line in a markdown file."""
     return [ln.strip()[2:].strip() for ln in md_text.splitlines()
             if ln.strip().startswith("- ")]
 
 
 def find_local(work, stem):
+    """Image filename in `work` with this stem (hero.*, ...), or ''."""
     for entry in sorted(os.listdir(work)):
         if os.path.splitext(entry)[0] == stem and \
                 os.path.splitext(entry)[1].lower() in (".jpg", ".jpeg", ".png", ".webp"):
@@ -49,10 +53,13 @@ def find_local(work, stem):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--work", required=True)
-    ap.add_argument("--title", default="Unwritten Craft")
-    ap.add_argument("--techniques", default="")
+    ap = argparse.ArgumentParser(
+        description="Render the hand-it-on page from a pipeline work dir.")
+    ap.add_argument("--work", required=True, help="the pipeline work dir")
+    ap.add_argument("--title", default="Unwritten Craft",
+                    help="page title (default 'Unwritten Craft')")
+    ap.add_argument("--techniques", default="",
+                    help="techniques draft markdown (the Knack, unconfirmed)")
     args = ap.parse_args()
     work = args.work
 
