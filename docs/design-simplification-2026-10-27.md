@@ -44,6 +44,19 @@ the correction moments as techniques, render the page.
 - The demo title form, with the count set by the real session:
   "Mom's Bread: N techniques, a knack never written down."
 
+## Addendum (Oct 27, later) — three core things; the page is optional
+
+The owner narrowed the focus further the same day. The core is exactly
+three things: **the lesson video, the correction clips, the write-up.**
+The page is demoted: it may be generated later as a guide or manual for
+other people's consumption, when there is a recipient — it is optional,
+and the core does not depend on it.
+
+First measurement of the core: `docs/core-test-2026-10-27.md` — a
+fictional but realistic lesson transcript with planted corrections and
+distractors, scored write-up drafting and correction capture against
+ground truth, including a keyword-regex baseline.
+
 ## Undecided
 
 Whether this is submitted to the hackathon at all. The project is being

@@ -10,41 +10,54 @@ them down, and an ordinary video buries them in an hour of footage.
 
 Unwritten Craft keeps them. Record an ordinary lesson — a teacher, a
 beginner, one phone. Afterwards, the session is transcribed, the steps are
-drafted into a short **card** in the teacher's own words, and the moments
-where she corrected the beginner are pulled out as **techniques**: each one
-her exact words, anchored to its clip. Together the techniques are the
-**Knack**. The result is one page: the card, the Knack, her voice, and the
-beginner's attempt beside her original.
+drafted into a short **write-up** in the teacher's own words, and the
+moments where she corrected the beginner are pulled out as
+**techniques**: each one her exact words, anchored to its clip. Together
+the techniques are the **Knack**.
 
 No protocol during the lesson. No steps to perform for the machine. Teach
 the way you'd teach anyway; the system notices afterwards.
+
+## The three core things
+
+1. **The lesson video.** The primary source — the session itself, kept
+   whole.
+2. **The correction clips.** Every moment she corrected him, cut and
+   anchored to her exact words. This is the extracted gold.
+3. **The write-up.** Her steps in her words, drafted under the
+   stenographer rule below — the lesson made usable without rewatching
+   an hour of footage.
+
+Everything else is optional. In particular, a rendered **page** — a guide
+or manual assembled from these three things for someone who wasn't in the
+room — may be generated later, when there is a recipient for it. It is not
+part of the core, and nothing in the core depends on it.
 
 ## How it works
 
 1. **Record.** One ordinary teaching session, filmed on a phone. The
    beginner genuinely learns — and genuinely gets things wrong.
-2. **Draft and notice.** The pipeline transcribes the session, drafts the
-   card strictly in the teacher's words, and surfaces the correction
-   moments as candidate techniques with their clips.
-3. **Hand it on.** One shareable page: card, techniques, voice clips, the
-   beginner's attempt beside the teacher's work.
+2. **Transcribe and draft.** The pipeline transcribes the session and
+   drafts the write-up strictly in the teacher's words.
+3. **Keep the corrections.** The correction moments are surfaced as
+   techniques, each with its clip and her exact words.
 
 ## Design rules (do not break these)
 
-- **Her words only.** The card is drafted under a stenographer rule:
+- **Her words only.** The write-up is drafted under a stenographer rule:
   transcribe, compress, order — never add a step, quantity, or technique
   the teacher didn't say, and preserve her phrasing. Drafts are checked
   back against the audio; a dropped "don't" inverts a step, so every
-  imperative and negation on the card gets verified against the recording.
+  imperative and negation in the write-up gets verified against the
+  recording.
 - **Corrections are the artifact.** A technique exists because she
   corrected a real attempt, on camera — not because a form asked. If she
   didn't correct it, it isn't a technique.
-- **She approves the page.** The teacher sees and approves the finished
-  page, and only clips she has heard and approved are ever published. No
-  raw session is published.
+- **She approves what's published.** The teacher hears and approves every
+  clip before it is shared in any form. No raw session is published.
 - **A byline, not a character.** The models work backstage — transcription,
-  drafting, finding the moments. They do not appear in the lesson, and the
-  page does not pretend they were there.
+  drafting, finding the moments. They do not appear in the lesson, and
+  nothing pretends they were there.
 
 ## Status
 
@@ -67,14 +80,17 @@ teacher data — samples are fictional.
 
 ## Repo layout
 
-- `pipeline/` — the working pipeline: session clips in, hand-it-on page
-  out. `ingest.py` → `transcribe.py` (local faster-whisper) → `frames.py`
-  → `draft_card.py` (Muse Spark, stenographer prompt) → `handiton.py`
-  renders the page. See [the pipeline guide](docs/PIPELINE.md).
-  `sam_overlay.py` belongs to the retired apprentice design.
-- `prompts/` — `card_drafter.md` carries the stenographer rule.
-  `apprentice.md` / `apprentice_instruction.txt` are retired with the
-  apprentice design.
+- `pipeline/` — the working pipeline: session media in; transcript,
+  write-up, and correction list out. `ingest.py` → `transcribe.py` (local
+  faster-whisper) → `draft_card.py` (Muse Spark, stenographer prompt)
+  drafts the write-up → `find_corrections.py` (Spark,
+  `prompts/correction_finder.md`) surfaces the correction moments.
+  `handiton.py` renders the optional page/guide — later, not core.
+  `sam_overlay.py` belongs to the retired apprentice design. See
+  [the pipeline guide](docs/PIPELINE.md).
+- `prompts/` — `card_drafter.md` carries the stenographer rule;
+  `correction_finder.md` defines a correction. `apprentice.md` /
+  `apprentice_instruction.txt` are retired with the apprentice design.
 - `harness/` — the retired apprentice process-test harness, kept for the
   record. Its tests still run (`python3 -m unittest discover -s tests`).
 - `app/` — capture experiments: `app/recorder/` (single-file web app) and

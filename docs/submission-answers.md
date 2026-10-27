@@ -36,10 +36,11 @@ Leave blank unless entering the viral track.
 > pulled out as **techniques** — her exact words, each anchored to its
 > clip. Together, the techniques are her **Knack**.
 >
-> The result is one shareable page a real person can learn from: the card,
-> the techniques with their clips, her voice, and the student's own attempt
-> beside hers. The closing title carries the real count from the real
-> session: "Mom's Bread: N techniques, a knack never written down."
+> What comes out of a session is three things: the lesson video itself,
+> the correction clips with her words, and the written card. (A rendered
+> guide for other learners can be assembled from those later; it is
+> optional, not core.) The closing title carries the real count from the
+> real session: "Mom's Bread: N techniques, a knack never written down."
 >
 > Nothing here is specific to bread — the same shape fits any craft taught
 > hand to hand: cooking, sewing, gardening, repair.
@@ -58,8 +59,8 @@ fine unless the rules say otherwise). Structure, all from the real session:
   this." The correction is the hook.
 - **0:20–1:20** — The ordinary lesson. Corrections accumulate; each one is
   lifted out of the footage and lands on the page as a technique.
-- **1:20–2:20** — The page assembles: the card in her words, the
-  techniques with their clips, her voice.
+- **1:20–2:20** — The outputs come together: the card in her words, the
+  correction clips with her voice, the techniques counted.
 - **2:20–3:00** — Two loaves side by side, his beside hers. The title with
   the session's real count. Closing line: "The corrections were the
   knowledge. We kept them."
@@ -70,7 +71,7 @@ fine unless the rules say otherwise). Structure, all from the real session:
 > compress, and order, but never add a step, quantity, or technique the
 > teacher didn't say, and preserve her phrasing. The correction moments
 > are surfaced from the transcript with Spark's assistance and human
-> review, each anchored to its timestamp for the page. Transcription is
+> review, each anchored to its timestamp. Transcription is
 > local (faster-whisper); no other model
 > products are claimed. An earlier design used Muse Wonder as a staged
 > "blind apprentice"; it was cut after review showed its failures were
