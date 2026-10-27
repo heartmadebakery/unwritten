@@ -1,138 +1,104 @@
-# Submission answers — DRAFT (prepared Oct 26, 2026)
+# Submission answers — DRAFT, SUBMISSION UNDECIDED (revised Oct 27, 2026)
 
-For the Cerebral Valley "Submit Project" form. **Re-verify every field
-against the finished build before submitting** (deadline Wed Nov 4,
-6:00 PM PT). Two fields describe the completed product; anything not yet
-true at submission time must be cut, not hoped for.
+For the Cerebral Valley "Submit Project" form, **if** the decision is made
+to submit. That decision is open as of Oct 27: the project is being built
+for personal use first, and the call follows the real session. Deadline if
+submitting: Wed Nov 4, 6:00 PM PT.
+
+This draft was rewritten Oct 27 to match the simplified build. The earlier
+draft described a blind-apprentice mechanic, SAM 3.1 overlays, Muse Image
+renders, and Meta Model API orchestration that are **not** in the current
+design and, in part, were never built. **Re-verify every field against the
+finished build before submitting; anything not true at submission time
+must be cut, not hoped for.**
 
 ## Project name
 **Unwritten Craft**
 
 ## X post link (Most Viral Track) — OPTIONAL
-Leave blank unless entering the viral track (which would need a public X post
-about the project from @tinio).
+Leave blank unless entering the viral track.
 
 ## Project Description *
-> Unwritten Craft learns what is of value.
+> Unwritten Craft keeps the corrections.
 >
-> Every craft runs on a knack that was never written down — the angle of a
-> blade, the moment dough "stops fighting you." Knacks die with the people
-> who hold them, because experts explaining their work skip exactly the parts
-> that matter most. Unwritten Craft catches the knack, one technique at a
-> time.
+> Every craft runs on a knack that was never written down. It doesn't live
+> in the recipe — it lives in the corrections: the moment a teacher watches
+> a beginner's hands and says *"no, like this."* That is where thirty years
+> of judgment surfaces, and it is exactly what written instructions leave
+> out — and what an ordinary video buries.
 >
-> A teacher (in our demo, a baker of 30 years) shows a move and explains it
-> briefly. The app writes the **card** in the teacher's own words, and it is
-> forbidden from adding anything she didn't say. Then a second model — the
-> Apprentice, which receives *only* the steps on the card, never the
-> interview — commits to exactly what it would do. Its mistakes are the map
-> of her unwritten knowledge. They are drawn onto her real photo, and she
-> corrects them once ("No! Tilt it — quick — it should tear a little"). Each
-> correction becomes a **technique** on the card, tagged **Craft** (it works)
-> or **Lineage** (who taught her).
+> Unwritten Craft records an ordinary lesson — in our demo, a baker of
+> thirty years teaching her son — with no protocol and no steps performed
+> for the machine. Afterwards, the session is transcribed and the steps are
+> drafted into a short card in the teacher's own words, under a strict rule:
+> nothing she didn't say gets added, and every instruction on the card is
+> checked back against the audio. The moments where she corrected him are
+> pulled out as **techniques** — her exact words, each anchored to its
+> clip. Together, the techniques are her **Knack**.
 >
-> Only after she has reacted does the app ask the four wisdom questions —
-> how she knows when it's right, what goes wrong, what forty years changed,
-> who taught her — recorded in her words as **What the teacher knows**. That
-> section is deliberately kept from the Apprentice's first attempt, so it
-> cannot rescue the very gaps the session exists to find. For elder
-> teachers, that judgment matters as much as the steps.
+> The result is one shareable page a real person can learn from: the card,
+> the techniques with their clips, her voice, and the student's own attempt
+> beside hers. The closing title carries the real count from the real
+> session: "Mom's Bread: N techniques, a knack never written down."
 >
-> The result is one shareable page a real person can actually learn from:
-> the card, her voice, the techniques that make up her knack, and the
-> student's own attempt beside hers.
->
-> Nothing in the system is specific to bread. The same card and the same
-> apprentice contract (motion, material, heat) are process-tested on a pecan
-> tart and on rolling lumpia, and built for home crafts generally — cooking,
-> sewing, gardening, repair — anywhere a lifetime of judgment lives in
-> someone's hands.
+> Nothing here is specific to bread — the same shape fits any craft taught
+> hand to hand: cooking, sewing, gardening, repair.
 
 ## Public GitHub Repository *
 `https://github.com/tinio/unwritten`
-⚠️ **Action needed before submitting: flip the repo from private to
-public** (the form requires a public repository). Nothing sensitive is
-in it — samples are fictional, real teacher media is never committed.
+⚠️ **Only if submitting: flip the repo from private to public** (the form
+requires a public repository). Samples are fictional; real teacher media
+is never committed.
 
 ## 3-Minute Demo Video *
-⚠️ **Action needed: upload the final demo to YouTube** (the field wants
-a youtube.com link; unlisted is fine unless the rules say otherwise).
-Structure (a 60-second animated storyboard of this exists — beats below;
-the real video replaces cartoon frames with the working app and the real
-session):
+⚠️ **Only if submitting: upload the final demo to YouTube** (unlisted is
+fine unless the rules say otherwise). Structure, all from the real session:
 
-- **0:00–0:30** — Her hands, scoring a boule. "30 years of baking.
-  Never written down." The problem in one shot.
-- **0:30–1:00** — She explains; the card types itself, her words only.
-  On-screen: Spark's constraint — "the drafter may not add anything."
-- **1:00–1:30** — The boundary, shown honestly: the card pasted into a
-  fresh model call, input on camera. The Apprentice commits: 90°,
-  moderate, center.
-- **1:30–2:00** — The misreading on her real photo: SAM highlight +
-  the Apprentice's sentence pinned to the seam. Muse Image renders
-  the consequence beside it.
-- **2:00–2:30** — Her correction, on camera. The technique joins the card;
-  one question tags it Craft or Lineage.
-- **2:30–3:00** — The hand-it-on page: two loaves side by side.
-  "Mom's Bread: 4 techniques, a knack never written down." Closing line:
-  "Every trade runs on a knack like this."
+- **0:00–0:20** — His mishandled attempt; her hands come in: "No — like
+  this." The correction is the hook.
+- **0:20–1:20** — The ordinary lesson. Corrections accumulate; each one is
+  lifted out of the footage and lands on the page as a technique.
+- **1:20–2:20** — The page assembles: the card in her words, the
+  techniques with their clips, her voice.
+- **2:20–3:00** — Two loaves side by side, his beside hers. The title with
+  the session's real count. Closing line: "The corrections were the
+  knowledge. We kept them."
 
 ## Describe your use of Meta products *
-> **Muse Spark** is the interviewer and card drafter. It conducts the
-> short teacher capture and drafts the instruction card under an unusual
-> negative constraint: transcribe, compress, and order — but never add a
-> step, quantity, or technique the teacher didn't say, and preserve her
-> phrasing verbatim. The product depends on Spark *not* using knowledge
-> it plainly has.
->
-> **Muse Wonder** is the blind Apprentice: a fresh context that receives
-> only the finished card and must commit to concrete mechanical parameters
-> (angle, force, duration, stopping condition). Wherever the card is silent,
-> it defaults to geometric-neutral values — so its failures locate the
-> teacher's tacit knowledge mechanically, with no "play dumb" prompting. On
-> the hand-it-on page, Wonder also compares the teacher's and the student's
-> finished results and narrates the visible difference for confirmation.
->
-> **SAM 3.1** segments the teacher's real photo, so the Apprentice's
-> misreading is grounded on the actual work — the highlighted region plus
-> the Apprentice's own sentence pinned to it. **Muse Image** renders the
-> downstream consequence of the mistake beside the overlay (what the error
-> bakes into). The **Meta Model API** ties the roles together with strict
-> context isolation between them: the boundary between what Spark saw and
-> what Wonder gets is enforced by architecture, not by asking nicely.
+> **Muse Spark** works backstage. It drafts the instruction card from the
+> session transcript under an unusual negative constraint — transcribe,
+> compress, and order, but never add a step, quantity, or technique the
+> teacher didn't say, and preserve her phrasing. The correction moments
+> are surfaced from the transcript with Spark's assistance and human
+> review, each anchored to its timestamp for the page. Transcription is
+> local (faster-whisper); no other model
+> products are claimed. An earlier design used Muse Wonder as a staged
+> "blind apprentice"; it was cut after review showed its failures were
+> scripted defaults rather than discoveries, and it is not part of this
+> submission.
 
 ## Why are Meta's models important to your solution? *
-> The core mechanic is an *information boundary between models*, and it
-> only works if each model plays its role with discipline. Spark must
-> follow an instruction that runs against its training — be a
-> stenographer, not an expert — and in our first end-to-end test, on a
-> scripted transcript, the drafted card added zero technique. Wonder must be
-> a genuine second mind: a separate model whose entire input is the
-> card — by construction it never contains the interview, and the demo
-> shows that input on camera — so its wrong answer is evidence, not theater.
-> SAM grounds the whole exchange in the teacher's real photograph
-> instead of a generated stand-in, which is what makes a correction
-> feel like it belongs to *her* loaf. Remove any one of these and the
-> product collapses into either a recipe generator (no boundary) or an
-> SOP tool (no meaning). The stack isn't interchangeable plumbing here;
-> the models' separateness *is* the instrument.
+> The product depends on a model doing the one thing a form, a checklist,
+> or a transcript search cannot: reading an hour of one person's teaching
+> and drafting her knowledge back in her own words without improving it —
+> while reliably surfacing the handful of moments where her judgment
+> overruled a beginner's hands. Spark holding the "do not add knowledge"
+> constraint across a full drafting task is what makes the page hers
+> instead of a generated recipe.
 
 ## Feedback — Meta products (optional)
-> Short draft — finalize with real build experience: Muse's headless
-> mode made fresh-context apprentice calls trivial to enforce and
-> audit, and Wonder followed a strict structured-output contract
-> reliably (3/3 parseable long-form commitments in our first test).
-> Spark holding a "do not add knowledge" constraint across a full
-> drafting task was the pleasant surprise of the build.
+> Finalize with real build experience if submitting.
 
 ## Feedback — partner technologies (optional)
-Leave blank unless Baseten / Modal / Fireworks are actually used in
-the final build.
+Leave blank unless Baseten / Modal / Fireworks are actually used in the
+final build. (A Fireworks credits request was submitted Oct 26; claiming
+the technology here requires actually using it.)
 
 ## Permission checkbox
 The form's checkbox grants Meta and Cerebral Valley permission to use,
-publish, share, and promote the submitted materials. Accepting it is
-the submitter's own action at submission time — consistent with the
-standing understanding that submissions are effectively public.
-**Nothing private belongs in the submission: no Blaze code, no raw
-interview recording — only clips the teacher has heard and approved.**
+publish, share, and promote the submitted materials. Accepting it is the
+submitter's own action at submission time. **Both people on camera must
+have agreed to that grant specifically** — the teacher and the builder —
+separately from approving the page. Nothing private belongs in the
+submission: no private code from other projects, no raw session recording —
+only clips the teacher has heard and approved.
