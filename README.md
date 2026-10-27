@@ -1,7 +1,7 @@
 # Unwritten Craft
 
-**Teach what must not disappear.** Unwritten Craft preserves a skill by making
-it usable by another person.
+**Learn what is of value.** Unwritten Craft finds the unwritten knowledge
+worth learning — and preserves a skill by making it usable by another person.
 
 It works like this. A teacher explains a move once, and the app writes down a
 short instruction **card** in the teacher's own words. A second model — the

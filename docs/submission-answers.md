@@ -13,7 +13,7 @@ Leave blank unless entering the viral track (which would need a public X post
 about the project from @tinio).
 
 ## Project Description *
-> Unwritten Craft teaches what must not disappear.
+> Unwritten Craft learns what is of value.
 >
 > Every craft runs on a knack that was never written down — the angle of a
 > blade, the moment dough "stops fighting you." Knacks die with the people
