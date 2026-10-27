@@ -89,3 +89,16 @@ access. Without one, the native-app capture path still works:
 3. Allow camera + microphone, then **Add to Home screen** for a
    full-screen icon. Turn the robot voice off if the room is loud —
    the same instructions are on screen.
+
+## Install as an app (PWA)
+
+Served over HTTPS, the recorder is an installable PWA:
+`manifest.webmanifest` (standalone display, warm theme), home-screen
+icons in `icons/` (drawn from the Little Apprentice character,
+including the 180px Apple touch icon), and `sw.js`, a service worker
+that caches the app shell for offline use — pages are network-first,
+so updates still arrive when online. On iPhone: open the page in
+Safari → Share → **Add to Home Screen**; it launches full-screen
+with no Safari chrome, using the safe areas around the notch and
+home indicator. Clips are unaffected: they still live in IndexedDB
+and downloads, never in the service-worker cache.

@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Apprentice">
+<meta name="theme-color" content="#fdf3e0">
+<meta name="description" content="Record a teacher's move, in their own words, and hand the skill on.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
 <title>Unwritten Craft — Apprentice</title>
 <style>
   :root{
@@ -61,8 +69,10 @@
   #caps{color:var(--dim);font-size:14px;margin-top:12px;line-height:1.55;max-width:460px;}
   #session{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;}
   header{display:flex;align-items:center;justify-content:space-between;
-    padding:12px 16px;background:var(--panel);border-bottom:2px solid var(--accent);}
-  header .stepname{font-size:18px;}
+    padding:calc(14px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+            14px max(16px, env(safe-area-inset-left));
+    background:var(--panel);border-bottom:3px solid var(--amber);}
+  header .stepname{font-size:19px;font-weight:bold;}
   header .dots{font-size:15px;color:var(--dim);letter-spacing:3px;}
   header .dots .on{color:var(--accent);}
   #stage{position:relative;background:#000;}
@@ -103,7 +113,8 @@
   #syncflash{position:fixed;inset:0;background:#fff;z-index:60;display:flex;
     align-items:center;justify-content:center;color:var(--ink);
     font-size:120px;font-weight:bold;}
-  #companion{padding:20px 16px;max-width:640px;margin:0 auto;}
+  #companion{padding:calc(20px + env(safe-area-inset-top)) 16px
+    calc(20px + env(safe-area-inset-bottom));max-width:640px;margin:0 auto;}
   #companion h2{font-weight:normal;margin:6px 0 2px;}
   /* Big screens (a laptop as the full interviewer): use the space. */
   @media (min-width:900px){
@@ -756,6 +767,15 @@ document.addEventListener("keydown", function(e){
   else if(e.key === "ArrowLeft") $("backbtn").click();
   else if(e.key === "r" || e.key === "R") $("recbtn").click();
 });
+</script>
+<script>
+/* PWA: register the offline shell where supported (secure contexts
+   only; old Safari without service workers simply skips this). */
+if("serviceWorker" in navigator && window.isSecureContext){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
