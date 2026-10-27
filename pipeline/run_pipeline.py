@@ -17,7 +17,7 @@ Stages (each skips gracefully if its input is missing, and says so):
   6. overlay     — SAM segments the action region on the hero/photo;
                    the Apprentice's sentence for the biggest-gap step is
                    pinned to it -> overlay.png
-  7. page        — hand-it-on page.html (knacks mined from the react
+  7. page        — hand-it-on page.html (techniques mined from the react
                    transcript as a DRAFT — the teacher confirms them)
 
 Honesty rules (Wonder review, Oct 26): stale artifacts from a previous
@@ -40,7 +40,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")
 STALE = ("card.md", "overlay.png", "page.html", "gap_report.md",
-         "responses.json", "knacks_draft.md", "transcripts.json",
+         "responses.json", "techniques_draft.md", "transcripts.json",
          "manifest.json", "hero.jpg", "hero.png", "hero.jpeg",
          "attempt_photo.jpg", "attempt_photo.png", "attempt_photo.jpeg")
 
@@ -230,8 +230,8 @@ def main():
     else:
         print("[overlay] skipped — needs a hero image and an apprentice sentence")
 
-    # 7. knacks draft from the react transcript, then the page
-    knacks = work("knacks_draft.md")
+    # 7. techniques draft from the react transcript, then the page
+    techniques = work("techniques_draft.md")
     if transcripts.get("react"):
         text = open(transcripts["react"]).read()
         mined = []
@@ -239,16 +239,16 @@ def main():
             s = sent.strip()
             if re.search(r"\b(no|don'?t|never|wait)\b", s, re.IGNORECASE) or "!" in s:
                 mined.append(s)
-        with open(knacks, "w") as fh:
-            fh.write("# Knacks — DRAFT mined from her reaction (she confirms "
+        with open(techniques, "w") as fh:
+            fh.write("# Techniques — DRAFT mined from her reaction (she confirms "
                      "and tags each Craft or Lineage)\n\n")
             for s in mined:
                 fh.write(f"- {s}\n")
-        print(f"[knacks] {len(mined)} candidate corrections mined (draft)")
+        print(f"[techniques] {len(mined)} candidate corrections mined (draft)")
     if os.path.exists(card_path) and "card.md" in produced:
         run([sys.executable, os.path.join(HERE, "handiton.py"),
              "--work", args.work_dir, "--title", args.title,
-             "--knacks", knacks], "page")
+             "--techniques", techniques], "page")
         if os.path.exists(work("page.html")):
             produced.add("page.html")
 

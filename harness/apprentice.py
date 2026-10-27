@@ -204,7 +204,7 @@ def render_report(card_title, runs, analysis, notes=""):
         "",
         "A parameter at its default in every run, diverging across runs, "
         "or missing from a run marks a place where the card is silent — "
-        "a candidate knack.",
+        "a candidate technique.",
         "",
     ]
     ranked = sorted(analysis, key=gap_score, reverse=True)

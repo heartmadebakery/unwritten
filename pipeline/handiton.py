@@ -8,7 +8,7 @@ beside the teacher's original (hero). run_pipeline copies the images
 into the work dir under canonical names (hero.*, attempt_photo.*,
 overlay.png); this module only references files that exist.
 
-Usage: handiton.py --work DIR --title "Mom's Bread" [--knacks KNACKS.md]
+Usage: handiton.py --work DIR --title "Mom's Bread" [--techniques TECHNIQUES.md]
 Writes <work>/page.html.
 """
 import argparse
@@ -52,18 +52,18 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True)
     ap.add_argument("--title", default="Unwritten Craft")
-    ap.add_argument("--knacks", default="")
+    ap.add_argument("--techniques", default="")
     args = ap.parse_args()
     work = args.work
 
     with open(os.path.join(work, "card.md")) as fh:
         steps, wisdom = card_sections(fh.read())
-    knacks, knacks_draft = [], False
-    if args.knacks and os.path.exists(args.knacks):
-        with open(args.knacks) as fh:
-            knacks_text = fh.read()
-        knacks = bullet_list(knacks_text)
-        knacks_draft = "DRAFT" in knacks_text[:200]
+    techniques, knacks_draft = [], False
+    if args.techniques and os.path.exists(args.techniques):
+        with open(args.techniques) as fh:
+            techniques_text = fh.read()
+        techniques = bullet_list(techniques_text)
+        knacks_draft = "DRAFT" in techniques_text[:200]
 
     overlay = "overlay.png" if os.path.exists(os.path.join(work, "overlay.png")) else ""
     hero = find_local(work, "hero")
@@ -75,7 +75,7 @@ def main():
 
     steps_html = "".join(f"<li>{html.escape(s)}</li>" for s in steps)
     wisdom_html = "".join(f"<li>{html.escape(w)}</li>" for w in wisdom)
-    knacks_html = "".join(f"<li>{html.escape(t)}</li>" for t in knacks) or \
+    knacks_html = "".join(f"<li>{html.escape(t)}</li>" for t in techniques) or \
         "<li><em>Corrections land here after the teacher reacts.</em></li>"
     knacks_title = "The Knack — what was never written down" + \
         (" (draft — the teacher confirms these)" if knacks_draft else "")

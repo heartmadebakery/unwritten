@@ -13,7 +13,7 @@ filled with the **geometric-neutral default** listed below — not with
 learned domain intuition. A model following this contract literally will
 produce expert-sounding prose nowhere; it can only produce the card, plus
 defaults. Where its commitments look wrong to the teacher, the card was
-silent — that silence is a knack waiting to be taught.
+silent — that silence is a technique waiting to be taught.
 
 ## Instruction given to the apprentice (verbatim)
 
