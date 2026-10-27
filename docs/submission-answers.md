@@ -67,7 +67,7 @@ session):
 - **2:00–2:30** — Her correction, on camera. The technique joins the card;
   one question tags it Craft or Lineage.
 - **2:30–3:00** — The hand-it-on page: two loaves side by side.
-  "Mom's Bread: 4 techniques, one knack, never written down." Closing line:
+  "Mom's Bread: 4 techniques, a knack never written down." Closing line:
   "Every trade runs on a knack like this."
 
 ## Describe your use of Meta products *
