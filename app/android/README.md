@@ -11,6 +11,12 @@ libraries — framework APIs and one C++ library only. The APK is
 Coded by Muse Wonder (three drafting passes), integrated and
 build-verified by the project maintainer agent.
 
+**Continuing this work?** Read
+[`docs/android-app-worklog.md`](../../docs/android-app-worklog.md)
+first — full history, build-route diagnosis, verification evidence,
+and the open items (on-device shakeout, app icon, release signing).
+The prebuilt APK is `unwritten-recorder.apk` in this directory.
+
 ## Why native, and what's in C++
 
 The web recorder is the baseline fallback (it works anywhere a browser
