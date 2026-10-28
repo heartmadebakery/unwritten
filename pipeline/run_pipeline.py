@@ -1,34 +1,36 @@
 #!/usr/bin/env python3
-"""Run the whole Unwritten Craft session pipeline.
+"""Run the Unwritten Craft pipeline — the three core things.
 
-  python3 pipeline/run_pipeline.py <session_dir> <work_dir> \
-      [--title "Mom's Bread"] [--point 0.5,0.45] [--apprentice-runs 3]
+  python3 pipeline/run_pipeline.py <session_dir> <work_dir>
+      [--lesson FILE] [--transcript FILE]
 
-Stages (each skips gracefully if its input is missing, and says so):
-  1. ingest      — classify the recorder's files -> manifest.json
-  2. transcribe  — teach + react (+ attempt, companion dialogue) audio
-                   -> transcripts (local whisper; optional takes are
-                   allowed to fail, the teach take is not)
-  3. frames      — keyframes from the show video; middle frame is hero
-                   (a session photo of the work beats frames; failure
-                   here never blocks the card)
-  4. card        — Muse Spark drafts the card from the teach transcript
-  5. apprentice  — Muse Wonder, fresh calls, card only -> gap report
-  6. overlay     — SAM segments the action region on the hero/photo;
-                   the Apprentice's sentence for the biggest-gap step is
-                   pinned to it -> overlay.png
-  7. page        — hand-it-on page.html (techniques mined from the react
-                   transcript as a DRAFT — the teacher confirms them)
+A session is one ordinary lesson filmed on a phone — no recorder
+protocol, no step names, nothing performed for the machine. Stages:
 
-Honesty rules (Wonder review, Oct 26): stale artifacts from a previous
-run in the work dir are deleted up front; the run exits non-zero unless
-a card AND a page were produced THIS run; every "first file" choice a
-stage makes is logged. Python deps live in .venv (torch,
-segment-anything, faster-whisper); stages re-invoke under .venv when
-present, else the current interpreter.
+  1. lesson      — find the lesson media in the folder (the largest
+                   video/audio file; --lesson names it explicitly).
+                   Core thing #1: the lesson video, kept whole.
+  2. transcribe  — local faster-whisper -> plain + timestamped
+                   transcript (skipped with --transcript FILE, which
+                   must be timestamped "[mm:ss] text" lines).
+  3. write-up    — Muse Spark drafts the write-up under the
+                   stenographer rule (prompts/card_drafter.md)
+                   -> writeup.md. Core thing #3.
+  4. corrections — Muse Spark finds the correction moments
+                   (prompts/correction_finder.md) -> corrections.json
+                   + corrections.md, and each moment is cut from the
+                   lesson video into clips/ when the lesson is a local
+                   media file. Core thing #2: the correction clips,
+                   each anchored to her exact words.
+
+The run exits non-zero unless a write-up AND a corrections list were
+produced THIS run. Stale outputs from a previous run are deleted up
+front. The optional page/guide (pipeline/handiton.py) is NOT part of
+this pipeline — it can be generated later, from these outputs, when
+there is a recipient for it. The retired apprentice/SAM code is not
+invoked here at all.
 """
 import argparse
-import glob
 import json
 import os
 import re
@@ -39,23 +41,18 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")
-STALE = ("card.md", "overlay.png", "page.html", "gap_report.md",
-         "responses.json", "techniques_draft.md", "transcripts.json",
-         "manifest.json", "hero.jpg", "hero.png", "hero.jpeg",
-         "attempt_photo.jpg", "attempt_photo.png", "attempt_photo.jpeg")
+VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
+STALE_FILES = ("manifest.json", "transcript.txt",
+               "transcript_timestamped.txt", "segments.json",
+               "writeup.md", "corrections.json", "corrections.md")
+STALE_DIRS = ("clips", "transcript")
 
 
 def py():
-    """Interpreter for heavy stages: the project .venv if present."""
     return VENV_PY if os.path.exists(VENV_PY) else sys.executable
 
 
 def run(cmd, stage, fatal=True):
-    """Run one stage subprocess, echo its output, and handle failure.
-
-    Fatal stages stop the pipeline (earlier outputs are kept); non-fatal
-    stages log the failure and return None so the run continues.
-    """
     print(f"[{stage}] {' '.join(os.path.basename(c) if i == 0 else c for i, c in enumerate(cmd))}")
     proc = subprocess.run(cmd, capture_output=True, text=True,
                           env={**os.environ, "PATH": os.environ.get("PATH", "")})
@@ -72,202 +69,195 @@ def run(cmd, stage, fatal=True):
     return out
 
 
-def pick_take(files, step):
-    """Latest take wins (recorder names sort chronologically)."""
-    if not files:
-        return None
-    if len(files) > 1:
-        print(f"  [{step}] {len(files)} takes found — using the latest: "
-              f"{os.path.basename(files[-1])}")
-    return files[-1]
+def parse_ts(ts):
+    """'02:08' (or '1:02:08') -> seconds. Raises ValueError."""
+    parts = str(ts).strip().split(":")
+    if len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    if len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    raise ValueError(f"bad timestamp: {ts!r}")
 
 
-def photo_with_step(photos, *steps):
-    """First photo whose name carries one of the given step tokens."""
-    for step in steps:
-        for p in photos:
-            if f"_{step}_" in os.path.basename(p) or f"_{step}-" in os.path.basename(p):
-                return p
-    return None
+def fmt_ts(seconds):
+    seconds = max(0, int(round(seconds)))
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def segment_ends(timestamped_text):
+    """Map each segment start (seconds) -> end (seconds), from a
+    timestamped transcript: a segment ends where the next begins; the
+    last segment gets a nominal 20 s."""
+    starts = []
+    for line in timestamped_text.splitlines():
+        m = re.match(r"\[(\d+:\d{2}(?::\d{2})?)\]", line.strip())
+        if m:
+            try:
+                starts.append(parse_ts(m.group(1)))
+            except ValueError:
+                pass
+    ends = {}
+    for i, s in enumerate(starts):
+        ends[s] = starts[i + 1] if i + 1 < len(starts) else s + 20
+    return ends
+
+
+def clip_window(start_s, end_s):
+    """Pad the correction beat a little on both sides."""
+    return max(0, start_s - 2), (end_s + 2 if end_s else start_s + 20)
+
+
+def render_corrections_md(hits, clips):
+    """clips: {index: filename or ''}. The techniques list — together,
+    the Knack."""
+    lines = ["# Corrections — the techniques", "",
+             "Every moment the teacher corrected the beginner, anchored "
+             "to her exact words. Together these are the Knack.", ""]
+    if not hits:
+        lines.append("No corrections found in this lesson.")
+    for i, hit in enumerate(hits, 1):
+        lines.append(f"## {i}. {hit.get('start', '??:??')} — "
+                     f"{hit.get('correcting', '')}".rstrip(" —"))
+        lines.append("")
+        lines.append(f"> \"{hit.get('quote', '')}\"")
+        lines.append("")
+        clip = clips.get(i, "")
+        if clip:
+            lines.append(f"Clip: `clips/{clip}`")
+            lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def cut_clip(lesson, start_s, end_s, out_path):
+    dur = max(1, int(round(end_s - start_s)))
+    is_video = os.path.splitext(lesson)[1].lower() in VIDEO_EXTS
+    cmd = ["ffmpeg", "-y", "-v", "error", "-ss", str(int(start_s)),
+           "-i", lesson, "-t", str(dur)]
+    if is_video:
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-c:a", "aac"]
+    else:
+        cmd += ["-vn", "-c:a", "aac"]
+    cmd.append(out_path)
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    return proc.returncode == 0 and os.path.exists(out_path)
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Run the full session pipeline: clips in, page out.")
-    ap.add_argument("session_dir", help="folder of recorder clips")
-    ap.add_argument("work_dir", help="where pipeline outputs are written")
-    ap.add_argument("--title", default="Unwritten Craft",
-                    help="title for the hand-it-on page")
-    ap.add_argument("--point", default="0.5,0.45",
-                    help="normalized SAM point prompt on the hero image")
-    ap.add_argument("--apprentice-runs", type=int, default=3,
-                    help="how many fresh apprentice calls to make")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("session_dir",
+                    help="folder with the lesson media (or the media file itself)")
+    ap.add_argument("work_dir")
+    ap.add_argument("--lesson", default="",
+                    help="the lesson media file, if not the largest in the folder")
+    ap.add_argument("--transcript", default="",
+                    help="timestamped transcript file; skips transcription")
     args = ap.parse_args()
 
-    parts = args.point.split(",")
-    if len(parts) != 2 or not all(0.0 <= float(v) <= 1.0 for v in parts):
-        sys.exit("--point must be X,Y with both values in 0..1")
-    if args.apprentice_runs < 1:
-        sys.exit("--apprentice-runs must be >= 1")
-
     os.makedirs(args.work_dir, exist_ok=True)
-    for stale in STALE:
+    for stale in STALE_FILES:
         p = os.path.join(args.work_dir, stale)
         if os.path.exists(p):
             os.unlink(p)
+    for stale in STALE_DIRS:
+        p = os.path.join(args.work_dir, stale)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
     work = lambda *p: os.path.join(args.work_dir, *p)
     produced = set()
 
-    # 1. ingest
+    # 1. lesson — core thing #1, the lesson video, kept whole
     sys.path.insert(0, HERE)
-    from ingest import ingest
-    media = ingest(args.session_dir)
-    # A recorder session manifest, when present, defines THIS session's
-    # files — a downloads folder must not merge past sessions into it.
-    for sm in glob.glob(os.path.join(args.session_dir, "unwritten_session_*.json")):
-        try:
-            names = {c["name"] for c in json.load(open(sm)).get("clips", [])}
-            if names:
-                for key in media:
-                    media[key] = [p for p in media[key]
-                                  if os.path.basename(p) in names]
-                print(f"  [ingest] session manifest {os.path.basename(sm)} "
-                      f"restricts the run to its {len(names)} clips")
-        except (ValueError, OSError, TypeError):
-            pass
-    with open(work("manifest.json"), "w") as fh:
-        json.dump({k: [os.path.basename(p) for p in v] for k, v in media.items()},
-                  fh, indent=1)
-    counts = {k: len(v) for k, v in media.items() if v}
-    print(f"[ingest] {counts}")
-
-    teach = pick_take(media["teach"], "teach")
-    show = pick_take(media["show"], "show") or pick_take(media["broll"], "broll")
-    react = pick_take(media["react"], "react")
-    attempt = pick_take(media["attempt"], "attempt")
-    dialogue = pick_take(media["dialogue"], "dialogue")
-
-    # 2. transcribe (local whisper; teacher audio never leaves the machine)
-    transcripts = {}
-    wanted = [(k, p) for k, p in (("teach", teach), ("react", react),
-                                  ("attempt", attempt), ("dialogue", dialogue)) if p]
-    for kind, path in wanted:
-        if run([py(), os.path.join(HERE, "transcribe.py"), path, work(f"transcript_{kind}")],
-               f"transcribe:{kind}", fatal=False) is not None:
-            tpath = work(f"transcript_{kind}", "transcript.txt")
-            if os.path.exists(tpath):
-                transcripts[kind] = tpath
-    if not transcripts.get("teach") and transcripts.get("dialogue"):
-        # The companion's clean dialogue track carries the whole session:
-        # an honest fallback, labeled as such.
-        print("  [transcribe] no usable teach take — using the companion "
-              "dialogue track as the teaching transcript (fallback)")
-        transcripts["teach"] = transcripts["dialogue"]
-    if teach and not transcripts.get("teach"):
-        sys.exit(f"[transcribe:teach] produced no transcript from "
-                 f"{os.path.basename(teach)} and no dialogue fallback "
-                 "exists — cannot draft a card.")
-    if transcripts:
-        with open(work("transcripts.json"), "w") as fh:
-            json.dump({k: os.path.basename(v) for k, v in transcripts.items()}, fh, indent=1)
-
-    # 3. frames / hero image (never fatal — the card matters more)
-    hero = photo_with_step(media["photos"], "show", "teach") or \
-        (media["photos"][0] if media["photos"] else "")
-    if not hero and show:
-        out = run([py(), os.path.join(HERE, "frames.py"), show, work("frames")],
-                  "frames", fatal=False)
-        if out:
-            hero = out.splitlines()[-1].strip()
-    if hero:
-        ext = os.path.splitext(hero)[1].lower() or ".jpg"
-        shutil.copy(hero, work("hero" + ext))
-        print(f"[frames] hero = {os.path.basename(hero)}")
-    attempt_photo = photo_with_step(media["photos"], "attempt")
-    if attempt_photo:
-        ext = os.path.splitext(attempt_photo)[1].lower() or ".jpg"
-        shutil.copy(attempt_photo, work("attempt_photo" + ext))
-
-    # 4. card — Spark drafts from the teach transcript (+ the wisdom Q&A
-    #    recorded after her reaction: the attempt clip opens with it; a
-    #    companion dialogue take is the fallback source)
-    card_path = work("card.md")
-    if transcripts.get("teach"):
-        cmd = [sys.executable, os.path.join(HERE, "draft_card.py"),
-               transcripts["teach"], card_path]
-        wisdom_src = transcripts.get("attempt") or transcripts.get("dialogue")
-        if wisdom_src:
-            cmd += ["--wisdom", wisdom_src]
-        if run(cmd, "card") is not None and os.path.exists(card_path):
-            produced.add("card.md")
+    from ingest import ingest, pick_lesson
+    lesson = None
+    if args.lesson:
+        lesson = args.lesson
+    elif os.path.isfile(args.session_dir):
+        lesson = args.session_dir
     else:
-        print("[card] skipped — no teach transcript")
+        media = ingest(args.session_dir)
+        lesson, note = pick_lesson(media["media"])
+        if note:
+            print(f"  [lesson] {note}")
+        with open(work("manifest.json"), "w") as fh:
+            json.dump({k: [os.path.basename(p) for p in v]
+                       for k, v in media.items()}, fh, indent=1)
+    if lesson:
+        print(f"[lesson] {os.path.basename(lesson)}")
+    elif not args.transcript:
+        sys.exit("[lesson] no media file found and no --transcript given "
+                 "— nothing to process.")
 
-    # 5. apprentice — Wonder, fresh calls, steps only (wisdom sealed)
-    gap_sentence, gap_step = "", None
-    responses = work("responses.json")
-    if os.path.exists(card_path) and "card.md" in produced:
-        if run([sys.executable, os.path.join(ROOT, "harness", "apprentice_muse.py"),
-                "--card", card_path, "--runs", str(args.apprentice_runs),
-                "--out", responses], "apprentice") is not None:
-            run([sys.executable, os.path.join(ROOT, "harness", "run_test.py"),
-                 "--card", card_path, "--responses", responses,
-                 "--out", work("gap_report.md")], "gap-report")
-            sys.path.insert(0, os.path.join(ROOT, "harness"))
-            from apprentice import parse_commitments, analyze, gap_score
-            data = json.load(open(responses))
-            raw_runs = data.get("runs", []) if isinstance(data, dict) else data
-            runs = []
-            for raw in raw_runs:
-                try:
-                    runs.append(parse_commitments(raw))
-                except ValueError as e:
-                    print(f"  [apprentice] re-parse skipped a run ({e})")
-            if runs:
-                top = max(analyze(runs), key=gap_score)
-                gap_step = top["step"]
-                gap_sentence = next((s for s in top["sentences"] if s), "")
-                print(f"  [apprentice] biggest silence: step {gap_step} "
-                      f"(score {gap_score(top)})")
+    # 2. transcribe (local whisper; the teacher's voice never leaves
+    #    the machine for a third-party transcription service)
+    timestamped_path = work("transcript_timestamped.txt")
+    if args.transcript:
+        shutil.copy(args.transcript, timestamped_path)
+        print(f"[transcribe] skipped — using {os.path.basename(args.transcript)}")
+    elif lesson:
+        if run([py(), os.path.join(HERE, "transcribe.py"), lesson,
+                work("transcript")], "transcribe") is not None:
+            for name in ("transcript.txt", "transcript_timestamped.txt",
+                         "segments.json"):
+                src = work("transcript", name)
+                if os.path.exists(src):
+                    shutil.move(src, work(name))
+            shutil.rmtree(work("transcript"), ignore_errors=True)
+    if not os.path.exists(timestamped_path):
+        sys.exit("[transcribe] no timestamped transcript — cannot draft "
+                 "the write-up or find corrections.")
+    with open(timestamped_path) as fh:
+        timestamped_text = fh.read()
 
-    # 6. overlay — SAM on the hero, the Apprentice's sentence pinned
-    if hero and gap_sentence:
-        label = "APPRENTICE: " + gap_sentence
-        if run([py(), os.path.join(HERE, "sam_overlay.py"), "--image", hero,
-                "--point", args.point, "--label", label,
-                "--out", work("overlay.png")], "overlay", fatal=False) is not None:
-            produced.add("overlay.png")
-    else:
-        print("[overlay] skipped — needs a hero image and an apprentice sentence")
+    # 3. write-up — core thing #3
+    if run([sys.executable, os.path.join(HERE, "draft_card.py"),
+            timestamped_path, work("writeup.md")], "write-up") is not None \
+            and os.path.exists(work("writeup.md")):
+        produced.add("writeup.md")
 
-    # 7. techniques draft from the react transcript, then the page
-    techniques = work("techniques_draft.md")
-    if transcripts.get("react"):
-        text = open(transcripts["react"]).read()
-        mined = []
-        for sent in re.split(r"(?<=[.!?])\s+", text.replace("\n", " ")):
-            s = sent.strip()
-            if re.search(r"\b(no|don'?t|never|wait)\b", s, re.IGNORECASE) or "!" in s:
-                mined.append(s)
-        with open(techniques, "w") as fh:
-            fh.write("# Techniques — DRAFT mined from her reaction (she confirms "
-                     "and tags each Craft or Lineage)\n\n")
-            for s in mined:
-                fh.write(f"- {s}\n")
-        print(f"[techniques] {len(mined)} candidate corrections mined (draft)")
-    if os.path.exists(card_path) and "card.md" in produced:
-        run([sys.executable, os.path.join(HERE, "handiton.py"),
-             "--work", args.work_dir, "--title", args.title,
-             "--techniques", techniques], "page")
-        if os.path.exists(work("page.html")):
-            produced.add("page.html")
+    # 4. corrections — core thing #2
+    hits = []
+    if run([sys.executable, os.path.join(HERE, "find_corrections.py"),
+            timestamped_path, work("corrections.json")],
+           "corrections") is not None \
+            and os.path.exists(work("corrections.json")):
+        produced.add("corrections.json")
+        with open(work("corrections.json")) as fh:
+            hits = json.load(fh)
+    clips = {}
+    if hits and lesson and os.path.exists(lesson):
+        ends = segment_ends(timestamped_text)
+        os.makedirs(work("clips"), exist_ok=True)
+        is_video = os.path.splitext(lesson)[1].lower() in VIDEO_EXTS
+        ext = ".mp4" if is_video else ".m4a"
+        for i, hit in enumerate(hits, 1):
+            try:
+                start_s = parse_ts(hit.get("start", ""))
+            except ValueError:
+                print(f"  [clips] correction {i}: bad timestamp "
+                      f"{hit.get('start')!r} — anchor kept, no clip cut")
+                continue
+            lo, hi = clip_window(start_s, ends.get(start_s))
+            name = f"correction-{i:02d}{ext}"
+            if cut_clip(lesson, lo, hi, work("clips", name)):
+                clips[i] = name
+            else:
+                print(f"  [clips] correction {i}: ffmpeg cut failed — "
+                      "anchor kept, no clip cut")
+        if clips:
+            print(f"[clips] {len(clips)} correction clip(s) cut")
+    elif hits:
+        print("[clips] no local lesson media — corrections are anchored "
+              "by timestamp only, no clips cut")
+    if "corrections.json" in produced:
+        with open(work("corrections.md"), "w") as fh:
+            fh.write(render_corrections_md(hits, clips))
 
-    if "card.md" not in produced or "page.html" not in produced:
+    if "writeup.md" not in produced or "corrections.json" not in produced:
         sys.exit(f"Pipeline incomplete: produced {sorted(produced) or 'nothing'} "
-                 f"this run. Check the stage messages above — an empty or "
-                 f"unrecognized session folder is the usual cause.")
+                 "this run. Check the stage messages above.")
     print(f"\nPipeline done. Work dir: {args.work_dir} "
-          f"(card, gap report, overlay, page.html)")
+          f"(lesson, writeup.md, corrections.md, "
+          f"{len(clips)} clip(s))")
 
 
 if __name__ == "__main__":

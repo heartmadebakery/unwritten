@@ -80,14 +80,18 @@ teacher data — samples are fictional.
 
 ## Repo layout
 
-- `pipeline/` — the working pipeline: session media in; transcript,
-  write-up, and correction list out. `ingest.py` → `transcribe.py` (local
-  faster-whisper) → `draft_card.py` (Muse Spark, stenographer prompt)
-  drafts the write-up → `find_corrections.py` (Spark,
-  `prompts/correction_finder.md`) surfaces the correction moments.
-  `handiton.py` renders the optional page/guide — later, not core.
-  `sam_overlay.py` belongs to the retired apprentice design. See
-  [the pipeline guide](docs/PIPELINE.md).
+- `pipeline/` — the working pipeline, and all it does is the three
+  core things: `run_pipeline.py` takes one ordinary lesson file in and
+  produces the write-up and the correction clips out. `ingest.py`
+  finds the lesson (largest media file in the folder) →
+  `transcribe.py` (local faster-whisper) → `draft_card.py` (Muse
+  Spark, stenographer prompt) drafts the write-up →
+  `find_corrections.py` (Spark, `prompts/correction_finder.md`)
+  surfaces the correction moments, which the runner cuts from the
+  lesson into `clips/`. `handiton.py` renders the optional page/guide
+  from those outputs — later, not core, and the core never calls it.
+  `sam_overlay.py` and `frames.py` belong to the retired apprentice
+  design. See [the pipeline guide](docs/PIPELINE.md).
 - `prompts/` — `card_drafter.md` carries the stenographer rule;
   `correction_finder.md` defines a correction. `apprentice.md` /
   `apprentice_instruction.txt` are retired with the apprentice design.

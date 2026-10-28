@@ -1,87 +1,75 @@
-# The session pipeline
+# The pipeline — three core things
 
-What happens to the recordings after a teacher session. The recorder app
-([`app/recorder`](../app/recorder)) captures; this pipeline processes.
-Everything runs locally except the two Muse model roles — and those roles
-are the product's architecture, not an implementation detail.
+What happens after the lesson. Capture is a commodity: one ordinary
+lesson filmed on a phone, no recorder protocol, no step names, nothing
+performed for the machine. This pipeline processes that one file.
 
 ```
-session folder (off the phone)
-   │  ingest.py — classify unwritten_<step>_*.{webm,mp4,mp3,jpg}
+lesson folder (off the phone)
+   │  ingest.py — classify by extension; the largest media file
+   │              is the lesson (or name it with --lesson)
    ▼
-manifest.json
-   ├─ teach/react media ─► transcribe.py ─► transcript.txt   (local Whisper)
-   ├─ show video ────────► frames.py ─────► keyframes (hero = middle frame)
-   ├─ teach transcript ──► draft_card.py ─► card.md          (Muse Spark;
-   │                             the wisdom section comes from the attempt
-   │                             clip, which opens with the post-reaction
-   │                             wisdom Q&A)
-   ├─ card ──────────────► harness/apprentice_muse.py ─► gap_report.md
-   │                                                  (Muse Wonder, card only)
-   ├─ hero/photo + top-gap sentence ─► sam_overlay.py ─► overlay.png (SAM)
-   └─ react transcript ──► techniques draft + handiton.py ─► page.html
+THE LESSON VIDEO — kept whole (core thing #1)
+   │  transcribe.py — local faster-whisper
+   ▼
+transcript.txt + transcript_timestamped.txt ("[mm:ss] text" per segment)
+   ├─► draft_card.py ─► writeup.md        (Muse Spark, stenographer
+   │                                        rule) — THE WRITE-UP (#3)
+   └─► find_corrections.py ─► corrections.json + corrections.md
+                                            (Muse Spark), and each
+                                            correction cut from the
+                                            lesson into clips/ — THE
+                                            CORRECTION CLIPS (#2)
 ```
 
 Run it:
 
-```bash
-pipeline/run_pipeline.py <session_dir> <work_dir> [--title ...] \
-    [--point X,Y] [--apprentice-runs 3]
+```
+pipeline/run_pipeline.py <session_dir> <work_dir> [--lesson FILE] [--transcript FILE]
 ```
 
-Every stage skips gracefully, with a message, if its input is missing — so a
-partial session still yields a partial work dir. Python dependencies live in
-`.venv` (created with `python3 -m venv .venv`, plus torch CPU, torchvision,
-segment-anything, and faster-whisper). The runner re-invokes the heavy stages
-under `.venv` when it exists.
+`--transcript FILE` skips transcription and uses an existing
+timestamped transcript — how the core test in
+`docs/core-test-2026-10-27.md` was run. The runner exits non-zero
+unless a write-up **and** a corrections list were produced this run;
+stale outputs from a previous run are deleted up front.
+
+Python deps live in `.venv` (faster-whisper); the runner re-invokes
+the transcription stage under it when present. Everything else is
+stdlib + ffmpeg + Muse calls.
 
 ## Stage notes
 
-- **Transcription is local on purpose.** It uses faster-whisper (base model,
-  int8, CPU), so a teacher's raw voice never leaves the machine for a
-  third-party transcription service. Set `UNWRITTEN_WHISPER_MODEL=small` to
-  trade speed for accuracy. The transcript feeds two places: Spark's card
-  draft, and the technique miner, which drafts correction candidates from the
-  reaction clip (lines starting "No / Don't / Never / Wait"). That draft is
-  for the teacher to confirm — never gospel.
-- **Card drafting** is `draft_card.py`: the transcript plus the stenographer
-  prompt (`prompts/card_drafter.md`), sent to Muse Spark via Muse.
-- **The Apprentice** stage reuses the harness: Wonder, in fresh `muse exec`
-  contexts, seeing the card only. The gap report's highest-silence step
-  supplies the sentence the overlay pins.
-- **Frames**: evenly spaced stills from the show clip. If the session
-  includes a real teacher *photo* of the work, it overrides the hero frame.
+- **Transcription is local on purpose.** faster-whisper (base model,
+  int8, CPU) — a teacher's raw voice never leaves the machine for a
+  third-party transcription service. `UNWRITTEN_WHISPER_MODEL=small`
+  trades speed for accuracy. Negations matter: a dropped "don't"
+  inverts a step, so the write-up's imperatives get checked back
+  against this transcript.
+- **The write-up** is `draft_card.py`: transcript + the stenographer
+  prompt (`prompts/card_drafter.md`) into Muse Spark via Muse.
+  Her steps in her words; nothing added. (The filename predates the
+  rename from "card" to "write-up.")
+- **The corrections** are `find_corrections.py`: the timestamped
+  transcript + `prompts/correction_finder.md` into Muse Spark. Each
+  hit is a technique: timestamp, her exact words, what she was
+  correcting. `run_pipeline.py` renders `corrections.md` and cuts each
+  moment from the lesson video with ffmpeg (segment window padded
+  2 s on both sides; a failed cut keeps the timestamp anchor and says
+  so — it never blocks the run).
+- **Clips need the lesson file.** A transcript-only run produces
+  anchored corrections without clips; the anchors carry the timestamps
+  either way.
 
-## How SAM is used
+## Not in this pipeline
 
-SAM produces the overlay — Step 2's primary visual. The contract
-(`sam_overlay.py`) is: **image + point in, highlighted overlay + mask stats
-out.** The point (normalized coordinates, `--point X,Y`) marks where the
-action happens on the teacher's photo — for the demo, the center of the loaf
-where the cut lands. SAM returns candidate masks for the object under the
-point; the best-scoring mask is tinted in the app's amber, and the
-Apprentice's own sentence for the biggest-gap step is pinned to the mask with
-a leader line, labeled `APPRENTICE:`.
-
-The development engine is Meta's original **segment-anything (ViT-B)**,
-running on CPU (a few seconds per image at these sizes). The checkpoint
-(375 MB) is **not in git** — fetch it once:
-
-```bash
-mkdir -p pipeline/models
-curl -L -o pipeline/models/sam_vit_b_01ec64.pth \
-  https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
-```
-
-**Production swap — SAM 3.1 via the Meta Model API.** SAM 3 / 3.1 adds
-concept (text) prompts, so the point can be replaced or backed by a phrase
-("the seam of the dough") once the build wires the Meta Model API key in.
-Nothing downstream changes: the overlay module's contract is the seam. Until
-then, the local engine proves the visual end to end and costs nothing per
-run — which matters during the 10-day build.
-
-One honest limitation of a *point* prompt: it finds the object, not the
-gesture. So the overlay pairs the mask with the Apprentice's sentence. The
-sentence carries the wrongness (angle, force); the mask carries the *where*.
-That pairing is the design, not a workaround — it is exactly the
-SAM-highlight-plus-pinned-sentence visual the advisor panel chose as primary.
+- **The page/guide** (`pipeline/handiton.py`) — optional, later, for a
+  recipient who wasn't in the room. It assembles `writeup.md` +
+  `corrections.json` + `clips/` into one HTML page. The core never
+  calls it and nothing in the core depends on it.
+- **The retired apprentice design** — `harness/`,
+  `pipeline/sam_overlay.py`, `pipeline/frames.py`,
+  `prompts/apprentice*`. Cut Oct 27, 2026; kept in the tree as retired
+  experiments, invoked by nothing here.
+- **The recorder apps** (`app/`) — frozen capture experiments. An
+  ordinary phone camera is the recorder.

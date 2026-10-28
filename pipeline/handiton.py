@@ -1,28 +1,30 @@
-"""Hand-it-on page generator (Step 4).
+"""OPTIONAL page generator — not part of the core pipeline.
 
-Renders the shareable page as one HTML file beside its images in the
-work dir: the card's steps, the card's wisdom section, the Knack (the
-teacher's corrections — headed as a DRAFT until she confirms them),
-the overlay of the Apprentice's misreading, and the student's attempt
-beside the teacher's original (hero). run_pipeline copies the images
-into the work dir under canonical names (hero.*, attempt_photo.*,
-overlay.png); this module only references files that exist.
+The core is three things: the lesson video, the correction clips, the
+write-up (pipeline/run_pipeline.py). This module assembles those into a
+single shareable page — a guide or manual for someone who wasn't in the
+room — for when there is a recipient for it. Nothing in the core
+depends on it, and the core pipeline never calls it.
 
-Usage: handiton.py --work DIR --title "Mom's Bread" [--techniques TECHNIQUES.md]
-Writes <work>/page.html.
+It consumes only core outputs: writeup.md (her steps + her judgment)
+and corrections.json (the techniques, each with her exact words and,
+where run_pipeline cut them, a clip file under clips/).
+
+Usage: handiton.py --work DIR --title "Mom's Bread"
+Reads <work>/writeup.md and <work>/corrections.json; writes
+<work>/page.html.
 """
 import argparse
 import html
+import json
 import os
 import re
 
 
-def card_sections(md_text):
-    """Split a card into (steps, wisdom bullets).
-
-    Steps are the numbered lines before the first '## ' heading. The
-    wisdom section's bullets are NOT steps (Wonder review).
-    """
+def parse_writeup(md_text):
+    """Split a write-up into (steps, wisdom bullets). Steps are numbered
+    lines before the first '## ' heading — the wisdom section's bullets
+    are NOT steps."""
     steps, wisdom, in_wisdom = [], [], False
     for line in md_text.splitlines():
         s = line.strip()
@@ -37,77 +39,60 @@ def card_sections(md_text):
     return steps, wisdom
 
 
-def bullet_list(md_text):
-    """The text of every '- ' bullet line in a markdown file."""
-    return [ln.strip()[2:].strip() for ln in md_text.splitlines()
-            if ln.strip().startswith("- ")]
-
-
-def find_local(work, stem):
-    """Image filename in `work` with this stem (hero.*, ...), or ''."""
-    for entry in sorted(os.listdir(work)):
-        if os.path.splitext(entry)[0] == stem and \
-                os.path.splitext(entry)[1].lower() in (".jpg", ".jpeg", ".png", ".webp"):
-            return entry
-    return ""
-
-
 def main():
-    ap = argparse.ArgumentParser(
-        description="Render the hand-it-on page from a pipeline work dir.")
-    ap.add_argument("--work", required=True, help="the pipeline work dir")
-    ap.add_argument("--title", default="Unwritten Craft",
-                    help="page title (default 'Unwritten Craft')")
-    ap.add_argument("--techniques", default="",
-                    help="techniques draft markdown (the Knack, unconfirmed)")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--work", required=True)
+    ap.add_argument("--title", default="Unwritten Craft")
     args = ap.parse_args()
     work = args.work
 
-    with open(os.path.join(work, "card.md")) as fh:
-        steps, wisdom = card_sections(fh.read())
-    techniques, knacks_draft = [], False
-    if args.techniques and os.path.exists(args.techniques):
-        with open(args.techniques) as fh:
-            techniques_text = fh.read()
-        techniques = bullet_list(techniques_text)
-        knacks_draft = "DRAFT" in techniques_text[:200]
+    with open(os.path.join(work, "writeup.md")) as fh:
+        steps, wisdom = parse_writeup(fh.read())
+    hits = []
+    corrections_path = os.path.join(work, "corrections.json")
+    if os.path.exists(corrections_path):
+        with open(corrections_path) as fh:
+            hits = json.load(fh)
 
-    overlay = "overlay.png" if os.path.exists(os.path.join(work, "overlay.png")) else ""
-    hero = find_local(work, "hero")
-    attempt = find_local(work, "attempt_photo")
+    def esc(s):
+        return html.escape(str(s), quote=True)
 
-    def img(name, alt):
-        return (f'<img src="{html.escape(name, quote=True)}" '
-                f'alt="{html.escape(alt, quote=True)}">') if name else ""
+    steps_html = "".join(f"<li>{esc(s)}</li>" for s in steps)
+    wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
+    wisdom_block = (f"<h2>What the teacher knows</h2><ul>{wisdom_html}</ul>"
+                    if wisdom else "")
 
-    steps_html = "".join(f"<li>{html.escape(s)}</li>" for s in steps)
-    wisdom_html = "".join(f"<li>{html.escape(w)}</li>" for w in wisdom)
-    knacks_html = "".join(f"<li>{html.escape(t)}</li>" for t in techniques) or \
-        "<li><em>Corrections land here after the teacher reacts.</em></li>"
-    knacks_title = "The Knack — what was never written down" + \
-        (" (draft — the teacher confirms these)" if knacks_draft else "")
-    overlay_html = img(overlay, "The Apprentice's misreading")
-    wisdom_block = f"<h2>What the teacher knows</h2><ul>{wisdom_html}</ul>" if wisdom else ""
+    technique_blocks = []
+    for i, hit in enumerate(hits, 1):
+        clip_name = f"correction-{i:02d}.mp4"
+        clip = (f'<p><video controls src="clips/{clip_name}"></video></p>'
+                if os.path.exists(os.path.join(work, "clips", clip_name))
+                else "")
+        technique_blocks.append(
+            f"<h3>{esc(hit.get('start', ''))} — {esc(hit.get('correcting', ''))}</h3>"
+            f"<blockquote>{esc(hit.get('quote', ''))}</blockquote>{clip}")
+    knacks_html = "".join(technique_blocks) or \
+        "<p><em>No corrections captured in this lesson.</em></p>"
 
     page = f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{html.escape(args.title)} — Unwritten Craft</title>
+<title>{esc(args.title)} — Unwritten Craft</title>
 <style>body{{background:#17130e;color:#f5ead6;font-family:Georgia,serif;
 max-width:760px;margin:0 auto;padding:28px 18px;line-height:1.6}}
 h1{{font-weight:normal}} h2{{color:#e8a13a;font-weight:normal;margin-top:34px}}
-img{{max-width:100%;border-radius:10px}} .duo{{display:grid;
-grid-template-columns:1fr 1fr;gap:12px}} li{{margin:7px 0}}
+video{{max-width:100%;border-radius:10px}} li{{margin:7px 0}}
+blockquote{{border-left:3px solid #e8a13a;margin-left:0;padding-left:14px;
+font-style:italic}}
 footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
 <body>
-<h1>{html.escape(args.title)}</h1>
-<p><em>Taught once, written as it was said, corrected once — handed on.</em></p>
-<h2>The card</h2><ol>{steps_html}</ol>
+<h1>{esc(args.title)}</h1>
+<p><em>Film a lesson. Keep the corrections.</em></p>
+<h2>The write-up</h2><ol>{steps_html}</ol>
 {wisdom_block}
-<h2>The Apprentice's try</h2>{overlay_html}
-<h2>{html.escape(knacks_title)}</h2><ul>{knacks_html}</ul>
-<h2>Handed on</h2><div class="duo">{img(hero, "The teacher's original")}{img(attempt, "The student's attempt")}</div>
-<footer>Unwritten Craft — teach what must not disappear.</footer>
+<h2>The Knack — the corrections</h2>{knacks_html}
+<footer>Unwritten Craft — the teacher approved every clip on this page
+before it was shared.</footer>
 </body></html>"""
     out = os.path.join(work, "page.html")
     with open(out, "w") as fh:

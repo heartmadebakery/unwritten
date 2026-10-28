@@ -57,6 +57,32 @@ fictional but realistic lesson transcript with planted corrections and
 distractors, scored write-up drafting and correction capture against
 ground truth, including a keyword-regex baseline.
 
+## Addendum (Oct 27, evening) — the code now follows it
+
+The simplification first landed in the docs; the owner asked whether
+all the code followed, and it didn't — `run_pipeline.py` still ran the
+old seven stages. Aligned the same evening:
+
+- `pipeline/run_pipeline.py` rewritten: lesson in → transcribe →
+  write-up → corrections (+ clips cut from the lesson). It no longer
+  invokes the apprentice, SAM, or the page, and no longer requires a
+  page to succeed. It now calls `find_corrections.py`, which the old
+  runner never did.
+- `pipeline/ingest.py` rewritten: classification by extension only;
+  the lesson is the largest media file in the folder. Recorder step
+  names (`teach`/`react`/`attempt`/…) are gone.
+- `pipeline/draft_card.py`: the recorder-era `--wisdom` Q&A input is
+  removed; it drafts the write-up from the lesson transcript alone.
+  `prompts/card_drafter.md` simplified to match (session-protocol
+  rules — post-reaction Q&A, worn-tool opening question — removed).
+- `pipeline/transcribe.py` now also writes the timestamped transcript
+  the correction finder consumes.
+- `pipeline/handiton.py` rewritten as the optional page generator over
+  core outputs only (write-up + corrections + clips); its apprentice
+  overlay section is gone.
+- `harness/`, `pipeline/sam_overlay.py`, `pipeline/frames.py` carry
+  RETIRED headers and are invoked by nothing in the core flow.
+
 ## Undecided
 
 Whether this is submitted to the hackathon at all. The project is being

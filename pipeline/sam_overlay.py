@@ -1,4 +1,9 @@
-"""SAM overlay — the Apprentice's misreading, drawn on the teacher's photo.
+"""
+RETIRED (Oct 27, 2026): part of the cut apprentice design. Not called
+by pipeline/run_pipeline.py or anything in the core flow; kept in the
+tree as a retired experiment.
+
+SAM overlay — the Apprentice's misreading, drawn on the teacher's photo.
 
 This is Step 2's primary visual (see README's design rules): SAM segments
 the region of the teacher's real photo where the action happens, the
@@ -34,7 +39,6 @@ HIGHLIGHT = (232, 161, 58)  # apprentice amber, matches the app palette
 
 
 def load_predictor():
-    """Load the local SAM ViT-B predictor (CPU). Exits if no checkpoint."""
     if not os.path.exists(CHECKPOINT):
         sys.exit("SAM checkpoint missing: " + CHECKPOINT +
                  "\nDownload it per docs/PIPELINE.md (375 MB, not in git).")
@@ -46,7 +50,6 @@ def load_predictor():
 
 
 def segment(predictor, image_rgb, point_xy):
-    """Segment the object under one point. Returns (mask, score)."""
     predictor.set_image(image_rgb)
     masks, scores, _ = predictor.predict(
         point_coords=np.array([point_xy]), point_labels=np.array([1]),
@@ -56,7 +59,6 @@ def segment(predictor, image_rgb, point_xy):
 
 
 def render_overlay(image, mask, label, out_path):
-    """Tint the mask amber and pin the label above it. Returns image size."""
     base = image.convert("RGB")
     tint = Image.new("RGB", base.size, HIGHLIGHT)
     alpha = Image.fromarray((mask * 110).astype(np.uint8))
@@ -96,14 +98,13 @@ def render_overlay(image, mask, label, out_path):
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Draw the Apprentice's misreading on the teacher's photo.")
-    ap.add_argument("--image", required=True, help="the teacher's photo")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--image", required=True)
     ap.add_argument("--point", default="0.5,0.45",
                     help="normalized X,Y of the action (default 0.5,0.45)")
     ap.add_argument("--label", required=True,
                     help="the Apprentice's own sentence to pin to the region")
-    ap.add_argument("--out", required=True, help="where to write the overlay PNG")
+    ap.add_argument("--out", required=True)
     args = ap.parse_args()
 
     parts = args.point.split(",")

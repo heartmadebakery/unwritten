@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Collect fresh blind-apprentice responses using Muse models via Muse.
+"""
+RETIRED (Oct 27, 2026): the blind-apprentice design was cut. Not called by
+the core pipeline; kept in the tree as a retired experiment.
+
+Collect fresh blind-apprentice responses using Muse models via Muse.
 
 Each run is a separate `muse exec` invocation — a genuinely fresh model
 context whose entire task input is the apprentice instruction plus the
@@ -36,14 +40,12 @@ from apprentice import strip_wisdom, has_wisdom_section
 
 
 def build_prompt(card_text):
-    """The apprentice instruction with the card slotted into {CARD}."""
     with open(os.path.join(ROOT, "prompts", "apprentice_instruction.txt")) as fh:
         template = fh.read()
     return template.replace("{CARD}", card_text.strip())
 
 
 def one_run(prompt, model):
-    """One fresh `muse exec` call. Returns the model's raw reply text."""
     fd, prompt_path = tempfile.mkstemp(prefix="unwritten_apprentice_", suffix=".txt")
     try:
         with os.fdopen(fd, "w") as fh:
@@ -64,15 +66,11 @@ def one_run(prompt, model):
 
 
 def main():
-    ap = argparse.ArgumentParser(
-        description="Collect fresh blind-apprentice responses (card only).")
-    ap.add_argument("--card", required=True, help="the card markdown file")
-    ap.add_argument("--runs", type=int, default=3,
-                    help="how many fresh apprentice calls to make (default 3)")
-    ap.add_argument("--model", default="muse-wonder-1.0",
-                    help="apprentice model (default muse-wonder-1.0)")
-    ap.add_argument("--out", default="responses.json",
-                    help="where to write the responses JSON")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--card", required=True)
+    ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument("--model", default="muse-wonder-1.0")
+    ap.add_argument("--out", default="responses.json")
     ap.add_argument("--keep-wisdom", action="store_true",
                     help="send the card WITH its wisdom section (the "
                          "wisdom-transfer check). Default: steps only — "
