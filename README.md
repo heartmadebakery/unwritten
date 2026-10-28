@@ -104,3 +104,5 @@ teacher data — samples are fictional.
 - `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real teacher data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.
+- `CHANGELOG.md` — the running changelog, at the repo root. Every
+  commit to `main` updates it in the same commit.
