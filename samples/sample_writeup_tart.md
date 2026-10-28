@@ -1,4 +1,4 @@
-# Nadia's pecan tart — the card
+# Nadia's pecan tart — the write-up
 
 > On the worn measuring cup: "Ha! Forty years of thumbs will do that. I don't need the lines. A cup is a cup — I know where the sugar sits, I can feel the weight of it. My daughter bought me a new one with red letters. It's in the back of the drawer."
 

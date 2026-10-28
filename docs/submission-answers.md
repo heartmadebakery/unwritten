@@ -30,14 +30,14 @@ Leave blank unless entering the viral track.
 > Unwritten Craft records an ordinary lesson — in our demo, a baker of
 > thirty years teaching her son — with no protocol and no steps performed
 > for the machine. Afterwards, the session is transcribed and the steps are
-> drafted into a short card in the teacher's own words, under a strict rule:
-> nothing she didn't say gets added, and every instruction on the card is
+> drafted into a short write-up in the teacher's own words, under a strict rule:
+> nothing she didn't say gets added, and every instruction in the write-up is
 > checked back against the audio. The moments where she corrected him are
 > pulled out as **techniques** — her exact words, each anchored to its
 > clip. Together, the techniques are her **Knack**.
 >
 > What comes out of a session is three things: the lesson video itself,
-> the correction clips with her words, and the written card. (A rendered
+> the correction clips with her words, and the write-up. (A rendered
 > guide for other learners can be assembled from those later; it is
 > optional, not core.) The closing title carries the real count from the
 > real session: "Mom's Bread: N techniques, a knack never written down."
@@ -59,14 +59,14 @@ fine unless the rules say otherwise). Structure, all from the real session:
   this." The correction is the hook.
 - **0:20–1:20** — The ordinary lesson. Corrections accumulate; each one is
   lifted out of the footage and lands on the page as a technique.
-- **1:20–2:20** — The outputs come together: the card in her words, the
+- **1:20–2:20** — The outputs come together: the write-up in her words, the
   correction clips with her voice, the techniques counted.
 - **2:20–3:00** — Two loaves side by side, his beside hers. The title with
   the session's real count. Closing line: "The corrections were the
   knowledge. We kept them."
 
 ## Describe your use of Meta products *
-> **Muse Spark** works backstage. It drafts the instruction card from the
+> **Muse Spark** works backstage. It drafts the write-up from the
 > session transcript under an unusual negative constraint — transcribe,
 > compress, and order, but never add a step, quantity, or technique the
 > teacher didn't say, and preserve her phrasing. The correction moments

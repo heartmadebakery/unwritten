@@ -1,9 +1,9 @@
-# Sample card — FICTIONAL, for process testing only
+# Sample write-up — FICTIONAL, for process testing only
 
 > A made-up teacher and task so the harness can be exercised end to end
 > before any real teacher session. Not real teacher data.
 
-# Rosa's Boule — the card
+# Rosa's Boule — the write-up
 
 1. Dust the top of the dough with flour.
 2. Hold the lame and score one line down the middle.

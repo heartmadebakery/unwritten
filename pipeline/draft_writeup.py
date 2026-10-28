@@ -2,11 +2,10 @@
 
 One of the three core things (Oct 27, 2026): the write-up — her steps in
 her words, usable without rewatching the lesson. Spark runs under
-prompts/card_drafter.md, the stenographer rule: transcribe, compress,
-order — never add. (Filename kept from the earlier card design; what it
-drafts is the write-up.)
+prompts/writeup_drafter.md, the stenographer rule: transcribe, compress,
+order — never add.
 
-Usage: draft_card.py <transcript_file> <writeup_out.md>
+Usage: draft_writeup.py <transcript_file> <writeup_out.md>
 """
 import argparse
 import os
@@ -22,7 +21,7 @@ MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
 
 
 def draft(transcript):
-    with open(os.path.join(ROOT, "prompts", "card_drafter.md")) as fh:
+    with open(os.path.join(ROOT, "prompts", "writeup_drafter.md")) as fh:
         rules = fh.read()
     prompt = (rules + "\n\n=== LESSON TRANSCRIPT ===\n" + transcript.strip())
     prompt += "\n\nDraft the write-up now, following the rules above exactly."
@@ -41,12 +40,12 @@ def draft(transcript):
             pass
     if proc.returncode != 0:
         sys.exit(f"Spark drafting failed: {proc.stderr[-300:]}")
-    card = proc.stdout.strip()
-    if not re.search(r"^\s*\d+[.)]\s+\S", card, re.MULTILINE):
+    writeup = proc.stdout.strip()
+    if not re.search(r"^\s*\d+[.)]\s+\S", writeup, re.MULTILINE):
         # Never write a non-write-up as writeup.md (Wonder review).
         sys.exit("Spark drafting produced no numbered steps — refusing "
                  "to write it as a write-up.")
-    return card
+    return writeup
 
 
 def main():
@@ -55,9 +54,9 @@ def main():
     ap.add_argument("out")
     args = ap.parse_args()
     with open(args.transcript) as fh:
-        card = draft(fh.read())
+        writeup = draft(fh.read())
     with open(args.out, "w") as fh:
-        fh.write(card + "\n")
+        fh.write(writeup + "\n")
     print(f"write-up drafted -> {args.out}")
 
 

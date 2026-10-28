@@ -1,7 +1,7 @@
 # Sample transcript — FICTIONAL, for process testing only
 
 > A made-up teacher ("Rosa") explaining how she scores a boule, so the
-> card drafter (Muse Spark, constrained by `prompts/card_drafter.md`)
+> write-up drafter (Muse Spark, constrained by `prompts/writeup_drafter.md`)
 > can be exercised before any real teacher session. Her explanation is
 > deliberately the way experts actually talk: feel-words, skipped physics.
 

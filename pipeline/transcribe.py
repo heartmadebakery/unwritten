@@ -53,7 +53,7 @@ def transcribe(media):
     text = " ".join(s["text"] for s in segs).strip()
     if not text:
         # An empty transcript must never become an "empty teacher" the
-        # card drafter then invents steps for (Wonder review).
+        # write-up drafter then invents steps for (Wonder review).
         raise RuntimeError(
             f"no speech recognized in {os.path.basename(media)} "
             f"(language={info.language}, p={info.language_probability:.2f}) — "

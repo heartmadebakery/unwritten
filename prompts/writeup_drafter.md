@@ -17,7 +17,7 @@ the lesson. Nothing more.
    fighting you" — never "knead until smooth and elastic." Their words
    carry feel that textbook language erases.
 3. **Stay terse in the steps.** Numbered, one line each, no
-   introduction — like notes jotted on an index card.
+   introduction — like short notes jotted down.
 4. **Capture the judgment, in a separate section.** Judgment the teacher
    voiced *during the lesson* — how they know when it's right, what
    goes wrong, what they changed over the years, who taught them —

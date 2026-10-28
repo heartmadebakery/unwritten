@@ -14,7 +14,7 @@ protocol, no step names, nothing performed for the machine. Stages:
                    transcript (skipped with --transcript FILE, which
                    must be timestamped "[mm:ss] text" lines).
   3. write-up    — Muse Spark drafts the write-up under the
-                   stenographer rule (prompts/card_drafter.md)
+                   stenographer rule (prompts/writeup_drafter.md)
                    -> writeup.md. Core thing #3.
   4. corrections — Muse Spark finds the correction moments
                    (prompts/correction_finder.md) -> corrections.json
@@ -25,7 +25,7 @@ protocol, no step names, nothing performed for the machine. Stages:
 
 The run exits non-zero unless a write-up AND a corrections list were
 produced THIS run. Stale outputs from a previous run are deleted up
-front. The optional page/guide (pipeline/handiton.py) is NOT part of
+front. The optional page/guide (pipeline/make_page.py) is NOT part of
 this pipeline — it can be generated later, from these outputs, when
 there is a recipient for it. The retired apprentice/SAM code is not
 invoked here at all.
@@ -209,7 +209,7 @@ def main():
         timestamped_text = fh.read()
 
     # 3. write-up — core thing #3
-    if run([sys.executable, os.path.join(HERE, "draft_card.py"),
+    if run([sys.executable, os.path.join(HERE, "draft_writeup.py"),
             timestamped_path, work("writeup.md")], "write-up") is not None \
             and os.path.exists(work("writeup.md")):
         produced.add("writeup.md")

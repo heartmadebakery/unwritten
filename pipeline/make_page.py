@@ -10,7 +10,7 @@ It consumes only core outputs: writeup.md (her steps + her judgment)
 and corrections.json (the techniques, each with her exact words and,
 where run_pipeline cut them, a clip file under clips/).
 
-Usage: handiton.py --work DIR --title "Mom's Bread"
+Usage: make_page.py --work DIR --title "Mom's Bread"
 Reads <work>/writeup.md and <work>/corrections.json; writes
 <work>/page.html.
 """

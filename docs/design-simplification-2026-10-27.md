@@ -71,17 +71,30 @@ old seven stages. Aligned the same evening:
 - `pipeline/ingest.py` rewritten: classification by extension only;
   the lesson is the largest media file in the folder. Recorder step
   names (`teach`/`react`/`attempt`/…) are gone.
-- `pipeline/draft_card.py`: the recorder-era `--wisdom` Q&A input is
+- `pipeline/draft_writeup.py`: the recorder-era `--wisdom` Q&A input is
   removed; it drafts the write-up from the lesson transcript alone.
-  `prompts/card_drafter.md` simplified to match (session-protocol
+  `prompts/writeup_drafter.md` simplified to match (session-protocol
   rules — post-reaction Q&A, worn-tool opening question — removed).
 - `pipeline/transcribe.py` now also writes the timestamped transcript
   the correction finder consumes.
-- `pipeline/handiton.py` rewritten as the optional page generator over
+- `pipeline/make_page.py` rewritten as the optional page generator over
   core outputs only (write-up + corrections + clips); its apprentice
   overlay section is gone.
 - `harness/`, `pipeline/sam_overlay.py`, `pipeline/frames.py` carry
   RETIRED headers and are invoked by nothing in the core flow.
+
+## Addendum (Oct 27, night) — naming made consistent
+
+At the owner's order, every living name now matches what the thing is:
+`pipeline/draft_card.py` → `pipeline/draft_writeup.py`,
+`prompts/card_drafter.md` → `prompts/writeup_drafter.md`,
+`pipeline/handiton.py` → `pipeline/make_page.py`, and
+`samples/sample_card*.md` → `samples/sample_writeup*.md`, with all
+references in living code, docs, and samples updated (including the
+submission draft, which now says "write-up" throughout). The retired
+apprentice-era code and the dated Oct 26 test logs keep the word
+"card" — in that design the artifact genuinely was a card, and those
+files are the historical record of it.
 
 ## Undecided
 

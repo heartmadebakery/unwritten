@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(ROOT, "pipeline"))
 
 import ingest as ingest_mod
 import run_pipeline as rp
-import handiton
+import make_page
 
 
 class TestIngest(unittest.TestCase):
@@ -75,7 +75,7 @@ class TestParseWriteup(unittest.TestCase):
         md = ("# Mother's Bread — the write-up\n\n"
               "1. Mix the flour.\n2. Knead until it stops fighting you.\n\n"
               "## What Mother knows\n\n- Warm water, like bath water.\n")
-        steps, wisdom = handiton.parse_writeup(md)
+        steps, wisdom = make_page.parse_writeup(md)
         self.assertEqual(steps, ["Mix the flour.",
                                  "Knead until it stops fighting you."])
         self.assertEqual(wisdom, ["Warm water, like bath water."])

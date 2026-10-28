@@ -84,15 +84,15 @@ teacher data — samples are fictional.
   core things: `run_pipeline.py` takes one ordinary lesson file in and
   produces the write-up and the correction clips out. `ingest.py`
   finds the lesson (largest media file in the folder) →
-  `transcribe.py` (local faster-whisper) → `draft_card.py` (Muse
+  `transcribe.py` (local faster-whisper) → `draft_writeup.py` (Muse
   Spark, stenographer prompt) drafts the write-up →
   `find_corrections.py` (Spark, `prompts/correction_finder.md`)
   surfaces the correction moments, which the runner cuts from the
-  lesson into `clips/`. `handiton.py` renders the optional page/guide
+  lesson into `clips/`. `make_page.py` renders the optional page/guide
   from those outputs — later, not core, and the core never calls it.
   `sam_overlay.py` and `frames.py` belong to the retired apprentice
   design. See [the pipeline guide](docs/PIPELINE.md).
-- `prompts/` — `card_drafter.md` carries the stenographer rule;
+- `prompts/` — `writeup_drafter.md` carries the stenographer rule;
   `correction_finder.md` defines a correction. `apprentice.md` /
   `apprentice_instruction.txt` are retired with the apprentice design.
 - `harness/` — the retired apprentice process-test harness, kept for the
@@ -101,6 +101,6 @@ teacher data — samples are fictional.
   `app/android/` (native Android port). Capture turned out to be a
   commodity — an ordinary phone camera is the recommended recorder; see
   [the Android work log](docs/android-app-worklog.md).
-- `samples/` — fictional sample cards and transcripts for testing.
+- `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real teacher data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.

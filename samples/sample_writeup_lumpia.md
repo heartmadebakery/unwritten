@@ -1,4 +1,4 @@
-# Lola Cely's Lumpia — the card
+# Lola Cely's Lumpia — the write-up
 
 > On the worn kawali: "That is not dirty, that is the kawali's life. Sixty years of oil. You wash it gentle, never scrub it shiny. My apo wants to buy me a nonstick — no. This one knows already how the lumpia likes it."
 

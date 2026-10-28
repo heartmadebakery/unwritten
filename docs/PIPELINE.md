@@ -13,7 +13,7 @@ THE LESSON VIDEO — kept whole (core thing #1)
    │  transcribe.py — local faster-whisper
    ▼
 transcript.txt + transcript_timestamped.txt ("[mm:ss] text" per segment)
-   ├─► draft_card.py ─► writeup.md        (Muse Spark, stenographer
+   ├─► draft_writeup.py ─► writeup.md        (Muse Spark, stenographer
    │                                        rule) — THE WRITE-UP (#3)
    └─► find_corrections.py ─► corrections.json + corrections.md
                                             (Muse Spark), and each
@@ -46,10 +46,9 @@ stdlib + ffmpeg + Muse calls.
   trades speed for accuracy. Negations matter: a dropped "don't"
   inverts a step, so the write-up's imperatives get checked back
   against this transcript.
-- **The write-up** is `draft_card.py`: transcript + the stenographer
-  prompt (`prompts/card_drafter.md`) into Muse Spark via Muse.
-  Her steps in her words; nothing added. (The filename predates the
-  rename from "card" to "write-up.")
+- **The write-up** is `draft_writeup.py`: transcript + the stenographer
+  prompt (`prompts/writeup_drafter.md`) into Muse Spark via Muse.
+  Her steps in her words; nothing added.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, her exact words, what she was
@@ -63,7 +62,7 @@ stdlib + ffmpeg + Muse calls.
 
 ## Not in this pipeline
 
-- **The page/guide** (`pipeline/handiton.py`) — optional, later, for a
+- **The page/guide** (`pipeline/make_page.py`) — optional, later, for a
   recipient who wasn't in the room. It assembles `writeup.md` +
   `corrections.json` + `clips/` into one HTML page. The core never
   calls it and nothing in the core depends on it.
