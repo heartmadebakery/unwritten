@@ -3,14 +3,12 @@ package org.tinio.unwritten;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
-import java.util.Random;
 
+/** The filename contract (single source of truth): one lesson, one file.
+ *  The pipeline takes the largest media file in the lesson folder as the
+ *  lesson, so takes need no step names or session codes — only a
+ *  timestamp that can never collide. */
 public final class Names {
-
-    public static final String[] CODE_WORDS = {
-            "PLUM", "BREAD", "OVEN", "RIVER", "MANGO",
-            "LODGE", "CORAL", "BASIL", "HARBOR", "MEADOW"
-    };
 
     private Names() {
     }
@@ -34,28 +32,11 @@ public final class Names {
         return base + "-" + ms;
     }
 
-    public static String clipName(String step, String code, String ext) {
+    public static String lessonName(String ext) {
         String e = ext == null ? "" : ext;
         if (e.startsWith(".")) {
             e = e.substring(1);
         }
-        return "unwritten_" + step + "_" + code + "_" + stamp() + "." + e;
-    }
-
-    public static String brollName(String code) {
-        return "unwritten_broll_" + code + "_" + stamp() + ".mp4";
-    }
-
-    public static String dialogueName(String code) {
-        return "unwritten_dialogue_" + code + "_" + stamp() + ".wav";
-    }
-
-    public static String photoName(String step, String code) {
-        return "unwritten_" + step + "_" + code + "_" + stamp() + ".jpg";
-    }
-
-    public static String newCode(Random random) {
-        Random r = random != null ? random : new Random();
-        return CODE_WORDS[r.nextInt(CODE_WORDS.length)];
+        return "unwritten_lesson_" + stamp() + "." + e;
     }
 }
