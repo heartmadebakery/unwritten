@@ -8,6 +8,29 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-28
 
+### Added
+- **Optional Bunny Stream upload in both recorders.** On the
+  owner's order, web (`app/recorder/`) and Android (`app/android/`)
+  can now, when turned on, upload a copy of each video lesson to
+  Bunny Stream (resumable TUS, auto-resume) and surface a ▶
+  streamed-playback (HLS) link per lesson. Local-first is untouched:
+  the on-device save always happens first, Bunny only ever receives
+  a copy, and failures leave the take safe with a retry path. Keys
+  are handled two ways, per Bunny's security guidance: a new tiny
+  Cloudflare Worker (`app/bunny-signer/`) can hold the library API
+  key and issue presigned credentials (recommended), or the key can
+  live on the teacher's device only (web `localStorage`, Android
+  app-private `SharedPreferences`). Android gains the INTERNET
+  permission for this alone and a framework-only `BunnyUploader`;
+  its README's "no network calls" note is now scoped to Bunny-off.
+  Bunny has no live ingest, so this is store-then-stream, not live
+  broadcast — the same workflow Alfred/Ring gate behind manual
+  export, here one tap. New `BunnyWebTests` / `BunnyAndroidTests` /
+  `BunnySignerTests` contract tests; full suite 45 tests green,
+  TUS signature verified against Bunny's documented recipe, APK
+  rebuilt with the INTERNET permission, installed on the Pixel 4,
+  and the Bunny section verified in the on-device UI.
+
 ### Changed
 - **Base device: Pixel 4.** On the owner's order, the Android
   recorder now targets the Google Pixel 4 as its base device and
