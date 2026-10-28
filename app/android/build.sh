@@ -19,7 +19,7 @@ NDK="${ANDROID_NDK_HOME:-$SDK/ndk/26.1.10909125}"
 BT="$SDK/build-tools/34.0.0"
 AJAR="$SDK/platforms/android-34/android.jar"
 OUT="$HERE/build-manual"
-MIN_API=26
+MIN_API=29
 
 command -v javac >/dev/null || { echo "javac not found — set JAVA_HOME (JDK 17)"; exit 1; }
 [ -f "$AJAR" ] || { echo "android.jar missing at $AJAR"; exit 1; }
@@ -31,7 +31,7 @@ NINJA="$(command -v ninja || echo "$NDK/prebuilt/linux-x86_64/bin/ninja")"
 rm -rf "$OUT"; mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex" "$OUT/lib"
 
 echo "== native (CMake/NDK) =="
-for ABI in arm64-v8a armeabi-v7a; do
+for ABI in arm64-v8a; do
   "$CMAKE" -S "$APP/src/main/cpp" -B "$OUT/cpp-$ABI" -G Ninja \
     -DCMAKE_MAKE_PROGRAM="$NINJA" \
     -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \

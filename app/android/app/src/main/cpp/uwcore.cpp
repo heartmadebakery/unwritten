@@ -232,8 +232,11 @@ bool WavRecorder::Start(const std::string& path) {
         AAudioStreamBuilder_setPerformanceMode(
                 builder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
         AAudioStreamBuilder_setSharingMode(builder, AAUDIO_SHARING_MODE_SHARED);
-        /* AAudioStreamBuilder_setInputPreset needs API 28; we target 26
-           (old Android). The preset is only a hint — GENERIC is the default. */
+        /* minSdk is 29 (Pixel 4 baseline), so the API 28+ input preset
+           is always available: voice recognition, since the WAV this
+           recorder writes is the dialogue track Whisper transcribes. */
+        AAudioStreamBuilder_setInputPreset(
+                builder, AAUDIO_INPUT_PRESET_VOICE_RECOGNITION);
 
         result = AAudioStreamBuilder_openStream(builder, &stream_);
         AAudioStreamBuilder_delete(builder);

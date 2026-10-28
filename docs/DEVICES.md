@@ -32,9 +32,10 @@ the app clips folder plus Export to `Downloads/Unwritten` on Android).
 
 ## Which device
 
-Whatever is at hand. A modern phone propped at her hands is the
-reference setup; a laptop webcam works; an old phone works through its
-own camera app. A second device is no longer part of the design — one
+The base device is a **Google Pixel 4** propped at her hands — that
+is the reference setup, and the Android app's floor (Android 10 /
+API 29, arm64). A laptop webcam works for the web recorder; an old
+phone works through its own camera app. A second device is no longer part of the design — one
 lesson file is what the pipeline consumes, and an ordinary phone camera
 with no recorder app at all produces exactly that file too.
 

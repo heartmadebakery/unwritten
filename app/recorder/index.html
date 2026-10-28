@@ -248,8 +248,9 @@ function pickMime(types){
 function startRec(){
   if(!state.stream){ openCamera().then(function(){ if(state.stream) startRec(); }); return; }
   if(!CAPS.mediaRecorder){ showCaptureControls(); return; }
-  /* VP8 before VP9: old Android hardware handles VP8 far more kindly.
-     video/mp4 in the list is what old/new Safari accepts. */
+  /* VP8 before VP9: the Pixel 4 base device encodes VP8 in hardware
+     and it is the most compatible WebM codec. video/mp4 in the list is
+     what old/new Safari accepts. */
   var mime = pickMime(["video/webm;codecs=vp8,opus","video/webm;codecs=vp9,opus","video/webm","video/mp4"]);
   state.chunks = [];
   try{ state.recorder = new MediaRecorder(state.stream, mime ? {mimeType:mime, videoBitsPerSecond:2500000} : undefined); }

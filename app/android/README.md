@@ -4,8 +4,9 @@ The native port of the [web recorder](../recorder/). Same single job —
 record one lesson, stop, keep the file — and the same filename contract
 (`unwritten_lesson_<timestamp>.mp4`), so lessons from this app drop
 straight into the existing pipeline (`pipeline/ingest.py`) unchanged.
-Built for old hardware: **minSdk 26** (Android 8.0 — an
-old-Android-era OS from 2017). No AndroidX, no Kotlin, no third-party
+Base device: **Google Pixel 4**. **minSdk 29** (Android 10 — the
+OS the Pixel 4 shipped with in 2019); the app is arm64-v8a only,
+matching the Pixel 4. No AndroidX, no Kotlin, no third-party
 libraries — framework APIs and one C++ library only. The APK is
 ~0.5 MB.
 
@@ -25,7 +26,7 @@ does, including iPhones). Native Android wins where the web cannot:
 
 - **Hardware encoding** — video goes through Camera2 + MediaRecorder
   (H.264/AAC, capped at 720p / 4 Mbps: plenty for hands-and-work
-  footage, and kind to old storage and batteries).
+  footage, and kind to storage and batteries).
 - **Native core (C++, retained)** — `libuwcore` still builds and links:
   CameraEngine's per-frame luma analysis (mean luma plus an 8×8 grid)
   runs natively when a listener is attached. The AAudio dialogue-track
@@ -71,13 +72,13 @@ manual route; AGP's `namespace` says the same thing.
 
 ## Device notes
 
-- Permissions: CAMERA + RECORD_AUDIO (plus WRITE_EXTERNAL_STORAGE only on
-  API ≤ 28, and only when exporting). No INTERNET permission — the app
-  never makes a network call.
+- Permissions: CAMERA + RECORD_AUDIO only. Export uses MediaStore
+  Downloads (API 29+), which needs no storage permission. No
+  INTERNET permission — the app never makes a network call.
 - Lessons live in the app's external files dir (`Android/data/
   org.tinio.unwritten/files/clips`) — visible over USB, no permission
   needed. **Export** copies all lessons to `Downloads/Unwritten`.
-- Verified so far: clean build, signature, badging (sdkVersion 26),
-  JNI symbol table. On-device shakeout (old Android phone) is the next step —
+- Verified so far: clean build, signature, badging (sdkVersion 29),
+  JNI symbol table. On-device shakeout (Pixel 4) is the next step —
   Camera2 session combinations and AAudio behavior vary by device and
   are the two things to watch.

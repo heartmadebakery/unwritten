@@ -33,7 +33,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Careful Camera2 wrapper for old Android devices.
+ * Careful Camera2 wrapper for the Pixel 4 base device (and anything
+ * at or above its Android 10 / API 29 baseline).
  * All camera work runs on a single HandlerThread named "uw-cam".
  * No public method throws.
  */
@@ -858,7 +859,7 @@ public final class CameraEngine {
     private boolean hasAudioPermission() {
         try {
             if (appContext == null) return false;
-            // RECORD_AUDIO is a runtime permission (API 23+); minSdk is 26.
+            // RECORD_AUDIO is a runtime permission (API 23+); minSdk is 29.
             return appContext.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
                     == PackageManager.PERMISSION_GRANTED;
         } catch (Throwable t) {

@@ -85,5 +85,39 @@ class AndroidRecorderTests(unittest.TestCase):
                          "Prefs only stored role/code/step/apprentice line")
 
 
+class Pixel4BaselineTests(unittest.TestCase):
+    """Base device (Oct 28): Google Pixel 4 — minSdk 29, arm64 only.
+
+    The previous minSdk 26 / old-Android target is retired; nothing in
+    the live Android code may keep a pre-29 fallback alive for it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        root = os.path.join(os.path.dirname(__file__), "..")
+        cls.gradle = read(os.path.join(root, "app", "android", "app", "build.gradle"))
+        cls.build_sh = read(os.path.join(root, "app", "android", "build.sh"))
+        cls.manifest = read(os.path.join(root, "app", "android", "app", "src",
+                                         "main", "AndroidManifest.xml"))
+        cls.main = read(MAIN)
+
+    def test_min_sdk_is_pixel4_launch_os(self):
+        self.assertIn("minSdk 29", self.gradle)
+        self.assertIn("MIN_API=29", self.build_sh)
+
+    def test_arm64_only_like_the_pixel4(self):
+        self.assertIn('abiFilters "arm64-v8a"', self.gradle)
+        self.assertNotIn("armeabi-v7a", self.gradle)
+        self.assertNotIn("armeabi-v7a", self.build_sh)
+
+    def test_no_pre29_storage_fallback(self):
+        # MediaStore Downloads (API 29+) needs no storage permission,
+        # and the legacy external-storage export path is deleted.
+        self.assertNotIn("WRITE_EXTERNAL_STORAGE", self.manifest)
+        self.assertNotIn("WRITE_EXTERNAL_STORAGE", self.main)
+        self.assertNotIn("getExternalStoragePublicDirectory", self.main)
+        self.assertNotIn("SDK_INT", self.main)
+
+
 if __name__ == "__main__":
     unittest.main()

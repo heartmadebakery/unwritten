@@ -6,6 +6,35 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-10-28
+
+### Changed
+- **Base device: Pixel 4.** On the owner's order, the Android
+  recorder now targets the Google Pixel 4 as its base device and
+  the previous Pixel 2 / minSdk 26 target is retired. **minSdk 29**
+  (Android 10, the Pixel 4's launch OS) in `app/build.gradle` and
+  `build.sh`; **arm64-v8a only** (the Pixel 4 is 64-bit only), so
+  the APK carries one native library and drops to ~269 KB.
+  Everything that existed only for the old target is removed, not
+  left dormant: the `WRITE_EXTERNAL_STORAGE` (maxSdk 28) permission,
+  the API ≤28 export-permission gate, and the legacy
+  external-storage export path — export is MediaStore Downloads
+  only, as it already was on API 29+. The AAudio
+  voice-recognition input preset (API 28+, previously unavailable
+  at minSdk 26) is now actually set for the dialogue WAV. Web
+  recorder codec rationale, `docs/DEVICES.md` (Pixel 4 = reference
+  setup), the Android README, and the work log updated to match;
+  the work log's stale shakeout checklist (roles / steps /
+  companion) rewritten to the streamlined one-job flow, and its
+  Oct 26 minSdk 26 narrative kept as superseded history. New
+  `Pixel4BaselineTests` in `tests/test_recorder_streamlined.py`
+  pin the baseline (minSdk 29, arm64 only, no pre-29 storage
+  fallback). Verified: `build.sh` clean, APK badging
+  **sdkVersion 29**, permissions CAMERA / RECORD_AUDIO / WAKE_LOCK
+  only, signature OK, all 36 tests pass. The recorder's job is
+  unchanged and in sync with the docs goal: record one lesson,
+  stop, keep the file.
+
 ## 2026-10-27
 
 ### Changed

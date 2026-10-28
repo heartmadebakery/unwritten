@@ -10,6 +10,20 @@ history, the evidence, and the open items.
 State at this log: app committed in `0c0ed9d` (19 files). Prior repo
 HEAD was `b4f70b7`.
 
+## Update — 2026-10-28: base device is now the Pixel 4
+
+Owner's order, Oct 28: **the base device is the Google Pixel 4; the
+previous old-Android (minSdk 26 / Android 8) target is retired and
+no longer a design constraint.** Everything below that describes the
+Oct 26 build (minSdk 26, armeabi-v7a, the API ≤28 export path, the
+multi-role flow) is history — accurate for that build, superseded
+now. Current state: **minSdk 29** (Android 10, the Pixel 4's launch
+OS), **arm64-v8a only**, no `WRITE_EXTERNAL_STORAGE` permission
+(export is MediaStore-only), the AAudio voice-recognition input
+preset (API 28+) is now called, and the pre-29 export fallback is
+deleted. The app's one job is unchanged and matches the docs goal
+(README / `docs/DEVICES.md`): record one lesson, stop, keep the file.
+
 ## The APK
 
 - **In this repo:** `app/android/unwritten-recorder.apk` (508,525
@@ -19,7 +33,7 @@ HEAD was `b4f70b7`.
   https://muse.ai/files/471196432735854/3297278657123126/nek5tru1jl7ontar9akqpok0/unwritten-recorder.apk
   — expires **Oct 29, 2026, 02:47 UTC**. Muse file links expire; the
   repo copy does not.
-- Install on the old Android phone: `adb install -r app/android/unwritten-recorder.apk`
+- Install on the Pixel 4: `adb install -r app/android/unwritten-recorder.apk`
   (USB debugging on; use the PC's plain USB-C port for the phone —
   a USB4/Thunderbolt port gains
   nothing, the phone is USB 5 Gbps).
@@ -170,13 +184,13 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
 ## NOT done yet — the honest gaps
 
 - **No on-device run.** There is no emulator in the sandbox (no KVM),
-  so nothing has executed on a real old Android phone yet. First shakeout
-  checklist: install; grant/deny each permission and confirm the
-  video-only fallback; record one clip per step in Recorder role;
-  one Companion session against a lead device and confirm the beep +
-  flash land inside the take and `sync_marks_<CODE>.json` appears;
-  one native dialogue WAV and confirm the pipeline transcribes it;
-  Export and confirm files appear in `Downloads/Unwritten`.
+  so nothing has executed on a real Pixel 4 yet. First shakeout
+  checklist (streamlined flow — one job, no roles or steps): install;
+  grant/deny each permission and confirm recording still behaves;
+  record one lesson and confirm it is saved as
+  `unwritten_lesson_<timestamp>.mp4`; Export and confirm the file
+  appears in `Downloads/Unwritten`; run the pipeline on it and
+  confirm it transcribes.
 - **Gradle route untested** (see above — sandbox-only blocker).
   The first build on a modern PC may surface small AGP complaints; the manifest
   `package=` attribute coexists with `namespace` by design.
@@ -186,5 +200,5 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
   create one (and keep it OUT of this repo) before distribution
   beyond sideloading.
 - Camera2 session combinations and AAudio behavior vary per device —
-  if the old Android phone misbehaves, those two subsystems are where to look
+  if the Pixel 4 misbehaves, those two subsystems are where to look
   first (CameraEngine's session setup; uwcore's stream config).

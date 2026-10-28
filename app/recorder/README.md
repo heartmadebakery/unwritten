@@ -36,10 +36,10 @@ and adapts on its own:
 - **No silent lesson loss** — leaving the page mid-recording stops and
   keeps the take; an empty or failed take is reported on screen, never
   swallowed.
-- **Old-hardware codec order** — VP8 before VP9 (old Android hardware
-  encodes VP8 far more kindly), `video/mp4` included for Safari, a
-  2.5 Mbps cap, and a no-timeslice retry if `start(250)` throws (old
-  Safari).
+- **Codec order** — VP8 before VP9 (the Pixel 4 base device encodes
+  VP8 in hardware, and it is the most compatible WebM codec),
+  `video/mp4` included for Safari, a 2.5 Mbps cap, and a no-timeslice
+  retry if `start(250)` throws (old Safari).
 - **Mic failure ≠ video failure** — if the combined audio+video
   request is denied, the app retries video-only, and raises the red
   banner rather than passing silently.

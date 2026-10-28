@@ -7,9 +7,7 @@ import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
-import android.os.Environment;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.provider.MediaStore;
@@ -28,7 +26,6 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -52,7 +49,6 @@ public class MainActivity extends Activity {
     private static final int AMBER = Color.parseColor("#E8A13A");
     private static final int RED = Color.parseColor("#C0392B");
     private static final int PERM_RECORD = 7;
-    private static final int PERM_EXPORT = 8;
 
     private File clipsDir;
     private final Handler handler = new Handler();
@@ -181,9 +177,6 @@ public class MainActivity extends Activity {
         if (req == PERM_RECORD) {
             if (granted) { openPreview(); if (pendingRecord) { pendingRecord = false; toggleRecord(); } }
             else { pendingRecord = false; status.setText("Camera and microphone permission denied — cannot record the lesson."); }
-        } else if (req == PERM_EXPORT) {
-            if (granted) doExport();
-            else Toast.makeText(this, "Export failed: WRITE_EXTERNAL_STORAGE permission denied", Toast.LENGTH_LONG).show();
         }
     }
 
@@ -268,11 +261,8 @@ public class MainActivity extends Activity {
     }
 
     private void exportClips() {
-        if (Build.VERSION.SDK_INT <= 28
-            && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, PERM_EXPORT);
-            return;
-        }
+        // minSdk is 29 (Pixel 4 baseline): MediaStore Downloads needs
+        // no storage permission, so export is unconditional.
         doExport();
     }
 
@@ -281,33 +271,22 @@ public class MainActivity extends Activity {
         if (files.isEmpty()) { Toast.makeText(this, "Exported 0 lessons to Downloads/Unwritten", Toast.LENGTH_LONG).show(); return; }
         int count = 0;
         try {
-            if (Build.VERSION.SDK_INT >= 29) {
-                ContentResolver cr = getContentResolver();
-                for (File f : files) {
-                    ContentValues cv = new ContentValues();
-                    cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
-                    cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
-                    cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
-                    cv.put(MediaStore.Downloads.IS_PENDING, 1);
-                    Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
-                    if (uri == null) throw new Exception("MediaStore insert failed for " + f.getName());
-                    OutputStream out = cr.openOutputStream(uri);
-                    if (out == null) throw new Exception("Could not open output for " + f.getName());
-                    FileInputStream in = new FileInputStream(f);
-                    copyStream(in, out); in.close(); out.close();
-                    ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
-                    cr.update(uri, done, null, null);
-                    count++;
-                }
-            } else {
-                File dir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "Unwritten");
-                //noinspection ResultOfMethodCallIgnored
-                dir.mkdirs();
-                for (File f : files) {
-                    FileInputStream in = new FileInputStream(f);
-                    FileOutputStream out = new FileOutputStream(new File(dir, f.getName()));
-                    copyStream(in, out); in.close(); out.close(); count++;
-                }
+            ContentResolver cr = getContentResolver();
+            for (File f : files) {
+                ContentValues cv = new ContentValues();
+                cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
+                cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
+                cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
+                cv.put(MediaStore.Downloads.IS_PENDING, 1);
+                Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+                if (uri == null) throw new Exception("MediaStore insert failed for " + f.getName());
+                OutputStream out = cr.openOutputStream(uri);
+                if (out == null) throw new Exception("Could not open output for " + f.getName());
+                FileInputStream in = new FileInputStream(f);
+                copyStream(in, out); in.close(); out.close();
+                ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
+                cr.update(uri, done, null, null);
+                count++;
             }
             Toast.makeText(this, "Exported " + count + " lessons to Downloads/Unwritten", Toast.LENGTH_LONG).show();
         } catch (Throwable e) {
