@@ -8,6 +8,18 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-27
 
+### Changed
+- **The recorders, streamlined to match the simplified design.** Both
+  recorders (`app/recorder/`, `app/android/`) now have one job: record
+  one lesson, stop, keep the file. The three roles (Interviewer /
+  Recorder / Companion), the four-step session protocol, the apprentice
+  line, session codes, companion sync, TTS prompts, photos, and session
+  manifests are removed; every take is `unwritten_lesson_<timestamp>`.
+  The no-loss engineering stays: IndexedDB vault + download copy and
+  the native-app fallback on the web, Camera2/MediaRecorder capture
+  and Downloads export on Android. `Prefs.java` deleted; covered by
+  `tests/test_recorder_streamlined.py`.
+
 ### Added
 - **This changelog**, compiled retroactively from the commit history.
 - **Correction finder** — `pipeline/find_corrections.py` +

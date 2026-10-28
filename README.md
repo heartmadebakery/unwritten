@@ -97,10 +97,11 @@ teacher data — samples are fictional.
   `apprentice_instruction.txt` are retired with the apprentice design.
 - `harness/` — the retired apprentice process-test harness, kept for the
   record. Its tests still run (`python3 -m unittest discover -s tests`).
-- `app/` — capture experiments: `app/recorder/` (single-file web app) and
-  `app/android/` (native Android port). Capture turned out to be a
-  commodity — an ordinary phone camera is the recommended recorder; see
-  [the Android work log](docs/android-app-worklog.md).
+- `app/` — the recorder, in two forms: `app/recorder/` (single-file web
+  app) and `app/android/` (native Android port). Both have one job —
+  record one lesson, stop, keep the file; an ordinary phone camera with
+  no app produces exactly the same lesson file and works just as well.
+  See [the Android work log](docs/android-app-worklog.md).
 - `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real teacher data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.

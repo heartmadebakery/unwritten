@@ -70,5 +70,6 @@ stdlib + ffmpeg + Muse calls.
   `pipeline/sam_overlay.py`, `pipeline/frames.py`,
   `prompts/apprentice*`. Cut Oct 27, 2026; kept in the tree as retired
   experiments, invoked by nothing here.
-- **The recorder apps** (`app/`) — frozen capture experiments. An
-  ordinary phone camera is the recorder.
+- **The recorder apps** (`app/`) — a single-mode recorder (record one
+  lesson, stop, keep the file). An ordinary phone camera produces the
+  same lesson file and works just as well.
