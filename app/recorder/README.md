@@ -1,78 +1,48 @@
-# The Apprentice recorder (app/recorder/index.html)
+# The recorder (app/recorder/index.html)
 
-A single-file web app that turns whatever device is at hand into the
-"robot apprentice" for a teacher session. Plain HTML/CSS/JS — no build
-step, no dependencies, no network calls. Everything is recorded and
-stored **on the device only** (IndexedDB, plus a download copy of each
-clip).
+A single-file web app with one job: **record one lesson, stop, keep the
+file.** Plain HTML/CSS/JS — no build step, no dependencies, no network
+calls. Everything is recorded and stored **on the device only**
+(IndexedDB, plus a download copy of each take).
 
-## Three roles (v6) — see `docs/DEVICES.md` for the full guide
+There are no roles, steps, prompts, or session codes. The teacher
+teaches the way she would anyway; afterwards the pipeline transcribes
+the take, drafts the write-up in her words, and surfaces the
+corrections. It picks the lesson as the largest media file in the
+folder, so the single take is all it needs. Takes are named
+`unwritten_lesson_<YYYYMMDD-HHMMSS-mmm>.<ext>`.
 
-At startup the app probes the device (in-page recording? clip vault?
-robot voice? screen size?), shows what it found, and suggests a role.
-The holder can override the suggestion, and the choice persists.
+## How it adapts (no choices to make)
 
-- **Interviewer** — runs the whole guided session: spoken prompts,
-  filming, an editable apprentice line for step 3, and a session manifest
-  export. On big screens it uses the wide layout plus keyboard control
-  (←/→ steps, R records). A modern laptop is the reference device.
-- **Recorder** — the same four steps, minimal. Where in-page recording
-  does not exist (old Safari on an old iPhone, `file://`, locked-down
-  browsers), per-step buttons open the native camera / voice-memo apps,
-  and the takes land in the library named by step.
-- **Companion** — a second perspective. It takes a session code plus a
-  one-tap sync (3-2-1 countdown; a beep and a screen flash at zero are the
-  alignment marker), then records one long take: either a second camera
-  angle (`unwritten_broll_<CODE>_…`) or an audio-only dialogue track
-  (`unwritten_dialogue_<CODE>_…`).
+At startup the app probes the device (in-page recording? clip vault?)
+and adapts on its own:
 
-## The four captures (interviewer / recorder)
+- **In-page recording available:** a camera preview, one **Record the
+  lesson** / **Stop** button with a running timer, and a lessons
+  library below. If the stream ends up video-only, a red **No
+  microphone** banner says so — her words are the whole point.
+- **In-page recording unavailable** (old Safari, `file://`,
+  locked-down browsers): **Record video** / **Record audio** buttons
+  open the device's own camera / voice-memo apps, and the takes land
+  in the same library, named the same way.
 
-1. **Show me** — film the teacher doing the move once, unexplained.
-2. **Teach me** — film the explanation. The screen supplies the worn-tool
-   opening question and the "index card" framing, warns the holder not to
-   help fill the gaps, and holds all other questions for later (wisdom
-   timing — Claude review fix, Oct 26).
-3. **I try** — the screen shows the blind apprentice's commitment for the
-   holder to read aloud; film the teacher's reaction and correction. The
-   line is an editable field on the home screen: paste the real apprentice
-   output for the session's craft — the bread line is only the prefilled
-   example.
-4. **Your try** — the wisdom questions open this step (asked only now,
-   after her reaction). Then the student attempts the move from the card
-   only. Finally, photograph both results side by side.
+## Design decisions (kept from the Oct 26 reviews)
 
-Clips are named `unwritten_<step>_<SESSIONCODE>_<YYYYMMDD-HHMMSS-mmm>.webm/mp4`,
-photos `.jpg`, and native-app takes `unwritten_<step>_camera-app_<CODE>_…` /
-`_voice-app_…`. Every name carries the session code and a full timestamp,
-so takes never collide in the vault. Clips are listed in an on-page library,
-with a ✅ once persisted to IndexedDB. **↻ New session** on the home screen
-rotates the code and starts fresh (old clips stay in the vault under their
-own code).
-
-## Design decisions (from a Muse Wonder review, Oct 26)
-
-- **IndexedDB persistence** — a clip is not "saved" just because a download
-  fired. It is written to IndexedDB when recording stops, and restored on
-  reload. Downloads are only a convenience copy. (On old Safari the vault
-  may be unavailable; the app detects that and says so.)
-- **No silent clip loss** — while recording, the first tap on Next/Back
-  only stops and keeps the clip; navigation never eats a take. The stop
-  handler captures the step, chunks, and mime type at record-start, so a
-  late `onstop` can never mislabel a clip with the next step's name.
-- **Interruption-safe** — `MediaRecorder.onerror` surfaces a visible
-  warning; leaving the page mid-recording stops and flushes; the wake
-  lock is re-acquired on return.
-- **Old-hardware codec order** — VP8 before VP9 (old Android hardware encodes
-  VP8 far more kindly), `video/mp4` included for Safari, a 2.5 Mbps cap,
-  and a no-timeslice retry if `start(250)` throws (old Safari).
-- **Mic failure ≠ video failure** — if the combined audio+video request
-  is denied, the app retries video-only. A video-only stream raises a red
-  "No microphone" banner rather than passing silently (steps 2–3 are her
-  words).
-- **Fallback is a feature** — where in-page recording is unavailable,
-  the native-app capture path is the designed route for that device,
-  presented as such, with real file extensions preserved.
+- **IndexedDB persistence** — a lesson is not "saved" just because a
+  download fired. It is written to IndexedDB when recording stops, and
+  restored on reload. Downloads are only a convenience copy. (On old
+  Safari the vault may be unavailable; the app detects that and says
+  so.)
+- **No silent lesson loss** — leaving the page mid-recording stops and
+  keeps the take; an empty or failed take is reported on screen, never
+  swallowed.
+- **Old-hardware codec order** — VP8 before VP9 (old Android hardware
+  encodes VP8 far more kindly), `video/mp4` included for Safari, a
+  2.5 Mbps cap, and a no-timeslice retry if `start(250)` throws (old
+  Safari).
+- **Mic failure ≠ video failure** — if the combined audio+video
+  request is denied, the app retries video-only, and raises the red
+  banner rather than passing silently.
 
 ## Getting it onto a device
 
@@ -84,21 +54,18 @@ access. Without one, the native-app capture path still works:
    or serve the repo root and navigate to the path).
 2. **Quick test:** download `index.html` and open it. Chrome treats
    `file://` as trustworthy; iOS Safari generally does not for camera
-   access — which is exactly what the Recorder role's native-app
-   buttons are for.
+   access — which is exactly what the native-app buttons are for.
 3. Allow camera + microphone, then **Add to Home screen** for a
-   full-screen icon. Turn the robot voice off if the room is loud —
-   the same instructions are on screen.
+   full-screen icon.
 
 ## Install as an app (PWA)
 
 Served over HTTPS, the recorder is an installable PWA:
 `manifest.webmanifest` (standalone display, warm theme), home-screen
-icons in `icons/` (drawn from the Little Apprentice character,
-including the 180px Apple touch icon), and `sw.js`, a service worker
-that caches the app shell for offline use — pages are network-first,
-so updates still arrive when online. On iPhone: open the page in
-Safari → Share → **Add to Home Screen**; it launches full-screen
-with no Safari chrome, using the safe areas around the notch and
-home indicator. Clips are unaffected: they still live in IndexedDB
-and downloads, never in the service-worker cache.
+icons in `icons/`, and `sw.js`, a service worker that caches the app
+shell for offline use — pages are network-first, so updates still
+arrive when online. On iPhone: open the page in Safari → Share →
+**Add to Home Screen**; it launches full-screen with no Safari chrome,
+using the safe areas around the notch and home indicator. Lessons are
+unaffected: they still live in IndexedDB and downloads, never in the
+service-worker cache.

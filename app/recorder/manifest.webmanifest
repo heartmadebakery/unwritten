@@ -1,7 +1,7 @@
 {
-  "name": "Unwritten Craft — Your Little Apprentice",
-  "short_name": "Apprentice",
-  "description": "Record a teacher's move, in their own words, and hand the skill on.",
+  "name": "Unwritten Craft — Recorder",
+  "short_name": "Recorder",
+  "description": "Record one lesson, in the teacher's own words.",
   "id": ".",
   "start_url": ".",
   "scope": ".",
