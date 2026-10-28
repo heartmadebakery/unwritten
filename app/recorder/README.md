@@ -26,6 +26,34 @@ and adapts on its own:
   open the device's own camera / voice-memo apps, and the takes land
   in the same library, named the same way.
 
+## Optional: Bunny Stream upload (added Oct 28)
+
+Off by default. Tap **☁️ Bunny** under the camera toggle, fill in a
+signer URL (recommended — see below) *or* the library ID + API key, and
+tap again to turn it on. From then on, each video lesson is also
+uploaded to [Bunny Stream](https://bunny.net/docs/stream) after the
+local save, and a **▶ Watch** link (adaptive HLS player) appears under
+the lesson when Bunny finishes encoding. Uploads are resumable (TUS),
+resume after reloads, and never delay or endanger the local take.
+
+Two ways to authorise uploads, per Bunny's own security guidance:
+
+- **Signer (recommended):** deploy the tiny Cloudflare Worker in
+  [`app/bunny-signer/`](../bunny-signer/) once — it holds the library
+  API key, so no key ever lives in this page. Paste its URL (plus the
+  optional signer token) into the Bunny panel.
+- **Key on device (simpler):** paste the library ID + API key. The key
+  can manage that one library only; it is stored in `localStorage` and
+  sent only to `video.bunnycdn.com`. Fine for the teacher's own device.
+
+Notes: Bunny has **no live ingest** — this is store-then-stream, not
+live broadcast. Audio-only lessons (voice-app takes) are not uploaded;
+Bunny is a video platform. If the library has embed token
+authentication turned on, the plain ▶ links will 403 — leave it off
+(links are unguessable GUIDs) or front playback with your own page.
+MP4 fallback (library → Encoding) is worth enabling if the pipeline
+should later pull MP4s straight from Bunny.
+
 ## Design decisions (kept from the Oct 26 reviews)
 
 - **IndexedDB persistence** — a lesson is not "saved" just because a

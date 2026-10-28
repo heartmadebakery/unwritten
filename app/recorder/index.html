@@ -57,6 +57,10 @@
     padding:10px 17px;font-size:16px;border-radius:22px;}
   .toggle.on{color:var(--accent);border-color:var(--accent);background:var(--soft);}
   .note{color:var(--dim);font-size:15.5px;line-height:1.5;margin-top:14px;}
+  #bunnypanel{background:var(--panel);border:2px solid var(--line);border-radius:18px;padding:14px 16px;margin-top:12px;}
+  #bunnypanel label{display:block;color:var(--dim);font-size:14.5px;margin:10px 0 3px;}
+  #bunnypanel input{width:100%;font-size:16px;padding:9px 10px;border:2px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);font-family:inherit;}
+  #bunnypanel .bnote{color:var(--dim);font-size:14px;line-height:1.5;margin-top:10px;}
   .library{padding:0 16px 24px;width:100%;}
   .library h3{font-weight:normal;color:var(--dim);font-size:17px;margin:6px 0;}
   .clip{font-size:15.5px;padding:7px 0;border-bottom:1px solid var(--line);word-break:break-all;}
@@ -95,6 +99,18 @@
     <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
     <div class="togglerow">
       <button class="toggle on" id="camtoggle">📷 Back camera</button>
+      <button class="toggle" id="bunnytoggle">☁️ Bunny: off</button>
+    </div>
+    <div id="bunnypanel" class="hidden">
+      <label for="bunnysigner">Signer URL (recommended — deploy <span style="font-family:monospace">app/bunny-signer</span>, paste its address)</label>
+      <input id="bunnysigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-bunny-signer.you.workers.dev">
+      <label for="bunnysignertoken">Signer token (only if you set one on the signer)</label>
+      <input id="bunnysignertoken" type="password" autocomplete="off" placeholder="optional">
+      <label for="bunnylib">— or, without a signer: Bunny Stream library ID</label>
+      <input id="bunnylib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
+      <label for="bunnykey">Library API key (then lives on this device)</label>
+      <input id="bunnykey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
+      <p class="bnote">Optional, and purely additive: every lesson is still saved on this device first. With Bunny on, a copy is uploaded for streamed playback, and a ▶ Watch link appears under the lesson. Two ways to authorise uploads: a signer (our tiny hosted helper holds the API key, so no key ever lives in this page) or the library key pasted here (simpler; the key can manage this one library, so keep it on the teacher's device only).</p>
     </div>
     <p class="note">Everything is saved on this device only — nothing is uploaded. Hand the file to whoever runs the pipeline; it becomes the write-up and the correction clips.</p>
     <p id="caps"></p>
@@ -215,12 +231,256 @@ function saveBlob(blob, name){
   });
   var a = document.createElement("a"); a.href = url; a.download = name;
   document.body.appendChild(a); a.click(); a.remove();
+  if(bunnyReady() && isVideoLesson(blob, name)) startBunnyUpload(name, blob, null);
 }
 function clipHTML(c){
-  return "<div class='clip'>" + (c.persisted ? "✅" : "🎬") + " <a href='" + c.url + "' download='" + c.name + "'>" + c.name + "</a>" + (c.persisted ? "" : " <span style='color:var(--dim)'>(on this device)</span>") + "</div>";
+  var extra = "", b = loadBunnyLinks()[c.name];
+  if(b){
+    if(b.state === "ready") extra = " · <a href='#' data-bunny-watch='" + c.name + "'>▶ Watch stream</a>";
+    else if(b.state === "uploading") extra = " · ☁ uploading " + (b.progress | 0) + "%";
+    else if(b.state === "processing") extra = " · ☁ processing…";
+    else if(b.state === "failed") extra = " · ☁ upload failed — <a href='#' data-bunny-retry='" + c.name + "'>retry</a>";
+  }
+  return "<div class='clip'>" + (c.persisted ? "✅" : "🎬") + " <a href='" + c.url + "' download='" + c.name + "'>" + c.name + "</a>" + (c.persisted ? "" : " <span style='color:var(--dim)'>(on this device)</span>") + extra + "</div>";
 }
 function renderClips(){
   $("clips").innerHTML = state.clips.map(clipHTML).join("") || "<div class='clip' style='color:var(--dim)'>Nothing yet.</div>";
+}
+
+/* ------------------------------------------------------------------
+   Bunny Stream (optional): upload a copy of each video lesson for
+   streamed playback. Strictly additive — the on-device save above
+   always happens first and never depends on this. Settings live in
+   localStorage; the library API key stays on this device and is only
+   ever sent to video.bunnycdn.com. Bunny has no live ingest, so this
+   is store-then-stream: viewers get an adaptive HLS player link.
+------------------------------------------------------------------- */
+var BUNNY_TUS = "https://video.bunnycdn.com/tusupload";
+var BUNNY_CHUNK = 5 * 1024 * 1024;
+var bunnyActive = {}, bunnyPolling = {};
+
+function bunnyLoadCfg(){
+  try{ return JSON.parse(localStorage.getItem("uw_bunny_cfg") || "{}"); }catch(e){ return {}; }
+}
+var bunnyCfg = bunnyLoadCfg();
+function bunnySaveCfg(){ try{ localStorage.setItem("uw_bunny_cfg", JSON.stringify(bunnyCfg)); }catch(e){} paintBunnyToggle(); }
+function bunnyReady(){
+  if(!bunnyCfg.enabled) return false;
+  if(bunnyCfg.signerUrl) return true;
+  return !!(bunnyCfg.libraryId && bunnyCfg.apiKey);
+}
+function bunnyLibraryId(){ return bunnyCfg.libraryId || ""; }
+function loadBunnyLinks(){
+  try{ return JSON.parse(localStorage.getItem("uw_bunny_links") || "{}"); }catch(e){ return {}; }
+}
+function setBunnyLink(name, patch){
+  var m = loadBunnyLinks(), cur = m[name] || {};
+  for(var k in patch) cur[k] = patch[k];
+  if(cur.libraryId === undefined && bunnyCfg.libraryId) cur.libraryId = bunnyCfg.libraryId;
+  m[name] = cur;
+  try{ localStorage.setItem("uw_bunny_links", JSON.stringify(m)); }catch(e){}
+}
+function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
+function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
+async function sha256Hex(text){
+  if(!window.crypto || !crypto.subtle) throw new Error("Bunny signing needs a secure (https) page.");
+  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(function(b){ return ("0" + b.toString(16)).slice(-2); }).join("");
+}
+function isVideoLesson(blob, name){
+  if(blob && blob.type) return blob.type.indexOf("video/") === 0;
+  return /\.(mp4|webm|mov|mkv|m4v)$/i.test(name || "");
+}
+function idbGetBlob(name){
+  return new Promise(function(res){
+    if(!CAPS.idb){ res(null); return; }
+    idbOpen().then(function(db){
+      var rq = db.transaction("clips").objectStore("clips").get(name);
+      rq.onsuccess = function(){ res(rq.result ? rq.result.blob : null); };
+      rq.onerror = function(){ res(null); };
+    }).catch(function(){ res(null); });
+  });
+}
+async function bunnyCreds(title, reuseVideoId){
+  if(bunnyCfg.signerUrl){
+    var headers = {"Content-Type": "application/json", "Accept": "application/json"};
+    if(bunnyCfg.signerToken) headers["X-Signer-Token"] = bunnyCfg.signerToken;
+    var rs = await fetch(bunnyCfg.signerUrl, {
+      method: "POST", headers: headers,
+      body: JSON.stringify(reuseVideoId ? {title: title, videoId: reuseVideoId} : {title: title})
+    });
+    if(!rs.ok) throw new Error("The Bunny signer refused (" + rs.status + "). Check the signer URL and token.");
+    var d = await rs.json();
+    if(!d.videoId || !d.signature || !d.expire) throw new Error("The Bunny signer returned incomplete credentials.");
+    if(d.libraryId){ bunnyCfg.libraryId = String(d.libraryId); bunnySaveCfg(); }
+    return {videoId: d.videoId, expire: d.expire, signature: d.signature, libraryId: String(d.libraryId || bunnyCfg.libraryId || "")};
+  }
+  var videoId = reuseVideoId || null;
+  if(!videoId){
+    var r = await fetch("https://video.bunnycdn.com/library/" + bunnyCfg.libraryId + "/videos", {
+      method: "POST",
+      headers: {"AccessKey": bunnyCfg.apiKey, "Accept": "application/json", "Content-Type": "application/json"},
+      body: JSON.stringify({title: title})
+    });
+    if(!r.ok) throw new Error("Bunny could not create the video (" + r.status + "). Check the library ID and API key.");
+    var v = await r.json();
+    videoId = v.guid || v.videoId || v.id;
+    if(!videoId) throw new Error("Bunny create returned no video ID.");
+  }
+  var expire = Math.floor(Date.now() / 1000) + 86400;
+  var signature = await sha256Hex(String(bunnyCfg.libraryId) + bunnyCfg.apiKey + expire + videoId);
+  return {videoId: videoId, expire: expire, signature: signature, libraryId: String(bunnyCfg.libraryId)};
+}
+function bunnyAuthHeaders(creds){
+  return {
+    "AuthorizationSignature": creds.signature,
+    "AuthorizationExpire": String(creds.expire),
+    "LibraryId": String(creds.libraryId || bunnyCfg.libraryId || ""),
+    "VideoId": creds.videoId,
+    "Tus-Resumable": "1.0.0"
+  };
+}
+async function tusCreateUpload(creds, blob, name){
+  var meta = "filetype " + b64utf8(blob.type || "video/mp4") + ",title " + b64utf8(name);
+  var headers = bunnyAuthHeaders(creds);
+  headers["Upload-Length"] = String(blob.size);
+  headers["Upload-Metadata"] = meta;
+  var r = await fetch(BUNNY_TUS, {method: "POST", headers: headers});
+  if(r.status !== 201) throw new Error("Bunny upload start failed (" + r.status + ").");
+  var loc = r.headers.get("Location");
+  if(!loc) throw new Error("Bunny upload start returned no upload URL.");
+  return loc.charAt(0) === "/" ? "https://video.bunnycdn.com" + loc : loc;
+}
+async function tusHeadOffset(uploadUrl, creds){
+  var r = await fetch(uploadUrl, {method: "HEAD", headers: bunnyAuthHeaders(creds)});
+  if(r.status === 404 || r.status === 410) return -1;
+  if(!r.ok) throw new Error("Bunny resume check failed (" + r.status + ").");
+  var off = parseInt(r.headers.get("Upload-Offset"), 10);
+  return isNaN(off) ? -1 : off;
+}
+async function tusSendAll(sess, blob, name){
+  var offset = sess.offset || 0, attempt = 0;
+  while(offset < blob.size){
+    var end = Math.min(offset + BUNNY_CHUNK, blob.size), res = null, netErr = null;
+    try{
+      var headers = bunnyAuthHeaders(sess.creds);
+      headers["Upload-Offset"] = String(offset);
+      headers["Content-Type"] = "application/offset+octet-stream";
+      res = await fetch(sess.uploadUrl, {method: "PATCH", headers: headers, body: blob.slice(offset, end)});
+    }catch(e){ netErr = e; }
+    if(netErr || !res.ok){
+      var status = res ? res.status : 0;
+      if(res && status >= 400 && status < 500 && status !== 409 && status !== 423)
+        throw new Error("Bunny refused the upload (" + status + ").");
+      if(++attempt > 8) throw new Error("Bunny upload kept failing — connection too unstable.");
+      var serverOffset = -1;
+      try{ serverOffset = await tusHeadOffset(sess.uploadUrl, sess.creds); }catch(e){}
+      if(serverOffset >= 0) offset = serverOffset;
+      await sleep(Math.min(3000 * attempt, 15000));
+      continue;
+    }
+    attempt = 0;
+    var serverOff = parseInt(res.headers.get("Upload-Offset"), 10);
+    offset = isNaN(serverOff) ? end : serverOff;
+    sess.offset = offset;
+    setBunnyLink(name, {state: "uploading", progress: Math.floor(offset / blob.size * 100),
+                        videoId: sess.videoId, uploadUrl: sess.uploadUrl});
+    renderClips();
+  }
+}
+async function bunnyGetVideo(videoId){
+  if(bunnyCfg.signerUrl){
+    var sep = bunnyCfg.signerUrl.indexOf("?") >= 0 ? "&" : "?";
+    var hs = {"Accept": "application/json"};
+    if(bunnyCfg.signerToken) hs["X-Signer-Token"] = bunnyCfg.signerToken;
+    var rs = await fetch(bunnyCfg.signerUrl + sep + "videoId=" + encodeURIComponent(videoId), {headers: hs});
+    if(!rs.ok) throw new Error("Bunny status check failed (" + rs.status + ").");
+    return rs.json();
+  }
+  var r = await fetch("https://video.bunnycdn.com/library/" + bunnyCfg.libraryId + "/videos/" + videoId,
+    {headers: {"AccessKey": bunnyCfg.apiKey, "Accept": "application/json"}});
+  if(!r.ok) throw new Error("Bunny status check failed (" + r.status + ").");
+  return r.json();
+}
+async function pollBunnyStatus(name, videoId){
+  if(bunnyPolling[name]) return;
+  bunnyPolling[name] = true;
+  var failures = 0;
+  try{
+    for(var i = 0; i < 120; i++){
+      await sleep(5000);
+      var v = null;
+      try{ v = await bunnyGetVideo(videoId); failures = 0; }
+      catch(e){ if(++failures > 6) return; continue; }
+      if(v.status === 4){ setBunnyLink(name, {state: "ready", progress: 100, videoId: videoId}); renderClips(); return; }
+      if(v.status === 5 || v.status === 6){ setBunnyLink(name, {state: "failed", videoId: videoId}); renderClips(); return; }
+    }
+  } finally { delete bunnyPolling[name]; }
+}
+async function startBunnyUpload(name, blob, sess){
+  if(!bunnyReady() || bunnyActive[name]) return;
+  bunnyActive[name] = true;
+  try{
+    if(sess && sess.uploadUrl && sess.videoId){
+      sess.creds = await bunnyCreds(name, sess.videoId);
+      var off = -1;
+      try{ off = await tusHeadOffset(sess.uploadUrl, sess.creds); }catch(e){}
+      if(off < 0 || off > blob.size) sess = null; else sess.offset = off;
+    }
+    if(!sess){
+      var creds = await bunnyCreds(name, null);
+      var uploadUrl = await tusCreateUpload(creds, blob, name);
+      sess = {videoId: creds.videoId, uploadUrl: uploadUrl, offset: 0, creds: creds};
+    }
+    setBunnyLink(name, {state: "uploading", progress: Math.floor((sess.offset || 0) / blob.size * 100),
+                        videoId: sess.videoId, uploadUrl: sess.uploadUrl});
+    renderClips();
+    $("status").innerHTML = "☁️ <b>Uploading to Bunny…</b> The lesson is already saved on this device.";
+    await tusSendAll(sess, blob, name);
+    setBunnyLink(name, {state: "processing", progress: 100, videoId: sess.videoId});
+    renderClips();
+    $("status").innerHTML = "☁️ <b>Uploaded.</b> Bunny is preparing the streaming version — the ▶ Watch link appears under the lesson when ready.";
+    pollBunnyStatus(name, sess.videoId);
+  }catch(e){
+    setBunnyLink(name, {state: "failed", videoId: (sess && sess.videoId) || undefined,
+                        uploadUrl: (sess && sess.uploadUrl) || undefined});
+    renderClips();
+    $("status").innerHTML = "☁️ <b>Bunny upload didn't finish</b> (" + e.message + ") The lesson is safe on this device — tap retry under the lesson when the connection is better.";
+  } finally { delete bunnyActive[name]; }
+}
+async function bunnyOpenWatch(name){
+  var link = loadBunnyLinks()[name];
+  if(!link || !link.videoId) return;
+  var lib = link.libraryId || bunnyCfg.libraryId;
+  var url = "https://player.mediadelivery.net/embed/" + lib + "/" + link.videoId;
+  window.open(url, "_blank");
+}
+async function bunnyRetry(name){
+  var blob = await idbGetBlob(name);
+  if(!blob){ $("status").innerHTML = "☁️ That lesson is no longer stored on this device, so it can't be re-uploaded from here."; return; }
+  var link = loadBunnyLinks()[name] || {};
+  startBunnyUpload(name, blob, (link.uploadUrl && link.videoId) ? {videoId: link.videoId, uploadUrl: link.uploadUrl} : null);
+}
+function bunnyResumePending(){
+  if(!bunnyReady()) return;
+  var m = loadBunnyLinks();
+  Object.keys(m).forEach(function(name){
+    var l = m[name];
+    if(!state.clips.some(function(c){ return c.name === name; })) return;
+    if(l.state === "uploading" && l.uploadUrl && l.videoId){
+      idbGetBlob(name).then(function(blob){
+        if(blob) startBunnyUpload(name, blob, {videoId: l.videoId, uploadUrl: l.uploadUrl});
+        else { setBunnyLink(name, {state: "failed"}); renderClips(); }
+      });
+    } else if(l.state === "processing" && l.videoId){
+      pollBunnyStatus(name, l.videoId);
+    }
+  });
+}
+function paintBunnyToggle(){
+  var on = bunnyReady();
+  $("bunnytoggle").textContent = on ? "☁️ Bunny: on" : "☁️ Bunny: off";
+  $("bunnytoggle").classList.toggle("on", on);
 }
 function stamp(){
   /* Full date + time + milliseconds in every filename: lessons can
@@ -284,6 +544,45 @@ function stopRec(){
   clearInterval(state.timerInt);
 }
 
+$("bunnytoggle").onclick = function(){
+  var panel = $("bunnypanel");
+  if(bunnyCfg.enabled){
+    bunnyCfg.enabled = false; bunnySaveCfg();
+    panel.classList.add("hidden");
+    $("status").innerHTML = "☁️ <b>Bunny off.</b> Lessons stay on this device only, as before.";
+    return;
+  }
+  if(panel.classList.contains("hidden")){
+    $("bunnysigner").value = bunnyCfg.signerUrl || "";
+    $("bunnysignertoken").value = bunnyCfg.signerToken || "";
+    $("bunnylib").value = bunnyCfg.libraryId || "";
+    $("bunnykey").value = bunnyCfg.apiKey || "";
+    panel.classList.remove("hidden");
+    return;
+  }
+  bunnyCfg.signerUrl = $("bunnysigner").value.trim();
+  bunnyCfg.signerToken = $("bunnysignertoken").value.trim();
+  bunnyCfg.libraryId = $("bunnylib").value.trim();
+  bunnyCfg.apiKey = $("bunnykey").value.trim();
+  if(!bunnyCfg.signerUrl && (!bunnyCfg.libraryId || !bunnyCfg.apiKey)){
+    $("status").innerHTML = "☁️ Fill in either the signer URL, or the library ID and API key — Bunny dashboard → Stream → your library → API.";
+    return;
+  }
+  bunnyCfg.enabled = true; bunnySaveCfg();
+  panel.classList.add("hidden");
+  $("status").innerHTML = "☁️ <b>Bunny on.</b> New video lessons will also be uploaded for streamed playback; a ▶ Watch link appears under each lesson when ready.";
+};
+$("bunnysigner").addEventListener("change", function(){ bunnyCfg.signerUrl = this.value.trim(); bunnySaveCfg(); });
+$("bunnysignertoken").addEventListener("change", function(){ bunnyCfg.signerToken = this.value.trim(); bunnySaveCfg(); });
+$("bunnylib").addEventListener("change", function(){ bunnyCfg.libraryId = this.value.trim(); bunnySaveCfg(); });
+$("bunnykey").addEventListener("change", function(){ bunnyCfg.apiKey = this.value.trim(); bunnySaveCfg(); });
+$("clips").addEventListener("click", function(e){
+  if(!e.target.closest) return;
+  var w = e.target.closest("[data-bunny-watch]"), r = e.target.closest("[data-bunny-retry]");
+  if(w){ e.preventDefault(); bunnyOpenWatch(w.getAttribute("data-bunny-watch")); }
+  else if(r){ e.preventDefault(); bunnyRetry(r.getAttribute("data-bunny-retry")); }
+});
+paintBunnyToggle();
 $("caps").textContent = "This device: " +
   (CAPS.inPageRecording ? "can record in the page ✓" : "no in-page recording — its own camera/voice apps will be used") +
   " · " + (CAPS.secure ? "secure page ✓" : "⚠️ not a secure page (in-page camera needs https or a local file)") +
@@ -305,7 +604,7 @@ document.addEventListener("visibilitychange", function(){
   if(document.hidden && state.recording) stopRec();
   if(!document.hidden) wakeLock();
 });
-wakeLock(); idbRestore(); openCamera();
+wakeLock(); idbRestore().then(function(){ bunnyResumePending(); }); openCamera();
 </script>
 <script>
 /* PWA: register the offline shell where supported (secure contexts
