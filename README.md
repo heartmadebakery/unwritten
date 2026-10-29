@@ -89,7 +89,8 @@ mentor data — samples are fictional.
   core things: `run_pipeline.py` takes one ordinary lesson file in and
   produces the write-up and the correction clips out. `ingest.py`
   finds the lesson (largest media file in the folder) →
-  `transcribe.py` (local faster-whisper) → `draft_writeup.py` (Muse
+  `transcribe.py` (Meta speech-to-text, or local faster-whisper) →
+  `draft_writeup.py` (Muse
   Spark: whole-video understanding with `MODEL_API_KEY`, else
   transcript + still frames) drafts the write-up →
   `find_corrections.py` (Spark, `prompts/correction_finder.md`)

@@ -62,6 +62,9 @@ def main():
     wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
     wisdom_block = (f"<h2>What the mentor knows</h2><ul>{wisdom_html}</ul>"
                     if wisdom else "")
+    poster_block = ('<p><img src="poster.jpg" alt="Lesson poster"></p>'
+                    if os.path.exists(os.path.join(work, "poster.jpg"))
+                    else "")
 
     technique_blocks = []
     for i, hit in enumerate(hits, 1):
@@ -83,12 +86,14 @@ def main():
 max-width:760px;margin:0 auto;padding:28px 18px;line-height:1.6}}
 h1{{font-weight:normal}} h2{{color:#e8a13a;font-weight:normal;margin-top:34px}}
 video{{max-width:100%;border-radius:10px}} li{{margin:7px 0}}
+img{{max-width:100%;border-radius:10px}}
 blockquote{{border-left:3px solid #e8a13a;margin-left:0;padding-left:14px;
 font-style:italic}}
 footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
 <body>
 <h1>{esc(args.title)}</h1>
 <p><em>Film a lesson. Keep the corrections.</em></p>
+{poster_block}
 <h2>The write-up</h2><ol>{steps_html}</ol>
 {wisdom_block}
 <h2>The Knack — the corrections</h2>{knacks_html}

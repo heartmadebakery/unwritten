@@ -10,7 +10,7 @@ lesson folder (off the phone)
    │              is the lesson (or name it with --lesson)
    ▼
 THE LESSON VIDEO — kept whole (core thing #1)
-   │  transcribe.py — local faster-whisper
+   │  transcribe.py — Meta speech-to-text (or local Whisper)
    ▼
 transcript.txt + transcript_timestamped.txt ("[mm:ss] text" per segment)
    ├─► draft_writeup.py ─► writeup.md        (Muse Spark: transcript
@@ -61,19 +61,27 @@ stdlib + ffmpeg + Muse calls.
 
 ## Stage notes
 
-- **Transcription is local on purpose.** faster-whisper (base model,
-  int8, CPU) — a mentor's raw voice never leaves the machine for a
-  third-party transcription service. `UNWRITTEN_WHISPER_MODEL=small`
-  trades speed for accuracy. Negations matter: a dropped "don't"
+- **Transcription is Meta speech-to-text by default.** With
+  `MODEL_API_KEY`, `transcribe.py` sends mono 24 kHz WAV to Muse
+  Voice Transcribe (DIARIZATION: turn timestamps plus speaker
+  labels, which land in `segments.json`). Audio over 10 minutes is
+  split into <=10-minute chunks first (the API cap); a cut may
+  garble a word at a boundary. Without the key — or with
+  `UNWRITTEN_TRANSCRIBE=local` — local faster-whisper (base model,
+  int8, CPU) runs instead and nothing leaves the machine;
+  `UNWRITTEN_TRANSCRIBE=api` forces the API and fails loudly
+  without a key. `UNWRITTEN_WHISPER_MODEL=small` trades speed for
+  accuracy on the local path. Negations matter: a dropped "don't"
   inverts a step, so the write-up's imperatives get checked back
   against this transcript.
-- **The Model API is opt-in per run.** Video understanding and SAM
-  segmentation need `MODEL_API_KEY`; without it the pipeline takes
-  the keyless path (still frames, plain clips) and nothing changes.
-  With it, the lesson video — picture and voice, by the owner's
-  explicit choice — is uploaded for the write-up, and each
-  correction clip for its highlight; uploads are deleted
-  afterwards. Transcription itself always stays local.
+- **The Model API is opt-in per run.** Transcription, video
+  understanding, and SAM segmentation use `MODEL_API_KEY` when it
+  is set; without it the pipeline takes the keyless path (local
+  Whisper, still frames, plain clips) and nothing leaves the
+  machine. With it, the lesson audio goes up for transcription and
+  the lesson video — picture and voice, by the owner's explicit
+  choice — for the write-up, plus each correction clip for its
+  highlight; Files uploads are deleted afterwards.
 - **The write-up** is `draft_writeup.py`: a polished, sectioned
   document in the mentor's voice; the transcript is the spine, and
   what it leaves unsaid is filled in from the lesson video — never
@@ -88,6 +96,16 @@ stdlib + ffmpeg + Muse calls.
   the runner renders `highlight-NN.mp4` — subject spotlighted, rest
   dimmed — plus `segments-NN.json` with the tracks. Any failure
   keeps the plain clip and the anchor; highlights never block a run.
+- **Share-safe clips** ride alongside: with the key, each video clip
+  also goes through SAM as "face"; when faces are tracked the runner
+  renders `redacted-NN.mp4` with opaque covers (plain clips show
+  mostly hands; no face, no file). Recognition on the API
+  transcription path is biased by `UNWRITTEN_ASR_KEYWORDS` /
+  `UNWRITTEN_ASR_LANGUAGES` when set — feed them the vocabulary of
+  past write-ups.
+- **The poster** is one representative frame (`poster.jpg`, shown by
+  the optional page): with the key, Spark names the best moment;
+  otherwise the midpoint frame. Never blocks a run.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, the mentor's exact words, what they were
@@ -98,6 +116,25 @@ stdlib + ffmpeg + Muse calls.
 - **Clips need the lesson file.** A transcript-only run produces
   anchored corrections without clips; the anchors carry the timestamps
   either way.
+
+## Deferred on purpose (TODO)
+
+- **Teach-back QA.** Restart from only `writeup.md` in a fresh call,
+  have the model "cook" it back step by step, and diff against the
+  video: every hesitation or invention is a write-up gap. The retired
+  apprentice idea, repurposed as a write-up linter. Held off until
+  the current flow is proven polished — do not build yet.
+- **Live mic check in the recorder.** Realtime ASR endpointing warns
+  during recording ("no speech for 60s") instead of discovering
+  silence at transcription. Needs a signer-style proxy so the key
+  never ships in the page.
+- **Chaptered sessions.** A video-understanding timeline (prep /
+  simmer / plating) for the sessions list and page navigation.
+- **Schema-first outputs.** Finder and write-up as validated JSON
+  (structured output / `--output-schema`), rendered to markdown,
+  instead of parsed prose.
+- **Prompt caching for `--cloud` batches.** Same prompts per lesson;
+  worth wiring when backlog runs grow.
 
 ## Not in this pipeline
 

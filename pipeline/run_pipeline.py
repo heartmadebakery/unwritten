@@ -12,7 +12,8 @@ protocol, no step names, nothing performed for the machine. Stages:
   1. lesson      — find the lesson media in the folder (the largest
                    video/audio file; --lesson names it explicitly).
                    Core thing #1: the lesson video, kept whole.
-  2. transcribe  — local faster-whisper -> plain + timestamped
+  2. transcribe  — Meta speech-to-text (or local faster-whisper
+                   without MODEL_API_KEY) -> plain + timestamped
                    transcript (skipped with --transcript FILE, which
                    must be timestamped "[mm:ss] text" lines).
   3. write-up    — Muse Spark drafts the polished, sectioned
@@ -55,7 +56,8 @@ VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
 STALE_FILES = ("manifest.json", "transcript.txt",
                "transcript_timestamped.txt", "segments.json",
-               "writeup.md", "corrections.json", "corrections.md")
+               "writeup.md", "corrections.json", "corrections.md",
+               "poster.jpg")
 STALE_DIRS = ("clips", "transcript")
 
 
@@ -118,10 +120,11 @@ def clip_window(start_s, end_s):
     return max(0, start_s - 2), (end_s + 2 if end_s else start_s + 20)
 
 
-def render_corrections_md(hits, clips, highlights=None):
-    """clips/highlights: {index: filename or ''}. The techniques list —
-    together, the Knack."""
+def render_corrections_md(hits, clips, highlights=None, redacted=None):
+    """clips/highlights/redacted: {index: filename or ''}. The
+    techniques list — together, the Knack."""
     highlights = highlights or {}
+    redacted = redacted or {}
     lines = ["# Corrections — the techniques", "",
              "Every moment the mentor corrected the beginner, anchored "
              "to the mentor's exact words. Together these are the Knack.",
@@ -141,7 +144,11 @@ def render_corrections_md(hits, clips, highlights=None):
         if highlight:
             lines.append(f"Highlight: `clips/{highlight}` "
                          "(subject tracked, rest dimmed)")
-        if clip or highlight:
+        share = redacted.get(i, "")
+        if share:
+            lines.append(f"Share-safe: `clips/{share}` "
+                         "(faces covered)")
+        if clip or highlight or share:
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -184,6 +191,18 @@ def _validate_masks_advisory(parsed_frames):
     return checked > 0
 
 
+def _segment_clip(clip_path, concept):
+    """Upload a clip, track one concept through it, return the parsed
+    frames ([] when nothing matched). Raises MetaApiError."""
+    file_id = meta_api.upload_file(clip_path)
+    try:
+        wire = meta_api.segment_video_lines(
+            file_id, concept, meta_api.api_key())
+    finally:
+        meta_api.delete_file(file_id)
+    return meta_api.parse_segmentation(wire)
+
+
 def try_highlight(work, clip_name, concept, index):
     """SAM-tracked spotlight version of a correction clip. Returns the
     highlight filename or "": needs MODEL_API_KEY, never raises, never
@@ -191,16 +210,8 @@ def try_highlight(work, clip_name, concept, index):
     if not concept or not meta_api.api_key():
         return ""
     clip_path = work("clips", clip_name)
-    hl_name = "highlight-%02d.mp4" % index
-    tracks_name = "segments-%02d.json" % index
     try:
-        file_id = meta_api.upload_file(clip_path)
-        try:
-            wire = meta_api.segment_video_lines(
-                file_id, concept, meta_api.api_key())
-        finally:
-            meta_api.delete_file(file_id)
-        parsed = meta_api.parse_segmentation(wire)
+        parsed = _segment_clip(clip_path, concept)
         if not parsed:
             print(f"  [highlights] correction {index}: {concept!r} not "
                   f"visible — plain clip kept")
@@ -210,24 +221,106 @@ def try_highlight(work, clip_name, concept, index):
         except Exception as exc:
             print(f"  [highlights] correction {index}: mask check ({exc}) "
                   f"— boxes still render")
-        highlight_mod.save_tracks(work("clips", tracks_name), concept, parsed)
+        highlight_mod.save_tracks(
+            work("clips", "segments-%02d.json" % index), concept, parsed)
         tmpdir = tempfile.mkdtemp(prefix="unwritten_highlight_")
         try:
             ok = highlight_mod.highlight_clip(
-                clip_path, parsed, work("clips", hl_name), tmpdir)
+                clip_path, parsed,
+                work("clips", "highlight-%02d.mp4" % index), tmpdir)
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
         if not ok:
             print(f"  [highlights] correction {index}: render failed — "
                   f"plain clip kept")
             return ""
-        return hl_name
+        return "highlight-%02d.mp4" % index
     except meta_api.MetaApiError as exc:
         print(f"  [highlights] correction {index}: {exc} — plain clip kept")
         return ""
     except Exception as exc:
         print(f"  [highlights] correction {index}: unexpected ({exc}) — "
               f"plain clip kept")
+        return ""
+
+
+def try_redact(work, clip_name, index):
+    """Share-safe version of a correction clip: opaque covers over
+    every tracked face (clips/redacted-NN.mp4). Returns "" when there
+    is no key or no face — never raises, never blocks the run."""
+    if not meta_api.api_key():
+        return ""
+    clip_path = work("clips", clip_name)
+    try:
+        parsed = _segment_clip(clip_path, "face")
+        if not parsed:
+            return ""
+        highlight_mod.save_tracks(
+            work("clips", "faces-%02d.json" % index), "face", parsed)
+        tmpdir = tempfile.mkdtemp(prefix="unwritten_redact_")
+        try:
+            ok = highlight_mod.redact_clip(
+                clip_path, parsed,
+                work("clips", "redacted-%02d.mp4" % index), tmpdir)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        return "redacted-%02d.mp4" % index if ok else ""
+    except Exception as exc:
+        print(f"  [redacted] correction {index}: {exc} — original kept")
+        return ""
+
+
+POSTER_PROMPT = ("At what timestamp does the finished work look its "
+                 "best — the single frame that would best represent "
+                 "this lesson? Answer with only mm:ss.")
+
+
+def pick_poster_ts(text):
+    """Seconds from a '... mm:ss ...' answer, or None."""
+    m = re.search(r"(\d+:\d{2}(?::\d{2})?)", text or "")
+    if not m:
+        return None
+    try:
+        return parse_ts(m.group(1))
+    except ValueError:
+        return None
+
+
+def try_poster(work, lesson):
+    """Pick a representative frame as poster.jpg. With a key and an
+    MP4-family lesson, Spark watches the video and names the moment;
+    otherwise the midpoint. Never raises, never blocks the run.
+    Returns "poster.jpg" or ""."""
+    if not lesson or not os.path.exists(lesson):
+        return ""
+    out = work("poster.jpg")
+    try:
+        stamp = None
+        from draft_writeup import MP4_EXTS
+        if meta_api.api_key() and \
+                os.path.splitext(lesson)[1].lower() in MP4_EXTS:
+            file_id = meta_api.upload_file(lesson)
+            try:
+                answer = meta_api.ask_video({"file_id": file_id},
+                                            POSTER_PROMPT,
+                                            meta_api.api_key())
+            finally:
+                meta_api.delete_file(file_id)
+            stamp = pick_poster_ts(answer)
+        if stamp is None:
+            probed = highlight_mod.probe_clip(lesson)
+            if probed is None:
+                return ""
+            _, _, fps, count = probed
+            stamp = (count / fps) / 2 if fps else 0
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", str(int(stamp)),
+             "-i", lesson, "-frames:v", "1", "-vf", "scale=1280:-1",
+             out], capture_output=True, timeout=120)
+        if proc.returncode != 0 or not os.path.exists(out):
+            return ""
+        return "poster.jpg"
+    except Exception:
         return ""
 
 
@@ -359,8 +452,8 @@ def main():
         sys.exit("[lesson] no media file found and no --transcript given "
                  "— nothing to process.")
 
-    # 2. transcribe (local whisper; the mentor's voice never leaves
-    #    the machine for a third-party transcription service)
+    # 2. transcribe (Meta speech-to-text with MODEL_API_KEY, else
+    #    local whisper; see pipeline/transcribe.py for the routing)
     timestamped_path = work("transcript_timestamped.txt")
     if args.transcript:
         shutil.copy(args.transcript, timestamped_path)
@@ -399,8 +492,14 @@ def main():
         produced.add("corrections.json")
         with open(work("corrections.json")) as fh:
             hits = json.load(fh)
+    # 3.5 poster — one representative frame, never blocks the run
+    poster = try_poster(work, lesson) if lesson else ""
+    if poster:
+        print(f"[poster] {poster}")
+
     clips = {}
     highlights = {}
+    redacted = {}
     if hits and lesson and os.path.exists(lesson):
         ends = segment_ends(timestamped_text)
         os.makedirs(work("clips"), exist_ok=True)
@@ -421,6 +520,9 @@ def main():
                     hl = try_highlight(work, name, hit.get("segment", ""), i)
                     if hl:
                         highlights[i] = hl
+                    share = try_redact(work, name, i)
+                    if share:
+                        redacted[i] = share
             else:
                 print(f"  [clips] correction {i}: ffmpeg cut failed — "
                       "anchor kept, no clip cut")
@@ -428,12 +530,14 @@ def main():
             print(f"[clips] {len(clips)} correction clip(s) cut")
         if highlights:
             print(f"[highlights] {len(highlights)} spotlight clip(s) cut")
+        if redacted:
+            print(f"[redacted] {len(redacted)} share-safe clip(s) cut")
     elif hits:
         print("[clips] no local lesson media — corrections are anchored "
               "by timestamp only, no clips cut")
     if "corrections.json" in produced:
         with open(work("corrections.md"), "w") as fh:
-            fh.write(render_corrections_md(hits, clips, highlights))
+            fh.write(render_corrections_md(hits, clips, highlights, redacted))
 
     if "writeup.md" not in produced or "corrections.json" not in produced:
         sys.exit(f"Pipeline incomplete: produced {sorted(produced) or 'nothing'} "

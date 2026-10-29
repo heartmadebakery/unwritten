@@ -15,16 +15,22 @@ import json
 import mimetypes
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 
 BASE_URL = "https://api.meta.ai/v1"
 SPARK_MODEL = "muse-spark-1.3"
 SAM_MODEL = "sam-3.1"
+ASR_MODEL = "muse-voice-transcribe-1.0"
 
 
 class MetaApiError(Exception):
     """Anything the Model API refused or failed to return."""
+
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
 
 
 def api_key():
@@ -32,13 +38,20 @@ def api_key():
 
 
 def _post_multipart(url, fields, files, key, timeout):
-    """POST multipart/form-data. fields: {name: value};
-    files: [(field, filename, mime, bytes)]. Returns parsed JSON."""
+    """POST multipart/form-data. fields: {name: value} where a value may
+    be (value, content_type) for typed parts; files: [(field, filename,
+    mime, bytes)]. Returns parsed JSON."""
     boundary = "----unwritten-%d" % os.getpid()
     body = bytearray()
     for name, value in fields.items():
-        body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n"
-                 % (boundary, name, value)).encode()
+        ctype = None
+        if isinstance(value, tuple):
+            value, ctype = value
+        part = ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n"
+                % (boundary, name))
+        if ctype:
+            part += "Content-Type: %s\r\n" % ctype
+        body += (part + "\r\n%s\r\n" % value).encode()
     for field, filename, mime, data in files:
         body += ("--%s\r\nContent-Disposition: form-data; name=\"%s\"; "
                  "filename=\"%s\"\r\nContent-Type: %s\r\n\r\n"
@@ -55,7 +68,8 @@ def _post_multipart(url, fields, files, key, timeout):
             return json.loads(resp.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]
-        raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail))
+        raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail),
+                           status=exc.code)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise MetaApiError("POST %s failed: %s" % (url, exc))
 
@@ -71,7 +85,8 @@ def _post_json(url, payload, key, timeout):
             return json.loads(resp.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:300]
-        raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail))
+        raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail),
+                           status=exc.code)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         raise MetaApiError("POST %s failed: %s" % (url, exc))
 
@@ -157,6 +172,61 @@ def ask_video(video_ref, prompt, key, model=SPARK_MODEL, timeout=1200):
     if not text:
         raise MetaApiError("video understanding returned no text")
     return text
+
+
+def asr_transcribe(wav_path, key, mode="DIARIZATION", timeout=900,
+                 empty_ok=False, keywords=None, languages=None):
+    """Transcribe one supported WAV (mono 16-bit PCM, 16/24 kHz) via
+    Muse Voice Transcribe. Returns [{start, end, text, speaker?}] with
+    seconds. keywords/languages bias recognition toward the mentor's
+    own vocabulary and languages (a hint, never a force). Empty
+    results raise unless empty_ok (multi-chunk callers tolerate
+    silent chunks but refuse a silent whole). Retries follow the
+    docs: backoff on 429, once on 500."""
+    if not key:
+        raise MetaApiError("MODEL_API_KEY is not set")
+    with open(wav_path, "rb") as fh:
+        data = fh.read()
+    config = {"mode": mode, "model": ASR_MODEL, "audioEncoding": "WAV"}
+    if keywords:
+        config["keywords"] = list(keywords)
+    if languages:
+        config["languageBias"] = list(languages)
+    settings = json.dumps(config)
+    resp = None
+    for attempt in range(4):
+        try:
+            resp = _post_multipart(
+                BASE_URL + "/asr/transcribe",
+                {"request": (settings, "application/json")},
+                [("audio", os.path.basename(wav_path), "audio/wav", data)],
+                key, timeout)
+            break
+        except MetaApiError as exc:
+            if exc.status == 429 and attempt < 3:
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            if exc.status == 500 and attempt == 0:
+                time.sleep(2)
+                continue
+            raise
+    segs = []
+    for turn in resp.get("turns", []) or []:
+        text = (turn.get("transcript") or "").strip()
+        if not text:
+            continue
+        seg = {"start": round(turn.get("startMs", 0) / 1000, 2),
+               "end": round(turn.get("endMs", 0) / 1000, 2),
+               "text": text}
+        if turn.get("speaker"):
+            seg["speaker"] = turn["speaker"]
+        segs.append(seg)
+    if not segs and not empty_ok:
+        raise MetaApiError(
+            "no speech recognized in %s — silent or wrong file; "
+            "refusing to transcribe emptiness"
+            % os.path.basename(wav_path))
+    return segs
 
 
 def segment_video_lines(file_id, concept, key, timeout=1200):

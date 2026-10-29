@@ -19,6 +19,7 @@ import meta_api
 from meta_api import MetaApiError
 import draft_writeup as dw
 import run_pipeline as rp
+import transcribe as transcribe_mod
 
 # Verbatim wire fixtures from the SAM "reading segmentation output" doc.
 VIDEO_LINE = (
@@ -267,6 +268,235 @@ class TestHighlightStage(unittest.TestCase):
         hits = [{"start": "02:08", "quote": "q", "correcting": "c"}]
         md = rp.render_corrections_md(hits, {1: "correction-01.mp4"})
         self.assertNotIn("Highlight:", md)
+
+
+class TestAsrClient(unittest.TestCase):
+    TURNS_RESP = {"sessionId": "s", "transcript": "Hi. Bye.",
+                  "audioDurationMs": 8240,
+                  "turns": [
+                      {"turnId": 1, "startMs": 1520, "endMs": 4640,
+                       "transcript": "Hi.", "speaker": "A"},
+                      {"turnId": 2, "startMs": 5900, "endMs": 8240,
+                       "transcript": "Bye.", "speaker": "B"}]}
+
+    def test_request_shape(self):
+        captured = []
+        payload = json.dumps(self.TURNS_RESP).encode()
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"RIFFfake")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen",
+                             stub_urlopen(captured, payload)):
+                segs = meta_api.asr_transcribe(fh.name, "k")
+        self.assertEqual(
+            segs,
+            [{"start": 1.52, "end": 4.64, "text": "Hi.", "speaker": "A"},
+             {"start": 5.9, "end": 8.24, "text": "Bye.", "speaker": "B"}])
+        req = captured[0]
+        self.assertIn("/v1/asr/transcribe", req.full_url)
+        body = req.data.decode("ascii", "replace")
+        self.assertIn('"mode": "DIARIZATION"', body)
+        self.assertIn('"model": "muse-voice-transcribe-1.0"', body)
+        self.assertIn('"audioEncoding": "WAV"', body)
+        self.assertIn(b"RIFFfake", req.data)
+
+    def test_empty_transcript_refuses(self):
+        payload = json.dumps({"sessionId": "s", "transcript": "",
+                              "audioDurationMs": 1000, "turns": []}).encode()
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen",
+                             stub_urlopen([], payload)):
+                with self.assertRaises(MetaApiError):
+                    meta_api.asr_transcribe(fh.name, "k")
+
+    def test_retry_then_success(self):
+        import urllib.error
+        good = json.dumps(self.TURNS_RESP).encode()
+        calls = []
+
+        def flaky(req, timeout=None):
+            calls.append(req)
+            if len(calls) < 3:
+                raise urllib.error.HTTPError(
+                    req.full_url, 429, "slow down", {}, io.BytesIO(b"{}"))
+            return FakeResponse(good)
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen", flaky), \
+                    mock.patch("time.sleep") as sl:
+                segs = meta_api.asr_transcribe(fh.name, "k")
+        self.assertEqual(len(segs), 2)
+        self.assertEqual(len(calls), 3)
+        sl.assert_called()
+
+    def test_persistent_500_raises(self):
+        import urllib.error
+
+        def failing(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "bad", {}, io.BytesIO(b"{}"))
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen", failing), \
+                    mock.patch("time.sleep"):
+                with self.assertRaises(MetaApiError):
+                    meta_api.asr_transcribe(fh.name, "k")
+
+    def test_error_carries_status(self):
+        import urllib.error
+
+        def failing(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 403, "no", {}, io.BytesIO(b"{}"))
+
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen", failing):
+                with self.assertRaises(MetaApiError) as ctx:
+                    meta_api.asr_transcribe(fh.name, "k")
+        self.assertEqual(ctx.exception.status, 403)
+
+    def test_chunk_plan(self):
+        self.assertEqual(transcribe_mod.chunk_plan(300), [(0, 300)])
+        self.assertEqual(transcribe_mod.chunk_plan(600), [(0, 600)])
+        self.assertEqual(transcribe_mod.chunk_plan(601),
+                         [(0, 600), (600, 1)])
+        self.assertEqual(transcribe_mod.chunk_plan(1500),
+                         [(0, 600), (600, 600), (1200, 300)])
+
+
+class TestTranscribeRouting(unittest.TestCase):
+    def test_api_default_with_key(self):
+        segs = [{"start": 0, "end": 1, "text": "x"}]
+        with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k"}), \
+                mock.patch.object(transcribe_mod, "transcribe_api",
+                                  return_value=segs) as api, \
+                mock.patch.object(transcribe_mod, "transcribe_local") as loc:
+            self.assertEqual(transcribe_mod.transcribe("m.mp4"), segs)
+        api.assert_called_once()
+        loc.assert_not_called()
+
+    def test_local_when_no_key(self):
+        env = dict(os.environ)
+        env.pop("MODEL_API_KEY", None)
+        segs = [{"start": 0, "end": 1, "text": "x"}]
+        with mock.patch.dict(os.environ, env, clear=True), \
+                mock.patch.object(transcribe_mod, "transcribe_api") as api, \
+                mock.patch.object(transcribe_mod, "transcribe_local",
+                                  return_value=segs):
+            self.assertEqual(transcribe_mod.transcribe("m.mp4"), segs)
+        api.assert_not_called()
+
+    def test_local_forced_by_env(self):
+        segs = [{"start": 0, "end": 1, "text": "x"}]
+        with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k",
+                                           "UNWRITTEN_TRANSCRIBE": "local"}), \
+                mock.patch.object(transcribe_mod, "transcribe_api") as api, \
+                mock.patch.object(transcribe_mod, "transcribe_local",
+                                  return_value=segs):
+            transcribe_mod.transcribe("m.mp4")
+        api.assert_not_called()
+
+    def test_api_forced_without_key_fails_loudly(self):
+        env = dict(os.environ)
+        env.pop("MODEL_API_KEY", None)
+        env["UNWRITTEN_TRANSCRIBE"] = "api"
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(MetaApiError):
+                transcribe_mod.transcribe("m.mp4")
+
+    def test_unknown_mode_is_a_usage_error(self):
+        with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k",
+                                           "UNWRITTEN_TRANSCRIBE": "lcoal"}):
+            with self.assertRaises(ValueError):
+                transcribe_mod.transcribe("m.mp4")
+
+
+class TestAsrBias(unittest.TestCase):
+    def _capture(self, **kw):
+        captured = []
+        payload = json.dumps(TestAsrClient.TURNS_RESP).encode()
+        with tempfile.NamedTemporaryFile(suffix=".wav") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch("urllib.request.urlopen",
+                             stub_urlopen(captured, payload)):
+                meta_api.asr_transcribe(fh.name, "k", **kw)
+        return captured[0].data.decode("ascii", "replace")
+
+    def test_bias_fields_included(self):
+        body = self._capture(keywords=["sinigang", "patis"],
+                             languages=["English", "Tagalog"])
+        self.assertIn('"keywords": ["sinigang", "patis"]', body)
+        self.assertIn('"languageBias": ["English", "Tagalog"]', body)
+
+    def test_bias_omitted_by_default(self):
+        body = self._capture()
+        self.assertNotIn("keywords", body)
+        self.assertNotIn("languageBias", body)
+
+    def test_csv_env_parsing(self):
+        with mock.patch.dict(os.environ, {
+                "UNWRITTEN_ASR_KEYWORDS": "sinigang, patis,,",
+                "UNWRITTEN_ASR_LANGUAGES": "English, Tagalog"}):
+            self.assertEqual(transcribe_mod._csv_env("UNWRITTEN_ASR_KEYWORDS"),
+                             ["sinigang", "patis"])
+            self.assertEqual(
+                transcribe_mod._csv_env("UNWRITTEN_ASR_LANGUAGES"),
+                ["English", "Tagalog"])
+
+
+class TestRedaction(unittest.TestCase):
+    def test_solid_frame_covers_face(self):
+        pixels = hl.solid_frame(20, 10, [(5, 2, 11, 6)])
+
+        def px(x, y):
+            off = (y * 20 + x) * 4
+            return bytes(pixels[off:off + 4])
+
+        cover = bytes((hl.FACE_RGB[0], hl.FACE_RGB[1], hl.FACE_RGB[2], 255))
+        self.assertEqual(px(8, 4), cover)          # inside the cover
+        self.assertEqual(px(4, 2), cover)          # padding margin
+        self.assertEqual(px(0, 0), bytes(4))       # untouched corner
+        self.assertEqual(px(19, 9), bytes(4))
+
+    def test_redact_no_key_no_file(self):
+        env = dict(os.environ)
+        env.pop("MODEL_API_KEY", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            work = lambda *p: os.path.join("w", *p)
+            self.assertEqual(rp.try_redact(work, "c.mp4", 1), "")
+
+    def test_render_lists_share_safe(self):
+        hits = [{"start": "02:08", "quote": "q", "correcting": "c"}]
+        md = rp.render_corrections_md(hits, {1: "correction-01.mp4"}, {},
+                                      {1: "redacted-01.mp4"})
+        self.assertIn("Share-safe: `clips/redacted-01.mp4`", md)
+
+    def test_pad_clamps_to_frame(self):
+        self.assertEqual(hl._pad((0, 0, 10, 10), 20, 20), (0, 0, 11, 11))
+        self.assertEqual(hl._pad((18, 18, 20, 20), 20, 20), (17, 17, 20, 20))
+
+
+class TestPoster(unittest.TestCase):
+    def test_pick_ts(self):
+        self.assertEqual(rp.pick_poster_ts("07:41"), 461)
+        self.assertEqual(rp.pick_poster_ts("the moment is at 1:02:03."),
+                         3723)
+        self.assertIsNone(rp.pick_poster_ts("no timestamp here"))
+        self.assertIsNone(rp.pick_poster_ts(""))
+
+    def test_missing_lesson_no_poster(self):
+        work = lambda *p: os.path.join("w", *p)
+        self.assertEqual(rp.try_poster(work, "/nonexistent.mp4"), "")
+        self.assertEqual(rp.try_poster(work, ""), "")
 
 
 class TestDraftRouting(unittest.TestCase):

@@ -100,6 +100,35 @@ def boxes_for_frame(parsed_frames, index):
             for r in best["records"]]
 
 
+FACE_RGB = (20, 20, 20)
+FACE_PAD = 0.15  # heads move; cover a margin around each tracked box
+
+
+def _pad(box, width, height):
+    x1, y1, x2, y2 = box
+    px, py = (x2 - x1) * FACE_PAD, (y2 - y1) * FACE_PAD
+    return (max(0, int(x1 - px)), max(0, int(y1 - py)),
+            min(width, int(x2 + px)), min(height, int(y2 + py)))
+
+
+def solid_frame(width, height, boxes):
+    """One redaction overlay: fully opaque dark boxes over each (padded,
+    clamped) face, transparent elsewhere. Plain flat cover — chosen so a
+    face never peeks through a soft mask edge."""
+    cover = bytes((FACE_RGB[0], FACE_RGB[1], FACE_RGB[2], 255))
+    pixels = bytearray(bytes(4) * (width * height))
+    for box in boxes:
+        clamped = clamp_box(_pad(box, width, height), width, height)
+        if not clamped:
+            continue
+        x1, y1, x2, y2 = clamped
+        run = cover * (x2 - x1)
+        for y in range(y1, y2):
+            off = y * width * 4
+            pixels[off + x1 * 4:off + x2 * 4] = run
+    return bytes(pixels)
+
+
 def probe_clip(path):
     """(width, height, fps, frame_count) via ffprobe; None on failure."""
     try:
@@ -127,12 +156,14 @@ def probe_clip(path):
     return (width, height, fps, count)
 
 
-def render_overlays(parsed_frames, width, height, count, outdir):
-    """Write overlay_%05d.png for every clip frame. Returns the count."""
+def render_overlays(parsed_frames, width, height, count, outdir,
+                    painter=None):
+    """Write overlay_%05d.png for every clip frame. painter(width,
+    height, boxes) defaults to the spotlight. Returns the count."""
+    paint = painter or spotlight_frame
     os.makedirs(outdir, exist_ok=True)
     for index in range(count):
-        pixels = spotlight_frame(
-            width, height, boxes_for_frame(parsed_frames, index))
+        pixels = paint(width, height, boxes_for_frame(parsed_frames, index))
         write_png_rgba(os.path.join(outdir, "overlay_%05d.png" % index),
                        width, height, pixels)
     return count
@@ -157,13 +188,21 @@ def save_tracks(path, concept, parsed_frames):
         json.dump({"concept": concept, "frames": parsed_frames}, fh)
 
 
-def highlight_clip(clip_path, parsed_frames, out_path, workdir):
+def highlight_clip(clip_path, parsed_frames, out_path, workdir,
+                   painter=None):
     """Full pass: probe, render overlays, mux. True on success."""
     probed = probe_clip(clip_path)
     if probed is None or not parsed_frames:
         return False
     width, height, fps, count = probed
     ovdir = os.path.join(workdir, "ov")
-    render_overlays(parsed_frames, width, height, count, ovdir)
+    render_overlays(parsed_frames, width, height, count, ovdir,
+                    painter=painter)
     return mux_highlight(clip_path, os.path.join(ovdir, "overlay_%05d.png"),
                          fps, out_path)
+
+
+def redact_clip(clip_path, parsed_faces, out_path, workdir):
+    """Share-safe pass: opaque covers over every tracked face."""
+    return highlight_clip(clip_path, parsed_faces, out_path, workdir,
+                          painter=solid_frame)

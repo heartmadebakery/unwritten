@@ -32,6 +32,22 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Transcription is Meta speech-to-text by default.** With
+  `MODEL_API_KEY`, `transcribe.py` sends mono 24 kHz WAV to Muse
+  Voice Transcribe (DIARIZATION turns + speaker labels into
+  `segments.json`), splitting audio over 10 minutes into capped
+  chunks with re-offset turns; `UNWRITTEN_TRANSCRIBE=local`
+  (or no key) keeps local faster-whisper, `=api` forces the API.
+  Recognition bias via `UNWRITTEN_ASR_KEYWORDS` /
+  `UNWRITTEN_ASR_LANGUAGES`. Refuse-emptiness guard kept on both
+  paths. 11 tests; local path proven live on the 8.4-minute lesson.
+- **Share-safe clips and auto-posters.** With the key, each video
+  correction clip also runs SAM as "face" and gains `redacted-NN.mp4`
+  (opaque covers) plus `faces-NN.json` when faces track; every run
+  picks `poster.jpg` (Spark-chosen moment, else midpoint), shown by
+  the optional page. Deferred TODOs (teach-back QA, live mic check,
+  chapters, schema-first outputs, batch caching) recorded in
+  `docs/PIPELINE.md`. 9 tests; poster proven live keyless.
 - **Meta video understanding + SAM highlights in the pipeline.** New
   stdlib-only `pipeline/meta_api.py` (Files + Responses): with
   `MODEL_API_KEY`, the write-up watches the whole lesson video
