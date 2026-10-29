@@ -32,6 +32,9 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Pipeline docs for the new stages.** `docs/PIPELINE.md` covers
+  schema-first outputs, batch caching, and chapters; the deferred
+  list is now Teach-back QA alone.
 - **Live mic check in the web recorder.** A local mic-energy monitor
   warns after a quiet minute of recording, so a dead mic is caught
   during the lesson; no audio leaves the device. 1 test; service

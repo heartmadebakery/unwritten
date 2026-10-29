@@ -106,6 +106,16 @@ stdlib + ffmpeg + Muse calls.
 - **The poster** is one representative frame (`poster.jpg`, shown by
   the optional page): with the key, Spark names the best moment;
   otherwise the midpoint frame. Never blocks a run.
+- **Chapters** are a video-understanding timeline (`chapters.json`,
+  shown by the optional page): key + MP4 only, never blocks a run.
+- **Outputs are schema-first.** The finder and the write-up return
+  validated JSON (`prompts/*_schema.json`, enforced via
+  `--output-schema` on the `muse` path) and render markdown
+  deterministically; malformed output fails loudly instead of
+  shipping a guess.
+- **Prompt caching for `--cloud` batches.** Direct API calls carry a
+  stable `prompt_cache_key` per use case and log the cached-token
+  hit rate; sequential backlog runs reuse the same prefixes.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, the mentor's exact words, what they were
@@ -124,17 +134,6 @@ stdlib + ffmpeg + Muse calls.
   video: every hesitation or invention is a write-up gap. The retired
   apprentice idea, repurposed as a write-up linter. Held off until
   the current flow is proven polished — do not build yet.
-- **Live mic check in the recorder.** Realtime ASR endpointing warns
-  during recording ("no speech for 60s") instead of discovering
-  silence at transcription. Needs a signer-style proxy so the key
-  never ships in the page.
-- **Chaptered sessions.** A video-understanding timeline (prep /
-  simmer / plating) for the sessions list and page navigation.
-- **Schema-first outputs.** Finder and write-up as validated JSON
-  (structured output / `--output-schema`), rendered to markdown,
-  instead of parsed prose.
-- **Prompt caching for `--cloud` batches.** Same prompts per lesson;
-  worth wiring when backlog runs grow.
 
 ## Not in this pipeline
 
