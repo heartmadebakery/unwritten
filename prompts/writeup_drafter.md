@@ -26,35 +26,27 @@ rewatching the lesson.
 
 ## Output
 
-Only the write-up. Format:
+A single JSON object — no markdown, no code fences — in exactly this
+shape (a schema is enforced on the call, so match it precisely):
 
 ```
-# <Mentor>'s <Task> — the write-up
-
-<One or two sentences: what this makes or teaches, and the shape of
-the work — grounded in the lesson, no preamble about the video.>
-
-## What you need
-
-- <Each material, ingredient, or tool used, with the quantity or size
-  where said or seen; omit what is neither.>
-
-## Steps
-
-1. <One clear step per line, in lesson order.>
-2. ...
-
-## What <Mentor> knows
-
-- <Judgment the mentor voiced during the lesson — how they know when
-  it is right, what goes wrong, what they changed over the years —
-  in their words. Technique plainly demonstrated on video may join
-  it, phrased as observed.>
-- Learned from: <their words, only if they said who taught them>
+{"title": "<Mentor>'s <Task, no suffix>",
+ "intro": "<one or two sentences: what this makes or teaches, and the
+shape of the work — grounded in the lesson, no preamble>",
+ "needs": ["<each material, ingredient, or tool used, with the quantity
+or size where said or seen; omit what is neither>"],
+ "steps": ["<one clear step per entry, in lesson order>"],
+ "knows": ["<judgment the mentor voiced — how they know when it is
+right, what goes wrong, what changed over the years — in their words;
+technique plainly demonstrated on video may join it, phrased as
+observed>", "Learned from: <their words, only if they said who
+taught them>"]}
 ```
 
-Omit the "What <Mentor> knows" section if the lesson offered no
-judgment beyond the steps — never pad it. The write-up is
-craft-agnostic: it must work for a tart, a wrapped lumpia, a hem, a
-garden row — anything a mentor can show with their hands. Never import
-vocabulary from one craft into another.
+Keep every rule above: transcript spine, video fills the gaps,
+mentor's voice verbatim in quotes, nothing imported. Leave "knows"
+an empty array when the lesson offered no judgment beyond the steps
+— never pad it. The write-up is craft-agnostic: it must work for a
+tart, a wrapped lumpia, a hem, a garden row — anything a mentor can
+show with their hands. Never import vocabulary from one craft into
+another.

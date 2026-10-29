@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "corrections",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["start", "quote", "correcting", "segment"],
+    "properties": {
+      "start": {"type": "string", "minLength": 1},
+      "quote": {"type": "string", "minLength": 1},
+      "correcting": {"type": "string", "minLength": 1},
+      "segment": {"type": "string"}
+    }
+  }
+}

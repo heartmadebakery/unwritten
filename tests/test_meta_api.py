@@ -19,7 +19,9 @@ import meta_api
 from meta_api import MetaApiError
 import draft_writeup as dw
 import run_pipeline as rp
+import schemas as schemas_mod
 import transcribe as transcribe_mod
+import find_corrections as fc
 
 # Verbatim wire fixtures from the SAM "reading segmentation output" doc.
 VIDEO_LINE = (
@@ -499,17 +501,57 @@ class TestPoster(unittest.TestCase):
         self.assertEqual(rp.try_poster(work, ""), "")
 
 
+class TestSchemas(unittest.TestCase):
+    def test_validate_ok_and_missing(self):
+        schema = {"type": "object", "required": ["a"],
+                  "properties": {"a": {"type": "string", "minLength": 1},
+                                 "b": {"type": "array",
+                                       "items": {"type": "string"}}}}
+        schemas_mod.validate({"a": "x", "b": ["y"]}, schema)
+        with self.assertRaises(schemas_mod.SchemaError):
+            schemas_mod.validate({"b": []}, schema)
+        with self.assertRaises(schemas_mod.SchemaError):
+            schemas_mod.validate({"a": "x", "b": [3]}, schema)
+        with self.assertRaises(schemas_mod.SchemaError):
+            schemas_mod.validate({"a": "  "}, schema)
+
+    def test_parse_draft(self):
+        raw = '{"title": "T", "intro": "", "needs": [], "steps": ["Do."], "knows": []}'
+        self.assertEqual(dw.parse_draft("```json\n" + raw + "\n```")["title"], "T")
+        with self.assertRaises(ValueError):
+            dw.parse_draft("just prose")
+        with self.assertRaises(ValueError):
+            dw.parse_draft('{"title": "T"}')
+
+    def test_render_writeup_shape(self):
+        md = dw.render_writeup({"title": "Mentor's Soup", "intro": "Intro.",
+                                "needs": ["water"], "steps": ["Boil."],
+                                "knows": []})
+        self.assertEqual(
+            md, "# Mentor's Soup — the write-up\n\nIntro.\n\n"
+                "## What you need\n\n- water\n\n## Steps\n\n1. Boil.\n")
+        self.assertEqual(dw.validate_writeup(md), "")
+        self.assertNotIn("## What the mentor knows", md)
+
+    def test_finder_rejects_malformed_item(self):
+        with self.assertRaises(SystemExit):
+            fc.parse_hits('[{"start": "02:08"}]')
+
+
 class TestDraftRouting(unittest.TestCase):
-    GOOD = ("# Mentor's Soup — the write-up\n\nIntro.\n\n## What you need\n\n"
-            "- water\n\n## Steps\n\n1. Boil.\n")
+    GOOD_JSON = json.dumps({"title": "Mentor's Soup", "intro": "Intro.",
+                            "needs": ["water"], "steps": ["Boil."],
+                            "knows": []})
+    GOOD_MD = ("# Mentor's Soup — the write-up\n\nIntro.\n\n"
+               "## What you need\n\n- water\n\n## Steps\n\n1. Boil.\n")
 
     def test_video_path_used_with_key_and_mp4(self):
         with tempfile.NamedTemporaryFile(suffix=".mp4") as fh:
             with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k"}), \
                     mock.patch.object(dw, "draft_video",
-                                      return_value=self.GOOD) as dv, \
+                                      return_value=self.GOOD_JSON) as dv, \
                     mock.patch.object(dw, "draft_frames") as df:
-                self.assertEqual(dw.draft("t", fh.name), self.GOOD)
+                self.assertEqual(dw.draft("t", fh.name), self.GOOD_MD)
         dv.assert_called_once()
         df.assert_not_called()
 
@@ -519,8 +561,8 @@ class TestDraftRouting(unittest.TestCase):
                     mock.patch.object(dw, "draft_video",
                                       side_effect=MetaApiError("down")), \
                     mock.patch.object(dw, "draft_frames",
-                                      return_value=self.GOOD) as df:
-                self.assertEqual(dw.draft("t", fh.name), self.GOOD)
+                                      return_value=self.GOOD_JSON) as df:
+                self.assertEqual(dw.draft("t", fh.name), self.GOOD_MD)
         df.assert_called_once()
 
     def test_no_key_goes_straight_to_frames(self):
@@ -530,7 +572,7 @@ class TestDraftRouting(unittest.TestCase):
             with mock.patch.dict(os.environ, env, clear=True), \
                     mock.patch.object(dw, "draft_video") as dv, \
                     mock.patch.object(dw, "draft_frames",
-                                      return_value=self.GOOD):
+                                      return_value=self.GOOD_JSON):
                 dw.draft("t", fh.name)
         dv.assert_not_called()
 

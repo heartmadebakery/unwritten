@@ -27,7 +27,7 @@ For each correction, output one object:
   that the mentor corrected.
 - "segment": a short noun phrase naming the visible subject of the
   correction for the camera — the hands, tool, or material the viewer
-  should watch (e.g. "person's hands", "knife", "dough"). Omit it only
+  should watch (e.g. "person's hands", "knife", "dough"). Use ""
   when the correction has no visible subject.
 
 Output ONLY a JSON array of these objects, in transcript order. No prose,

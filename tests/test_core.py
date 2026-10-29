@@ -74,7 +74,8 @@ class TestRenderCorrections(unittest.TestCase):
 
 class TestParseFinderHits(unittest.TestCase):
     def test_clean_array(self):
-        hits = fc.parse_hits('[{"start": "02:08", "quote": "q", "correcting": "c"}]')
+        hits = fc.parse_hits('[{"start": "02:08", "quote": "q", '
+                             '"correcting": "c", "segment": "hands"}]')
         self.assertEqual(hits[0]["start"], "02:08")
 
     def test_fenced_array(self):

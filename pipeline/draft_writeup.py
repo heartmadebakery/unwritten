@@ -12,6 +12,7 @@ at all the draft is written from the transcript alone.
 Usage: draft_writeup.py <transcript_file> <writeup_out.md> [lesson_media]
 """
 import argparse
+import json
 import os
 import re
 import shutil
@@ -20,10 +21,12 @@ import sys
 import tempfile
 
 import meta_api
+import schemas
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
             or os.path.expanduser("~/.local/bin/muse"))
+SCHEMA_PATH = os.path.join(ROOT, "prompts", "writeup_schema.json")
 
 MAX_FRAMES = 16
 FRAME_EVERY = 30  # aim for about one frame per 30 seconds of lesson
@@ -72,6 +75,50 @@ def extract_frames(media, outdir):
             continue
         frames.append(("%02d:%02d" % (int(t // 60), int(t % 60)), out))
     return frames
+
+
+def parse_draft(raw):
+    """Parse the model's JSON draft and validate it against the schema.
+    Raises ValueError naming the problem."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+    try:
+        obj = json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            start = text.index("{")
+            obj, _ = json.JSONDecoder().raw_decode(text[start:])
+        except (ValueError, json.JSONDecodeError):
+            raise ValueError("draft was not JSON")
+    with open(SCHEMA_PATH) as fh:
+        try:
+            schemas.validate(obj, json.load(fh))
+        except schemas.SchemaError as exc:
+            raise ValueError(f"draft failed validation: {exc}")
+    return obj
+
+
+def render_writeup(obj):
+    """Deterministic markdown from a validated draft object. Same shape
+    the page parser has always read."""
+    lines = ["# %s — the write-up" % obj["title"].strip(), ""]
+    if obj.get("intro", "").strip():
+        lines += [obj["intro"].strip(), ""]
+    if obj.get("needs"):
+        lines.append("## What you need")
+        lines.append("")
+        lines += ["- %s" % item.strip() for item in obj["needs"]]
+        lines.append("")
+    lines.append("## Steps")
+    lines.append("")
+    lines += ["%d. %s" % (i, step.strip())
+              for i, step in enumerate(obj["steps"], 1)]
+    lines.append("")
+    if obj.get("knows"):
+        lines.append("## What the mentor knows")
+        lines.append("")
+        lines += ["- %s" % item.strip() for item in obj["knows"]]
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def validate_writeup(text):
@@ -150,7 +197,8 @@ def draft_frames(transcript, media, rules, tmpdir):
         with os.fdopen(fd, "w") as fh:
             fh.write(prompt)
         cmd = [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
-               "muse-spark-1.3", "--prompt-file", prompt_path]
+               "muse-spark-1.3", "--output-schema", SCHEMA_PATH,
+               "--prompt-file", prompt_path]
         for path in images:
             cmd += ["--image", path]
         proc = subprocess.run(cmd, capture_output=True, text=True,
@@ -186,9 +234,14 @@ def draft(transcript, media=""):
             writeup = draft_frames(transcript, media, rules, tmpdir)
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
+    try:
+        writeup = render_writeup(parse_draft(writeup))
+    except ValueError as exc:
+        # Never write a non-write-up as writeup.md (Wonder review).
+        sys.exit(f"Spark drafting {exc} — refusing to write it "
+                 "as a write-up.")
     problem = validate_writeup(writeup)
     if problem:
-        # Never write a non-write-up as writeup.md (Wonder review).
         sys.exit(f"Spark drafting {problem} — refusing to write it "
                  "as a write-up.")
     return writeup

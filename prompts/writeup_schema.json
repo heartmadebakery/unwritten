@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "writeup",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "intro", "needs", "steps", "knows"],
+  "properties": {
+    "title": {"type": "string", "minLength": 1},
+    "intro": {"type": "string"},
+    "needs": {"type": "array", "items": {"type": "string"}},
+    "steps": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "knows": {"type": "array", "items": {"type": "string"}}
+  }
+}

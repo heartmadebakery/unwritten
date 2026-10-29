@@ -16,9 +16,12 @@ import subprocess
 import sys
 import tempfile
 
+import schemas
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
             or os.path.expanduser("~/.local/bin/muse"))
+SCHEMA_PATH = os.path.join(ROOT, "prompts", "correction_schema.json")
 
 
 def find(transcript):
@@ -32,7 +35,8 @@ def find(transcript):
             fh.write(prompt)
         proc = subprocess.run(
             [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
-             "muse-spark-1.3", "--prompt-file", prompt_path],
+             "muse-spark-1.3", "--output-schema", SCHEMA_PATH,
+             "--prompt-file", prompt_path],
             capture_output=True, text=True, timeout=600)
     finally:
         try:
@@ -60,6 +64,11 @@ def parse_hits(raw):
             sys.exit(f"finder output was not JSON: {raw[:300]}")
     if not isinstance(hits, list):
         sys.exit("finder output was not a JSON array")
+    try:
+        with open(SCHEMA_PATH) as fh:
+            schemas.validate(hits, json.load(fh))
+    except schemas.SchemaError as exc:
+        sys.exit(f"finder output failed validation: {exc}")
     return hits
 
 

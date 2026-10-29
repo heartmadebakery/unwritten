@@ -32,6 +32,12 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Schema-first finder and write-up.** Both return validated JSON
+  (`prompts/correction_schema.json`, `prompts/writeup_schema.json`,
+  enforced via `--output-schema`, checked locally by new
+  `pipeline/schemas.py`) and the write-up renders markdown
+  deterministically; `segment` is now required-but-`""`, malformed
+  output fails loudly. 4 tests; both paths proven live.
 - **Transcription is Meta speech-to-text by default.** With
   `MODEL_API_KEY`, `transcribe.py` sends mono 24 kHz WAV to Muse
   Voice Transcribe (DIARIZATION turns + speaker labels into
