@@ -1,8 +1,8 @@
 """Find the correction moments in a lesson transcript (Muse Spark).
 
 The simplified core's second half: after the write-up, surface every moment
-where the teacher corrected the beginner — each anchored to its timestamp
-and her exact words — under prompts/correction_finder.md.
+where the mentor corrected the beginner — each anchored to its timestamp
+and the mentor's exact words — under prompts/correction_finder.md.
 
 Usage: find_corrections.py <transcript_file> <out.json>
 The transcript is timestamped segments, one per line: "[mm:ss] text".

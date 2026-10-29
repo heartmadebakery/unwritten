@@ -5,7 +5,7 @@ a single file, no build step, no network; the Android app in
 [`app/android/`](../app/android/) is the same recorder natively) has
 exactly one job: **record one lesson, stop, keep the file.** No roles,
 no steps, no session code, nothing performed for the machine — the
-teacher teaches the way she would anyway, and the pipeline works
+mentor teaches the way they would anyway, and the pipeline works
 afterwards on the single take (it picks the largest media file in the
 lesson folder as the lesson; see [`docs/PIPELINE.md`](PIPELINE.md)).
 
@@ -16,10 +16,10 @@ nothing to choose.
 ## What any device does
 
 - **In-page recording works** (modern phone, laptop): point the camera
-  at her hands, press **Record the lesson**, press **Stop** at the end.
-  A red "No microphone" banner appears if the take would be silent —
-  her words are the whole point, so silence is never passed over
-  quietly.
+  at the mentor's hands, press **Record the lesson**, press **Stop** at
+  the end. A red "No microphone" banner appears if the take would be
+  silent — the mentor's words are the whole point, so silence is never
+  passed over quietly.
 - **In-page recording does not exist** (old Safari on an old iPhone,
   `file://` pages, locked-down browsers): it does not fail. The buttons
   open the device's own camera / voice-memo apps instead, and the take
@@ -32,7 +32,7 @@ the app clips folder plus Export to `Downloads/Unwritten` on Android).
 
 ## Which device
 
-The base device is a **Google Pixel 4** propped at her hands — that
+The base device is a **Google Pixel 4** propped at the mentor's hands — that
 is the reference setup, and the Android app's floor (Android 10 /
 API 29, arm64). A laptop webcam works for the web recorder; an old
 phone works through its own camera app. A second device is no longer part of the design — one

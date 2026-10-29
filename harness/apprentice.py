@@ -8,7 +8,7 @@ The apprentice (see prompts/apprentice.md) replies with a JSON object of
 per-step mechanical commitments. A parameter that comes back as the
 geometric-neutral default — or that diverges across fresh runs, or that
 a run fails to commit at all — marks a silence in the card: knowledge
-the teacher has but never wrote down.
+the mentor has but never wrote down.
 
 Hardened after the Muse Wonder full-code review (Oct 26): values are
 canonicalised once (90 == 90.0 == "90", "Moderate" == "moderate") so a

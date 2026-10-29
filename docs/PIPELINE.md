@@ -41,17 +41,17 @@ stdlib + ffmpeg + Muse calls.
 ## Stage notes
 
 - **Transcription is local on purpose.** faster-whisper (base model,
-  int8, CPU) — a teacher's raw voice never leaves the machine for a
+  int8, CPU) — a mentor's raw voice never leaves the machine for a
   third-party transcription service. `UNWRITTEN_WHISPER_MODEL=small`
   trades speed for accuracy. Negations matter: a dropped "don't"
   inverts a step, so the write-up's imperatives get checked back
   against this transcript.
 - **The write-up** is `draft_writeup.py`: transcript + the stenographer
   prompt (`prompts/writeup_drafter.md`) into Muse Spark via Muse.
-  Her steps in her words; nothing added.
+  The mentor's steps in the mentor's words; nothing added.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
-  hit is a technique: timestamp, her exact words, what she was
+  hit is a technique: timestamp, the mentor's exact words, what they were
   correcting. `run_pipeline.py` renders `corrections.md` and cuts each
   moment from the lesson video with ffmpeg (segment window padded
   2 s on both sides; a failed cut keeps the timestamp anchor and says

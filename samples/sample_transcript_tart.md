@@ -1,8 +1,8 @@
 # Sample transcript — FICTIONAL, for process testing only
 
-> A made-up teacher ("Nadia") explaining how she makes a pecan tart, to
+> A made-up mentor ("Nadia") explaining how they make a pecan tart, to
 > prove the system is not bread-shaped. Includes the recorder's wisdom
-> questions — her answers are where the years live.
+> questions — their answers are where the years live.
 
 ---
 
@@ -28,4 +28,4 @@
 
 **Interviewer:** Who taught you this?
 
-**Nadia:** My Aunt Rose. She sold these at the church bazaar, two dollars a tart, and there was a line. She never wrote anything down either. I watched her three Christmases before she let me pour.
+**Nadia:** My Aunt Rose. They sold these at the church bazaar, two dollars a tart, and there was a line. They never wrote anything down either. I watched them three Christmases before they let me pour.

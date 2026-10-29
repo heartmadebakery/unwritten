@@ -1,7 +1,8 @@
 """Draft the write-up from a lesson transcript with Muse Spark.
 
-One of the three core things (Oct 27, 2026): the write-up — her steps in
-her words, usable without rewatching the lesson. Spark runs under
+One of the three core things (Oct 27, 2026): the write-up — the
+mentor's steps in the mentor's words, usable without rewatching the
+lesson. Spark runs under
 prompts/writeup_drafter.md, the stenographer rule: transcribe, compress,
 order — never add.
 

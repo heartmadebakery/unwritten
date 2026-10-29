@@ -75,7 +75,7 @@ def main():
                     help="send the card WITH its wisdom section (the "
                          "wisdom-transfer check). Default: steps only — "
                          "the first attempt must not be pre-armed with "
-                         "the teacher's judgment.")
+                         "the mentor's judgment.")
     args = ap.parse_args()
     if args.runs < 1:
         sys.exit("error: --runs must be >= 1")

@@ -12,7 +12,7 @@ RESPONSES.json is a JSON list of raw apprentice response strings, each from
 a FRESH model call whose only context was the card (see
 prompts/apprentice.md). The report ranks the card's steps by silence:
 parameters stuck at the geometric-neutral default, or diverging across
-runs, are where the teacher's unwritten knowledge lives.
+runs, are where the mentor's unwritten knowledge lives.
 """
 import argparse
 import json

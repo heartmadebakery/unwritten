@@ -9,6 +9,10 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-10-29
 
 ### Changed
+- **Mentor wording throughout live material.** Use generic mentor
+  language in the pipeline, prompts, fictional samples, harness, and
+  current documentation. Add terminology checks for mentor and Cloud
+  naming while preserving dated history and necessary vendor endpoints.
 - **Cloud uploads enabled by default in both recorders.** Rename the
   signer and uploader to Cloud, retain existing settings and lesson
   links through migration, and add cloud-first lesson deletion that

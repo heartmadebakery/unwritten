@@ -3,17 +3,17 @@ RETIRED (Oct 27, 2026): part of the cut apprentice design. Not called
 by pipeline/run_pipeline.py or anything in the core flow; kept in the
 tree as a retired experiment.
 
-SAM overlay — the Apprentice's misreading, drawn on the teacher's photo.
+SAM overlay — the Apprentice's misreading, drawn on the mentor's photo.
 
 This is Step 2's primary visual (see README's design rules): SAM segments
-the region of the teacher's real photo where the action happens, the
+the region of the mentor's real photo where the action happens, the
 region is highlighted, and the Apprentice's own sentence is pinned to it.
 
 How SAM is used here:
 - Local engine for development: Meta's segment-anything, ViT-B checkpoint
   (pipeline/models/sam_vit_b_01ec64.pth — download per docs/PIPELINE.md;
   too large for git). A point prompt says "the action is here": the
-  teacher (or the pipeline's hero-frame heuristic) supplies it as
+  mentor (or the pipeline's hero-frame heuristic) supplies it as
   normalized --point X,Y. SAM returns the mask for the object under the
   point; we take its best-scoring mask.
 - Production swap: SAM 3.1 via the Meta Model API accepts richer prompts

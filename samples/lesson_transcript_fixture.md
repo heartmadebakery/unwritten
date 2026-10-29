@@ -1,6 +1,6 @@
 # Sample lesson transcript — FICTIONAL test fixture (Oct 27, 2026)
 
-> A made-up lesson: a mother teaches her son her Sunday bread. Written to
+> A made-up lesson: a mentor teaches Sunday bread to a beginner. Written to
 > simulate timestamped transcription segments of a REAL teaching session —
 > rambling, digressions, logistics asides and all — so the simplified core
 > (write-up drafting + correction capture) can be measured against planted
@@ -53,10 +53,10 @@
 [09:18] No wait — I think I've got the tucking now, look.
 [09:24] Better. Turn it once more. There.
 [09:40] Now it goes in the bowl to rise again?
-[09:44] In the pan, and the bowl gets washed. Your grandfather — he would oil the bowl like he was frying in it, that man.
-[10:12] — and your dough would swim, I told him a hundred times. That's too much oil, anak, just a film.
+[09:44] In the pan, and the bowl gets washed. Your grandfather — they would oil the bowl like they were frying in it, that one.
+[10:12] — and your dough would swim, I told them a hundred times. That's too much oil, anak, just a film.
 [10:24] Just wipe it around?
-[10:27] A film, so it doesn't stick, nothing more. Anyway. My mother, she never oiled anything, she used a cloth with flour, times were different.
+[10:27] A film, so it doesn't stick, nothing more. Anyway. My mother, they never oiled anything, they used a cloth with flour, times were different.
 [10:48] And the oven, how long, what temperature?
 [10:53] Hot oven. I don't time it. When you knock on the bottom and it sounds hollow, it's done.
 [11:04] You never use the timer?

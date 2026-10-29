@@ -15,4 +15,4 @@
 - Eggs in the hot syrup, you'll scramble them right in the pot. Everybody does that once.
 - Don't skip the beans in the shell, it puffs like a pillow and there's no room for the filling.
 - I toast the pecans first, in a dry pan, just until you smell them. I didn't used to. Forty years to learn to toast the nuts. It tastes like more.
-- Learned from: My Aunt Rose. She sold these at the church bazaar, two dollars a tart, and there was a line. She never wrote anything down either. I watched her three Christmases before she let me pour.
+- Learned from: My Aunt Rose. They sold these at the church bazaar, two dollars a tart, and there was a line. They never wrote anything down either. I watched them three Christmases before they let me pour.

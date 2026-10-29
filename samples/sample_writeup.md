@@ -1,7 +1,7 @@
 # Sample write-up — FICTIONAL, for process testing only
 
-> A made-up teacher and task so the harness can be exercised end to end
-> before any real teacher session. Not real teacher data.
+> A made-up mentor and task so the harness can be exercised end to end
+> before any real mentor session. Not real mentor data.
 
 # Rosa's Boule — the write-up
 

@@ -13,12 +13,12 @@ specify must be filled with the **geometric-neutral default** listed below —
 never with learned domain intuition. A model that follows this contract
 literally cannot produce expert-sounding prose from its own knowledge; it can
 only produce the card, plus defaults. Where its commitments look wrong to the
-teacher, the card was silent — and that silence is a technique waiting to be
+mentor, the card was silent — and that silence is a technique waiting to be
 taught.
 
 ## Instruction given to the apprentice (verbatim)
 
-> You will be given a short instruction card written by a teacher for one
+> You will be given a short instruction card written by a mentor for one
 > hands-on task. It is the only information you may use. Do not use any
 > prior knowledge of this craft, even if you have it.
 >
@@ -49,7 +49,7 @@ taught.
 > - `stopping_condition` — how you know the step is done.
 >   DEFAULT: `when the step's motion is complete`.
 >
-> The card may include a "What the teacher knows" section of notes and
+> The card may include a "What the mentor knows" section of notes and
 > judgment. Anything written anywhere on the card is yours to use —
 > written knowledge transfers. Only what is NOT written is missing;
 > never fill a gap in the notes with prior knowledge either.
@@ -68,7 +68,7 @@ taught.
 ## Why defaults, not intuition
 
 If the apprentice were allowed to use its training, it would autocomplete
-the teacher's tacit knowledge (it has read every bread forum on the
+the mentor's tacit knowledge (it has read every bread forum on the
 internet), and the gap would never show. Defaults make the boundary
 *mechanical*: correctness can only come from the card. Defaults also make
 runs comparable — a parameter that comes back at the default, or that

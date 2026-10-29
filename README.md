@@ -8,11 +8,12 @@ yours. Those moments are where thirty years of judgment live, and they are
 exactly what a written recipe leaves out. They also vanish: nobody writes
 them down, and an ordinary video buries them in an hour of footage.
 
-Unwritten Craft keeps them. Record an ordinary lesson — a teacher, a
+Unwritten Craft keeps them. Record an ordinary lesson — a mentor, a
 beginner, one phone. Afterwards, the session is transcribed, the steps are
-drafted into a short **write-up** in the teacher's own words, and the
-moments where she corrected the beginner are pulled out as
-**techniques**: each one her exact words, anchored to its clip. Together
+drafted into a short **write-up** in the mentor's own words, and the
+moments where the mentor corrected the beginner are pulled out as
+**techniques**: each one the mentor's exact words, anchored to its
+clip. Together
 the techniques are the **Knack**.
 
 No protocol during the lesson. No steps to perform for the machine. Teach
@@ -22,9 +23,11 @@ the way you'd teach anyway; the system notices afterwards.
 
 1. **The lesson video.** The primary source — the session itself, kept
    whole.
-2. **The correction clips.** Every moment she corrected him, cut and
-   anchored to her exact words. This is the extracted gold.
-3. **The write-up.** Her steps in her words, drafted under the
+2. **The correction clips.** Every moment the mentor corrected the
+   beginner, cut and anchored to the mentor's exact words. This is the
+   extracted gold.
+3. **The write-up.** The mentor's steps in the mentor's words, drafted
+   under the
    stenographer rule below — the lesson made usable without rewatching
    an hour of footage.
 
@@ -38,22 +41,23 @@ part of the core, and nothing in the core depends on it.
 1. **Record.** One ordinary teaching session, filmed on a phone. The
    beginner genuinely learns — and genuinely gets things wrong.
 2. **Transcribe and draft.** The pipeline transcribes the session and
-   drafts the write-up strictly in the teacher's words.
+   drafts the write-up strictly in the mentor's words.
 3. **Keep the corrections.** The correction moments are surfaced as
-   techniques, each with its clip and her exact words.
+   techniques, each with its clip and the mentor's exact words.
 
 ## Design rules (do not break these)
 
-- **Her words only.** The write-up is drafted under a stenographer rule:
-  transcribe, compress, order — never add a step, quantity, or technique
-  the teacher didn't say, and preserve her phrasing. Drafts are checked
+- **The mentor's words only.** The write-up is drafted under a
+  stenographer rule: transcribe, compress, order — never add a step,
+  quantity, or technique the mentor didn't say, and preserve their
+  phrasing. Drafts are checked
   back against the audio; a dropped "don't" inverts a step, so every
   imperative and negation in the write-up gets verified against the
   recording.
-- **Corrections are the artifact.** A technique exists because she
-  corrected a real attempt, on camera — not because a form asked. If she
-  didn't correct it, it isn't a technique.
-- **She approves what's published.** The teacher hears and approves every
+- **Corrections are the artifact.** A technique exists because the
+  mentor corrected a real attempt, on camera — not because a form
+  asked. If the mentor didn't correct it, it isn't a technique.
+- **The mentor approves what's published.** The mentor hears and approves every
   clip before it is shared in any form. No raw session is published.
 - **A byline, not a character.** The models work backstage — transcription,
   drafting, finding the moments. They do not appear in the lesson, and
@@ -69,14 +73,14 @@ in the coming days, based on what the real session produces.
 
 An earlier, more elaborate design — a blind AI "apprentice" that read only
 the card and committed to mechanical parameters, with its misreading drawn
-onto the teacher's photo — was cut on Oct 27 after a hands-on test found
+onto the mentor's photo — was cut on Oct 27 after a hands-on test found
 the capture flow cumbersome and outside reviewers showed the apprentice's
 failures were scripted defaults rather than discoveries. See
 [the design note](docs/design-simplification-2026-10-27.md). The apprentice
 harness and overlay code remain in the tree as retired experiments.
 
 This repo contains no private code from any other project, and no real
-teacher data — samples are fictional.
+mentor data — samples are fictional.
 
 ## Repo layout
 
@@ -104,7 +108,7 @@ teacher data — samples are fictional.
   no app produces exactly the same lesson file and works just as well.
   See [the Android work log](docs/android-app-worklog.md).
 - `samples/` — fictional sample write-ups and transcripts for testing.
-  **Not** real teacher data.
+  **Not** real mentor data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.
 - `CHANGELOG.md` — the running changelog, at the repo root. Every
   commit to `main` updates it in the same commit.

@@ -17,4 +17,4 @@
 - Too loose, same.
 - Don't crowd the kawali — they visit each other and stick together, and then you tear them pulling apart.
 - Now I freeze them first, before frying — my daughter taught me that one, from the internet. More crispy. Before, straight to the oil. Still good, but frozen is more crispy. You can learn from the young ones too.
-- Learned from: My mother, in Batangas. She rolled for every fiesta, hundreds. Her hands were so fast. I was the one who always tore the wrappers, she would give me the torn ones to eat with sugar. That was my job at first — eating the mistakes.
+- Learned from: My mother, in Batangas. They rolled for every fiesta, hundreds. Their hands were so fast. I was the one who always tore the wrappers, they would give me the torn ones to eat with sugar. That was my job at first — eating the mistakes.

@@ -1,4 +1,4 @@
-You will be given a short instruction card written by a teacher for one hands-on task. It is the only information you may use. Do not use any prior knowledge of this craft, even if you have it.
+You will be given a short instruction card written by a mentor for one hands-on task. It is the only information you may use. Do not use any prior knowledge of this craft, even if you have it.
 
 For each numbered step on the card, state exactly what you would physically do, committing to concrete values for every parameter below. If the card does not specify a parameter, use the DEFAULT — do not substitute experience or common practice.
 
@@ -14,7 +14,7 @@ Parameters and defaults:
 - `temperature` — heat the step works at, in the card's own terms or numbers (e.g. shimmering oil, 350 degrees, cold hands). DEFAULT: `ambient`.
 - `stopping_condition` — how you know the step is done. DEFAULT: `when the step's motion is complete`.
 
-The card may include a "What the teacher knows" section of notes and judgment. Anything written anywhere on the card is yours to use — written knowledge transfers. Only what is NOT written is missing; never fill a gap in the notes with prior knowledge either.
+The card may include a "What the mentor knows" section of notes and judgment. Anything written anywhere on the card is yours to use — written knowledge transfers. Only what is NOT written is missing; never fill a gap in the notes with prior knowledge either.
 
 Also write one sentence, `in_my_words`, saying what you are doing in this step and why — using only ideas present on the card.
 

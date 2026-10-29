@@ -1,7 +1,7 @@
 # Sample write-up drafted by Muse Spark — FICTIONAL, for process testing only
 
 > Drafted from samples/sample_transcript.md by muse-spark-1.3 under
-> prompts/writeup_drafter.md. Not real teacher data.
+> prompts/writeup_drafter.md. Not real mentor data.
 
 # Rosa's Scoring the Boule — the write-up
 

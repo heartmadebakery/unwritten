@@ -1,6 +1,6 @@
 # Sample transcript — FICTIONAL, for process testing only
 
-> A made-up teacher ("Lola Cely") explaining how she rolls lumpia, to
+> A made-up mentor ("Lola Cely") explaining how they roll lumpia, to
 > prove the system travels across cuisines and crafts. Includes the
 > recorder's wisdom questions.
 
@@ -28,4 +28,4 @@
 
 **Interviewer:** Who taught you this?
 
-**Lola Cely:** My mother, in Batangas. She rolled for every fiesta, hundreds. Her hands were so fast. I was the one who always tore the wrappers, she would give me the torn ones to eat with sugar. That was my job at first — eating the mistakes.
+**Lola Cely:** My mother, in Batangas. They rolled for every fiesta, hundreds. Their hands were so fast. I was the one who always tore the wrappers, they would give me the torn ones to eat with sugar. That was my job at first — eating the mistakes.

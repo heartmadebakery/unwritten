@@ -21,7 +21,7 @@ protocol, no step names, nothing performed for the machine. Stages:
                    + corrections.md, and each moment is cut from the
                    lesson video into clips/ when the lesson is a local
                    media file. Core thing #2: the correction clips,
-                   each anchored to her exact words.
+                   each anchored to the mentor's exact words.
 
 The run exits non-zero unless a write-up AND a corrections list were
 produced THIS run. Stale outputs from a previous run are deleted up
@@ -111,8 +111,9 @@ def render_corrections_md(hits, clips):
     """clips: {index: filename or ''}. The techniques list — together,
     the Knack."""
     lines = ["# Corrections — the techniques", "",
-             "Every moment the teacher corrected the beginner, anchored "
-             "to her exact words. Together these are the Knack.", ""]
+             "Every moment the mentor corrected the beginner, anchored "
+             "to the mentor's exact words. Together these are the Knack.",
+             ""]
     if not hits:
         lines.append("No corrections found in this lesson.")
     for i, hit in enumerate(hits, 1):
@@ -187,7 +188,7 @@ def main():
         sys.exit("[lesson] no media file found and no --transcript given "
                  "— nothing to process.")
 
-    # 2. transcribe (local whisper; the teacher's voice never leaves
+    # 2. transcribe (local whisper; the mentor's voice never leaves
     #    the machine for a third-party transcription service)
     timestamped_path = work("transcript_timestamped.txt")
     if args.transcript:

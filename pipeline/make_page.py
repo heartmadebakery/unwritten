@@ -6,8 +6,9 @@ single shareable page — a guide or manual for someone who wasn't in the
 room — for when there is a recipient for it. Nothing in the core
 depends on it, and the core pipeline never calls it.
 
-It consumes only core outputs: writeup.md (her steps + her judgment)
-and corrections.json (the techniques, each with her exact words and,
+It consumes only core outputs: writeup.md (the mentor's steps + the
+mentor's judgment) and corrections.json (the techniques, each with
+the mentor's exact words and,
 where run_pipeline cut them, a clip file under clips/).
 
 Usage: make_page.py --work DIR --title "Mom's Bread"
@@ -59,7 +60,7 @@ def main():
 
     steps_html = "".join(f"<li>{esc(s)}</li>" for s in steps)
     wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
-    wisdom_block = (f"<h2>What the teacher knows</h2><ul>{wisdom_html}</ul>"
+    wisdom_block = (f"<h2>What the mentor knows</h2><ul>{wisdom_html}</ul>"
                     if wisdom else "")
 
     technique_blocks = []
@@ -91,7 +92,7 @@ footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
 <h2>The write-up</h2><ol>{steps_html}</ol>
 {wisdom_block}
 <h2>The Knack — the corrections</h2>{knacks_html}
-<footer>Unwritten Craft — the teacher approved every clip on this page
+<footer>Unwritten Craft — the mentor approved every clip on this page
 before it was shared.</footer>
 </body></html>"""
     out = os.path.join(work, "page.html")

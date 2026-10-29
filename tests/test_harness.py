@@ -103,7 +103,7 @@ class AnalyzeTests(unittest.TestCase):
 
     def test_strip_wisdom_variants(self):
         for heading in ("## What Rosa Knows", "### What rosa knows",
-                        "## What the teacher knows"):
+                        "## What the mentor knows"):
             card = "# T\n\n1. One.\n\n" + heading + "\n\n- secret judgment\n"
             stripped = strip_wisdom(card)
             self.assertNotIn("secret judgment", stripped, heading)

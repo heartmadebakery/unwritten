@@ -1,7 +1,7 @@
 """Transcription for the Unwritten Craft pipeline.
 
 Extracts audio with ffmpeg and transcribes locally with faster-whisper
-(no audio leaves the machine — a teacher's voice is not ours to upload).
+(no audio leaves the machine — a mentor's voice is not ours to upload).
 Model size via UNWRITTEN_WHISPER_MODEL (default "base"; "tiny" is faster
 and worse, "small" is slower and better). First run downloads the model.
 
@@ -52,7 +52,7 @@ def transcribe(media):
                  "text": s.text.strip()} for s in segments]
     text = " ".join(s["text"] for s in segs).strip()
     if not text:
-        # An empty transcript must never become an "empty teacher" the
+        # An empty transcript must never become an "empty mentor" the
         # write-up drafter then invents steps for (Wonder review).
         raise RuntimeError(
             f"no speech recognized in {os.path.basename(media)} "
