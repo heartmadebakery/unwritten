@@ -26,10 +26,10 @@ the way you'd teach anyway; the system notices afterwards.
 2. **The correction clips.** Every moment the mentor corrected the
    beginner, cut and anchored to the mentor's exact words. This is the
    extracted gold.
-3. **The write-up.** The mentor's steps in the mentor's words, drafted
-   under the
-   stenographer rule below — the lesson made usable without rewatching
-   an hour of footage.
+3. **The write-up.** A polished, sectioned document in the mentor's
+   voice — transcript plus lesson-video frames, grounded in the
+   lesson only, per the rule below — the lesson made usable without
+   rewatching an hour of footage.
 
 Everything else is optional. In particular, a rendered **page** — a guide
 or manual assembled from these three things for someone who wasn't in the
@@ -47,13 +47,14 @@ part of the core, and nothing in the core depends on it.
 
 ## Design rules (do not break these)
 
-- **The mentor's words only.** The write-up is drafted under a
-  stenographer rule: transcribe, compress, order — never add a step,
-  quantity, or technique the mentor didn't say, and preserve their
-  phrasing. Drafts are checked
-  back against the audio; a dropped "don't" inverts a step, so every
-  imperative and negation in the write-up gets verified against the
-  recording.
+- **Grounded in the lesson only.** The write-up is drafted from the
+  transcript plus frames of the lesson video itself: the transcript is
+  the spine, and anything it leaves unsaid (a tool, a quantity, a
+  doneness cue) is filled in from what the video plainly shows —
+  never from outside knowledge. The mentor's distinctive phrasing is
+  preserved verbatim. Drafts are checked
+  back against the recording; a dropped "don't" inverts a step, so every
+  imperative and negation in the write-up gets verified against it.
 - **Corrections are the artifact.** A technique exists because the
   mentor corrected a real attempt, on camera — not because a form
   asked. If the mentor didn't correct it, it isn't a technique.
@@ -89,7 +90,7 @@ mentor data — samples are fictional.
   produces the write-up and the correction clips out. `ingest.py`
   finds the lesson (largest media file in the folder) →
   `transcribe.py` (local faster-whisper) → `draft_writeup.py` (Muse
-  Spark, stenographer prompt) drafts the write-up →
+  Spark: transcript + lesson-video frames) drafts the write-up →
   `find_corrections.py` (Spark, `prompts/correction_finder.md`)
   surfaces the correction moments, which the runner cuts from the
   lesson into `clips/`. `make_page.py` renders the optional page/guide
@@ -98,7 +99,8 @@ mentor data — samples are fictional.
   design. `cloud_fetch.py` pulls finished Cloud lessons so
   `run_pipeline.py --cloud` processes each into its own dir.
   See [the pipeline guide](docs/PIPELINE.md).
-- `prompts/` — `writeup_drafter.md` carries the stenographer rule;
+- `prompts/` — `writeup_drafter.md` carries the write-up rules
+  (transcript spine, video fills the gaps, nothing imported);
   `correction_finder.md` defines a correction. `apprentice.md` /
   `apprentice_instruction.txt` are retired with the apprentice design.
 - `harness/` — the retired apprentice process-test harness, kept for the

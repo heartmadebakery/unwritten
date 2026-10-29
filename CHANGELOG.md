@@ -21,6 +21,15 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Write-ups are polished and video-grounded.** `draft_writeup.py`
+  now attaches up to 16 evenly spaced lesson frames to the Spark
+  call; the rewritten `prompts/writeup_drafter.md` produces an intro,
+  `## What you need`, numbered `## Steps`, and `## What <Mentor>
+  knows` — the transcript is the spine, the video fills what it
+  leaves unsaid, nothing is imported from outside knowledge, and the
+  mentor's phrasing survives verbatim. Degrades to transcript-only
+  without media. 4 tests in `tests/test_core.py`; proven on an
+  8.4-minute lesson (16 steps, 6 wisdom bullets, page parser clean).
 - **Corrections finder tolerates doubled output.** `parse_hits()` in
   `pipeline/find_corrections.py` takes the first complete JSON array
   instead of requiring the whole model output to be exactly one

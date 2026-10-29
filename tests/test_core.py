@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(ROOT, "pipeline"))
 import ingest as ingest_mod
 import run_pipeline as rp
 import find_corrections as fc
+import draft_writeup as dw
 import make_page
 
 
@@ -91,6 +92,39 @@ class TestParseFinderHits(unittest.TestCase):
     def test_rejects_garbage(self):
         with self.assertRaises(SystemExit):
             fc.parse_hits('no corrections here, just prose')
+
+
+class TestDraftWriteup(unittest.TestCase):
+    NEW_FORMAT = (
+        "# Mentor's Sinigang — the write-up\n\n"
+        "A sour pork soup, built in one pot in under an hour.\n\n"
+        "## What you need\n\n"
+        "- pork belly\n- tomatoes\n\n"
+        "## Steps\n\n"
+        "1. Cut the pork.\n2. Simmer until tender.\n\n"
+        "## What Mentor knows\n\n"
+        "- Taste before serving.\n"
+    )
+
+    def test_validate_accepts_sections_steps_and_title(self):
+        self.assertEqual(dw.validate_writeup(self.NEW_FORMAT), "")
+
+    def test_validate_rejects_missing_parts(self):
+        self.assertNotEqual(dw.validate_writeup("just prose, no structure"), "")
+        self.assertNotEqual(
+            dw.validate_writeup("# Title\n\nno steps here\n\n## Steps\n"), "")
+        self.assertNotEqual(
+            dw.validate_writeup("# Title\n\n1. A step but no sections.\n"), "")
+
+    def test_extract_frames_degrades_without_media(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(dw.extract_frames("/nonexistent/x.mp4", td), [])
+            self.assertEqual(dw.extract_frames("", td), [])
+
+    def test_page_parser_reads_new_format(self):
+        steps, wisdom = make_page.parse_writeup(self.NEW_FORMAT)
+        self.assertEqual(steps, ["Cut the pork.", "Simmer until tender."])
+        self.assertEqual(wisdom, ["Taste before serving."])
 
 
 class TestParseWriteup(unittest.TestCase):

@@ -13,8 +13,8 @@ THE LESSON VIDEO — kept whole (core thing #1)
    │  transcribe.py — local faster-whisper
    ▼
 transcript.txt + transcript_timestamped.txt ("[mm:ss] text" per segment)
-   ├─► draft_writeup.py ─► writeup.md        (Muse Spark, stenographer
-   │                                        rule) — THE WRITE-UP (#3)
+   ├─► draft_writeup.py ─► writeup.md        (Muse Spark: transcript
+   │                                        + lesson frames) — THE WRITE-UP (#3)
    └─► find_corrections.py ─► corrections.json + corrections.md
                                             (Muse Spark), and each
                                             correction cut from the
@@ -67,9 +67,13 @@ stdlib + ffmpeg + Muse calls.
   trades speed for accuracy. Negations matter: a dropped "don't"
   inverts a step, so the write-up's imperatives get checked back
   against this transcript.
-- **The write-up** is `draft_writeup.py`: transcript + the stenographer
-  prompt (`prompts/writeup_drafter.md`) into Muse Spark via Muse.
-  The mentor's steps in the mentor's words; nothing added.
+- **The write-up** is `draft_writeup.py`: transcript + evenly spaced
+  frames of the lesson video (`--image` attachments) + the prompt
+  (`prompts/writeup_drafter.md`) into Muse Spark via Muse. A
+  polished, sectioned document in the mentor's voice; the transcript
+  is the spine, and what it leaves unsaid is filled in from the
+  frames — never from outside knowledge. Without lesson media (or
+  when frames fail), it degrades to transcript-only.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, the mentor's exact words, what they were

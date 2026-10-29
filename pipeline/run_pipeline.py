@@ -15,8 +15,10 @@ protocol, no step names, nothing performed for the machine. Stages:
   2. transcribe  — local faster-whisper -> plain + timestamped
                    transcript (skipped with --transcript FILE, which
                    must be timestamped "[mm:ss] text" lines).
-  3. write-up    — Muse Spark drafts the write-up under the
-                   stenographer rule (prompts/writeup_drafter.md)
+  3. write-up    — Muse Spark drafts the polished, sectioned
+                   write-up (prompts/writeup_drafter.md) from the
+                   transcript plus frames of the lesson video, which
+                   fill what the transcript leaves unsaid
                    -> writeup.md. Core thing #3.
   4. corrections — Muse Spark finds the correction moments
                    (prompts/correction_finder.md) -> corrections.json
@@ -295,9 +297,13 @@ def main():
     with open(timestamped_path) as fh:
         timestamped_text = fh.read()
 
-    # 3. write-up — core thing #3
-    if run([sys.executable, os.path.join(HERE, "draft_writeup.py"),
-            timestamped_path, work("writeup.md")], "write-up") is not None \
+    # 3. write-up — core thing #3 (transcript + lesson frames;
+    #    transcript-only when there is no local lesson media)
+    cmd = [sys.executable, os.path.join(HERE, "draft_writeup.py"),
+           timestamped_path, work("writeup.md")]
+    if lesson and os.path.exists(lesson):
+        cmd.append(lesson)
+    if run(cmd, "write-up") is not None \
             and os.path.exists(work("writeup.md")):
         produced.add("writeup.md")
 
