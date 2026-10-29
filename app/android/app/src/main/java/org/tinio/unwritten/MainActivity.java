@@ -164,7 +164,7 @@ public class MainActivity extends Activity {
 
         TextView title = label("Unwritten Craft", 24, TEXT); title.setGravity(Gravity.CENTER);
         l.addView(title);
-        l.addView(label("Film mentor session. Record, let it happen and Stop at the end.", 16, DIM));
+        l.addView(label("Film mentor session. Record and let it happen.", 16, DIM));
 
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
@@ -227,10 +227,8 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar s) {}
         });
 
-        status = label("Point the camera at the mentor's hands and the work.", 16, TEXT);
-        l.addView(status);
-
-        recordButton = button("● Record the lesson");
+        status = label("", 16, TEXT); // hidden - status conveyed via list icons
+        recordButton = button("● Record");
         recordButton.setBackgroundColor(RED); recordButton.setTextColor(Color.WHITE);
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
         l.addView(recordButton);
@@ -240,13 +238,13 @@ public class MainActivity extends Activity {
         cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
         l.addView(cloudToggleButton);
 
-        exportBtn = button("Export lessons to Downloads");
+        exportBtn = button("Export sessions to Downloads");
         exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
-        // Lessons at bottom: left icon (☁/device), middle date+duration, right share/download
-        l.addView(label("Lessons on this device", 17, DIM));
+        // Sessions at bottom: left icon (☁/device), middle date+duration, right share/download
+        l.addView(label("Sessions", 17, DIM));
         lessonContainer = new LinearLayout(MainActivity.this);
         lessonContainer.setOrientation(LinearLayout.VERTICAL);
         lessonContainer.setBackgroundColor(BG);
@@ -269,7 +267,7 @@ public class MainActivity extends Activity {
         for (int r : results) if (r != PackageManager.PERMISSION_GRANTED) granted = false;
         if (req == PERM_RECORD) {
             if (granted) { openPreview(); if (pendingRecord) { pendingRecord = false; toggleRecord(); } }
-            else { pendingRecord = false; status.setText("Camera and microphone permission denied — cannot record the lesson."); }
+            else { pendingRecord = false; if (status != null) status.setText("Camera and microphone permission denied."); }
         }
     }
 
@@ -279,13 +277,13 @@ public class MainActivity extends Activity {
         try {
             if (engine == null) engine = new CameraEngine(this, new CameraEngine.ErrorListener() {
                 @Override public void onError(final String message) {
-                    runOnUiThread(new Runnable() { @Override public void run() { status.setText("Camera error: " + message); } });
+                    runOnUiThread(new Runnable() { @Override public void run() { if (status != null) status.setText("Camera error: " + message); } });
                 }
             });
             engine.openPreview(preview);
             handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 1200);
             handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 2500);
-        } catch (Throwable e) { status.setText("Camera error: " + e.getMessage()); }
+        } catch (Throwable e) { if (status != null) status.setText("Camera error: " + e.getMessage()); }
     }
 
     private void toggleRecord() {
@@ -294,7 +292,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO}, PERM_RECORD);
             return;
         }
-        if (engine == null) { openPreview(); status.setText("Camera not ready yet — try again in a moment."); return; }
+        if (engine == null) { openPreview(); if (status != null) status.setText("Camera not ready yet — try again in a moment."); return; }
         // auto-close viewfinder playback if a recording begins
         if (isViewfinderPlaying) stopLocalPlayback();
         try {
@@ -305,18 +303,16 @@ public class MainActivity extends Activity {
                 recordStartMs = SystemClock.elapsedRealtime();
                 recordButton.setText("■ Stop  0:00");
                 handler.post(timerRunnable);
-                status.setText("Recording " + f.getName() + " — teach the way you'd teach anyway.");
-            } else status.setText("Could not start recording.");
-        } catch (Throwable e) { status.setText("Record failed: " + e.getMessage()); }
+            } else if (status != null) status.setText("Could not start recording.");
+        } catch (Throwable e) { if (status != null) status.setText("Record failed: " + e.getMessage()); }
     }
 
     private void stopRecording() {
         try {
             if (engine != null) engine.stopVideo();
-        } catch (Throwable e) { status.setText("Stop failed: " + e.getMessage()); return; }
+        } catch (Throwable e) { if (status != null) status.setText("Stop failed: " + e.getMessage()); return; }
         handler.removeCallbacks(timerRunnable);
-        recordButton.setText("● Record the lesson");
-        status.setText("Lesson saved. Record another, or export below.");
+        recordButton.setText("● Record");
         refreshClipList();
         if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);
     }
@@ -556,7 +552,7 @@ public class MainActivity extends Activity {
 
     private void doExport() {
         List<File> files = clipFiles();
-        if (files.isEmpty()) { Toast.makeText(this, "Exported 0 lessons to Downloads/Unwritten", Toast.LENGTH_LONG).show(); return; }
+        if (files.isEmpty()) { Toast.makeText(this, "Exported 0 sessions to Downloads/Unwritten", Toast.LENGTH_LONG).show(); return; }
         int count = 0;
         try {
             ContentResolver cr = getContentResolver();
@@ -576,7 +572,7 @@ public class MainActivity extends Activity {
                 cr.update(uri, done, null, null);
                 count++;
             }
-            Toast.makeText(this, "Exported " + count + " lessons to Downloads/Unwritten", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Exported " + count + " sessions to Downloads/Unwritten", Toast.LENGTH_LONG).show();
         } catch (Throwable e) {
             Toast.makeText(this, "Export failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
@@ -626,9 +622,6 @@ public class MainActivity extends Activity {
         cloudPrefs().edit().putBoolean("enabled", on).apply();
         paintCloudToggle();
         applyCloudDependentVisibility();
-        status.setText(on
-                ? "☁ Cloud on. New lessons will also upload for streamed playback; tap a lesson with ☁▶ to open its Watch link."
-                : "☁ Cloud off. Lessons stay on this phone only.");
     }
 
     private void applyCloudDependentVisibility() {
@@ -645,7 +638,7 @@ public class MainActivity extends Activity {
 
     private void playInViewfinder(String name) {
         File f = new File(clipsDir, name);
-        if (!f.exists()) { Toast.makeText(this, "Lesson file missing.", Toast.LENGTH_SHORT).show(); return; }
+        if (!f.exists()) { Toast.makeText(this, "File missing.", Toast.LENGTH_SHORT).show(); return; }
         try {
             if (localPlayer != null && viewfinderBox != null && preview != null) {
                 preview.setVisibility(View.INVISIBLE);
@@ -667,7 +660,6 @@ public class MainActivity extends Activity {
                 });
                 localPlayer.setVideoPath(f.getAbsolutePath());
                 localPlayer.requestFocus();
-                status.setText("Playing " + displayDateFor(name) + ".");
                 return;
             }
         } catch (Throwable ignored) { }
@@ -685,7 +677,7 @@ public class MainActivity extends Activity {
             if (mime == null) mime = "video/*";
             i.setDataAndType(uri, mime);
             i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(Intent.createChooser(i, "Play lesson"));
+            startActivity(Intent.createChooser(i, "Play session"));
         } catch (Throwable e) {
             Toast.makeText(this, "No player for " + name + " (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
         }
@@ -696,7 +688,6 @@ public class MainActivity extends Activity {
         try { if (preview != null) preview.setVisibility(View.VISIBLE); } catch (Throwable ignored) {}
         if (playerControls != null) playerControls.setVisibility(View.GONE);
         isViewfinderPlaying = false;
-        status.setText("Playback stopped.");
     }
 
     @Override public void onBackPressed() {
@@ -725,7 +716,7 @@ public class MainActivity extends Activity {
             // fallback to lastLink
             url = cloudPrefs().getString("lastLink", "");
             if (url == null || url.isEmpty()) {
-                Toast.makeText(this, "No Cloud link yet for this lesson.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "No Cloud link yet for this session.", Toast.LENGTH_LONG).show();
                 return;
             }
         }
@@ -733,7 +724,7 @@ public class MainActivity extends Activity {
         share.setType("text/plain");
         share.putExtra(Intent.EXTRA_SUBJECT, name);
         share.putExtra(Intent.EXTRA_TEXT, url);
-        startActivity(Intent.createChooser(share, "Share lesson link"));
+        startActivity(Intent.createChooser(share, "Share session link"));
     }
 
     private JSONObject cloudLinks() {
@@ -755,7 +746,7 @@ public class MainActivity extends Activity {
     }
     private void confirmDeleteLesson(final String name) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete lesson?")
+                .setTitle("Delete session?")
                 .setMessage("Delete '" + name + "' from this phone and the cloud?")
                 .setPositiveButton("Delete", new android.content.DialogInterface.OnClickListener() {
                     @Override public void onClick(android.content.DialogInterface d, int which) {
@@ -777,7 +768,7 @@ public class MainActivity extends Activity {
                         up.deleteVideo(videoId);
                     } catch (final Exception e) {
                         runOnUiThread(new Runnable() { @Override public void run() {
-                            status.setText("☁ Couldn't delete the cloud copy (" + e.getMessage() + ") Keeping the local lesson so nothing is lost.");
+                            if (status != null) status.setText("☁ Couldn't delete the cloud copy (" + e.getMessage() + ")");
                         } });
                         return;
                     }
@@ -789,7 +780,6 @@ public class MainActivity extends Activity {
                 if (lastLessonFile != null && name.equals(lastLessonFile.getName())) lastLessonFile = null;
                 runOnUiThread(new Runnable() { @Override public void run() {
                     refreshClipList();
-                    status.setText("🗑 Lesson deleted from this phone" + (videoId.isEmpty() ? "." : " and the cloud."));
                 } });
             }
         });
@@ -839,7 +829,6 @@ public class MainActivity extends Activity {
         final String savedVid = link == null ? null : link.optString("videoId", null);
         setCloudLink(name, "uploading", savedVid, null, savedUrl, 0);
         refreshClipList();
-        status.setText("☁ Uploading " + name + " to Cloud… The lesson is already saved on this phone.");
         cloudExec.execute(new Runnable() {
             @Override public void run() {
                 try {
@@ -857,7 +846,6 @@ public class MainActivity extends Activity {
                         @Override public void onUploaded(String videoId) {
                             setCloudLink(name, "processing", videoId, null, null, 100);
                             runOnUiThread(new Runnable() { @Override public void run() {
-                                status.setText("☁ Uploaded. Cloud is preparing the streaming version…");
                                 refreshClipList();
                             } });
                         }
@@ -884,9 +872,8 @@ public class MainActivity extends Activity {
         runOnUiThread(new Runnable() { @Override public void run() {
             try {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Cloud lesson link", url));
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Cloud session link", url));
             } catch (Throwable ignored) { }
-            status.setText("☁ Ready: " + name + " — ▶ Watch link copied. Tap lesson to play locally, ↗ to share.");
             refreshClipList();
         } });
     }
@@ -894,7 +881,6 @@ public class MainActivity extends Activity {
     private void cloudFailed(final String name, String videoId, final String message) {
         setCloudLink(name, "failed", videoId, null, null, -1);
         runOnUiThread(new Runnable() { @Override public void run() {
-            status.setText("☁ Cloud didn't finish for " + name + " (" + message + ") The lesson is safe on this phone — tap it in the list to retry.");
             refreshClipList();
         } });
     }
