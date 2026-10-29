@@ -124,15 +124,37 @@ def delete_file(file_id, timeout=60):
         return False
 
 
-def responses_create(model, content, key, timeout=900, extra=None):
+def cached_tokens(resp):
+    """(cached, total) input tokens from a Responses usage object.
+    (0, 0) when the shape is absent — never raises."""
+    try:
+        usage = resp.get("usage", {})
+        total = int(usage.get("input_tokens", 0))
+        details = usage.get("input_tokens_details", {})
+        return (int(details.get("cached_tokens", 0)), total)
+    except (AttributeError, TypeError, ValueError):
+        return (0, 0)
+
+
+def responses_create(model, content, key, timeout=900, extra=None,
+                     cache_key=None):
     """One non-streaming Responses call. content is the user message's
-    content-block list. Returns the parsed response object."""
+    content-block list. cache_key (a stable per-use-case string) routes
+    batch repeats together for prefix-cache hits; the hit rate prints
+    to the log. Returns the parsed response object."""
     payload = {"model": model,
                "input": [{"type": "message", "role": "user",
                           "content": content}]}
+    if cache_key:
+        payload["prompt_cache_key"] = cache_key
     if extra:
         payload.update(extra)
-    return _post_json(BASE_URL + "/responses", payload, key, timeout)
+    resp = _post_json(BASE_URL + "/responses", payload, key, timeout)
+    hit, total = cached_tokens(resp)
+    if total:
+        print(f"  [cache] {hit}/{total} input tokens from cache"
+              + (f" ({cache_key})" if cache_key else ""))
+    return resp
 
 
 def output_text(resp):
@@ -158,7 +180,8 @@ def output_text(resp):
     return "".join(texts)
 
 
-def ask_video(video_ref, prompt, key, model=SPARK_MODEL, timeout=1200):
+def ask_video(video_ref, prompt, key, model=SPARK_MODEL, timeout=1200,
+              cache_key="unwritten-video"):
     """Ask about a video: video_ref is {"file_id": ...} for an upload
     or {"video_url": ...} for a hosted file. Returns the text answer."""
     if not key:
@@ -167,7 +190,7 @@ def ask_video(video_ref, prompt, key, model=SPARK_MODEL, timeout=1200):
     block.update(video_ref)
     resp = responses_create(
         model, [{"type": "input_text", "text": prompt}, block],
-        key, timeout=timeout)
+        key, timeout=timeout, cache_key=cache_key)
     text = output_text(resp).strip()
     if not text:
         raise MetaApiError("video understanding returned no text")
@@ -242,7 +265,7 @@ def segment_video_lines(file_id, concept, key, timeout=1200):
         SAM_MODEL,
         [{"type": "input_text", "text": phrase},
          {"type": "input_video", "file_id": file_id}],
-        key, timeout=timeout)
+        key, timeout=timeout, cache_key="unwritten-segmentation")
     return output_text(resp).strip()
 
 

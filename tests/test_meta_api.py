@@ -184,6 +184,28 @@ class TestClientShapes(unittest.TestCase):
                 meta_api.segment_video_lines("file-9", "hands", "k"), "")
 
 
+class TestCaching(unittest.TestCase):
+    def test_cache_key_sent(self):
+        captured = []
+        payload = json.dumps({"output": [], "usage": {"input_tokens": 10,
+                             "input_tokens_details": {"cached_tokens": 4}}
+                              }).encode()
+        with mock.patch("urllib.request.urlopen",
+                         stub_urlopen(captured, payload)):
+            meta_api.responses_create("m", [{"type": "input_text",
+                                             "text": "hi"}], "k",
+                                      cache_key="unwritten-test")
+        sent = json.loads(captured[0].data.decode())
+        self.assertEqual(sent["prompt_cache_key"], "unwritten-test")
+
+    def test_cached_tokens_walker(self):
+        resp = {"usage": {"input_tokens": 1847, "input_tokens_details":
+                          {"cached_tokens": 1792}}}
+        self.assertEqual(meta_api.cached_tokens(resp), (1792, 1847))
+        self.assertEqual(meta_api.cached_tokens({}), (0, 0))
+        self.assertEqual(meta_api.cached_tokens(None), (0, 0))
+
+
 class TestHighlightRender(unittest.TestCase):
     def test_clamp_box(self):
         self.assertEqual(hl.clamp_box((2, 2, 6, 6), 8, 8), (2, 2, 6, 6))

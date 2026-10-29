@@ -32,6 +32,11 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Prompt cache keys on direct API calls.** `responses_create`
+  sends a stable `prompt_cache_key` per use case
+  (`unwritten-video`, `unwritten-segmentation`, ...) and logs the
+  cached-token hit rate, so sequential `--cloud` backlog runs reuse
+  prefixes. 2 tests.
 - **Schema-first finder and write-up.** Both return validated JSON
   (`prompts/correction_schema.json`, `prompts/writeup_schema.json`,
   enforced via `--output-schema`, checked locally by new
