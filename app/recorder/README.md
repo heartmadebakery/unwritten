@@ -4,8 +4,13 @@ A single-file web app with one job: **record one lesson, stop, keep the
 file.** Plain HTML/CSS/JS — no dependencies; one tiny build step stamps
 a signer token into a servable copy. Every take is saved to the
 on-device vault (IndexedDB) with no download prompt, and with Cloud on
-(a default) a copy is also uploaded for streamed playback. Tap a
-lesson's name any time to download its file manually.
+(a default) a copy is also uploaded for streamed playback.
+
+The layout mirrors the [native Android app](../android/): the same dark
+palette, the same single-column order (viewfinder, zoom, record, Cloud
+toggle, export, sessions), and the same session rows — newest first,
+date + length, tap to play inside the viewfinder, ↓ to download one
+file, long-press to delete it from the device and the cloud.
 
 There are no roles, steps, prompts, or session codes. The mentor
 teaches the way they would anyway; afterwards the pipeline transcribes
@@ -19,9 +24,10 @@ folder, so the single take is all it needs. Takes are named
 At startup the app probes the device (in-page recording? clip vault?)
 and adapts on its own:
 
-- **In-page recording available:** a camera preview, one **Record the
-  lesson** / **Stop** button with a running timer, and a lessons
-  library below. If the stream ends up video-only, a red **No
+- **In-page recording available:** a camera preview, a zoom row below
+  it (hidden when the camera reports no zoom range), one **●
+  Record** / **■ Stop** button carrying the running timer, and the
+  sessions list below. If the stream ends up video-only, a red **No
   microphone** banner says so — the mentor's words are the whole point.
 - **In-page recording unavailable** (old Safari, `file://`,
   locked-down browsers): **Record video** / **Record audio** buttons
@@ -31,13 +37,15 @@ and adapts on its own:
 ## Cloud upload (on by default)
 
 Each video lesson is uploaded to [Bunny Stream](https://bunny.net/docs/stream)
-after the local save, and a **▶ Watch** link (adaptive HLS player)
-appears under the lesson when Cloud finishes encoding. Uploads are
+after the local save, and the session's **↗** action shares its
+streaming (adaptive HLS player) link once Cloud finishes encoding —
+the link is also copied to the clipboard. Uploads are
 resumable (TUS), resume after reloads, and never delay or endanger the
 local take. **☁️ Cloud** toggles saving off (lessons stay on-device
-only); **⚙️ Cloud settings** holds overrides. Each lesson's **✕ Delete**
-removes it from the device vault *and* the cloud copy (cloud first —
-if that fails, the local lesson is kept).
+only); **⚙️ Cloud settings** holds overrides; **Export sessions to
+Downloads** appears only with Cloud off, as the offline fallback.
+Long-pressing a session removes it from the device vault *and* the
+cloud copy (cloud first — if that fails, the local lesson is kept).
 
 No typing needed: `bash build.sh` copies the app to `dist/` (gitignored,
 this is what you serve) and stamps one random token from the signer
@@ -96,7 +104,8 @@ access. Without one, the native-app capture path still works:
 ## Install as an app (PWA)
 
 Served over HTTPS, the recorder is an installable PWA:
-`manifest.webmanifest` (standalone display, warm theme), home-screen
+`manifest.webmanifest` (standalone display, dark theme matching the
+Android app), home-screen
 icons in `icons/`, and `sw.js`, a service worker that caches the app
 shell for offline use — pages are network-first, so updates still
 arrive when online. On iPhone: open the page in Safari → Share →

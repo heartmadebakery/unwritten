@@ -206,5 +206,60 @@ class CloudSignerTests(unittest.TestCase):
         self.assertIn("X-Signer-Token", self.worker)
 
 
+class WebAndroidParityTests(unittest.TestCase):
+    """The web recorder mirrors the native Android recorder's design.
+
+    Same dark palette, same single-column order (viewfinder, zoom,
+    record, cloud toggle, export, sessions), same session-row contract:
+    newest first, date + duration, tap to play in the viewfinder,
+    long-press to delete, per-lesson share/download.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.html = read(WEB)
+        cls.manifest = read(MANIFEST)
+
+    def test_android_dark_palette(self):
+        for color in ["#17130E", "#241C12", "#F5EAD6", "#B8A888"]:
+            self.assertIn(color, self.html, color)
+
+    def test_title_and_sessions_wording(self):
+        self.assertIn("Film mentor session. Record and let it happen.", self.html)
+        self.assertIn(">Sessions<", self.html)
+        self.assertNotIn("Lessons on this device", self.html)
+
+    def test_zoom_row_below_viewfinder(self):
+        for token in ['id="zoomrow"', 'id="zoomseek"', 'id="zoomlabel"']:
+            self.assertIn(token, self.html, token)
+        self.assertLess(self.html.index('id="zoomrow"'),
+                        self.html.index('id="recbtn"'))
+
+    def test_in_viewfinder_playback(self):
+        for token in ['id="player"', "playInViewfinder",
+                      "stopLocalPlayback", 'id="playercontrols"']:
+            self.assertIn(token, self.html, token)
+
+    def test_stop_button_carries_timer_like_android(self):
+        self.assertIn("■ Stop  ", self.html)
+
+    def test_export_visible_only_when_cloud_off(self):
+        self.assertIn('id="exportbtn"', self.html)
+        self.assertIn("Export sessions to Downloads", self.html)
+
+    def test_session_rows_newest_first_with_date_and_duration(self):
+        for token in ["leftIconFor", "displayDateFor", "durationFor"]:
+            self.assertIn(token, self.html, token)
+
+    def test_long_press_deletes_like_android(self):
+        self.assertIn("confirmDeleteLesson", self.html)
+
+    def test_share_uses_cloud_link(self):
+        self.assertIn("shareCloudLinkFor", self.html)
+
+    def test_manifest_uses_android_theme_color(self):
+        self.assertIn("#17130E", self.manifest)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,15 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Web recorder matches the Android app.** `app/recorder/` now uses
+  the same dark palette and single-column order (viewfinder, zoom,
+  record, Cloud toggle, export, sessions) and the same session rows:
+  newest first, date + length, tap to play in the viewfinder, ↓ to
+  download, ↗ to share the Cloud link, long-press to delete. The
+  **■ Stop** button carries the timer, zoom follows the camera's
+  reported range, and **Export sessions to Downloads** appears only
+  with Cloud off. Filename contract, vault, and TUS upload unchanged;
+  10 parity tests in `tests/test_recorder_streamlined.py`.
 - **Recorder builds refreshed.** Rebuild the committed Android APK
   with default Cloud uploads, signer-token stamping, and lesson
   deletion; regenerate the ignored web `dist/` output as well. Verify
