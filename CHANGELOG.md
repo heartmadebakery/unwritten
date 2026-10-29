@@ -6,6 +6,18 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-10-29
+
+### Changed
+- **Cloud uploads enabled by default in both recorders.** Rename the
+  signer and uploader to Cloud, retain existing settings and lesson
+  links through migration, and add cloud-first lesson deletion that
+  keeps the local lesson if the cloud request fails. Both builds stamp
+  a random signer-pool token while keeping source templates empty;
+  tokens, web build output, and Wrangler caches stay out of git. The
+  web vault no longer prompts for an automatic download; lesson names
+  still offer manual downloads. Update recorder docs and contract tests.
+
 ## 2026-10-28
 
 ### Added

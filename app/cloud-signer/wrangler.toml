@@ -1,14 +1,14 @@
-name = "unwritten-bunny-signer"
+name = "unwritten-cloud-signer"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 
 [vars]
-# Your Bunny Stream library ID (Stream → your library → API).
-BUNNY_LIBRARY_ID = "793098"
+# Your Stream library ID (Stream → your library → API on bunny.net).
+CLOUD_LIBRARY_ID = "793098"
 # Where the web recorder is served, e.g. "https://you.github.io".
 # "*" works for a first test; pin it down before real use.
 CORS_ORIGIN = "*"
 
 # Secrets — set with wrangler, never commit real values:
-#   npx wrangler secret put BUNNY_API_KEY
-#   npx wrangler secret put SIGNER_TOKEN
+#   npx wrangler secret put CLOUD_API_KEY
+#   paste -sd, tokens.txt | npx wrangler secret put SIGNER_TOKENS

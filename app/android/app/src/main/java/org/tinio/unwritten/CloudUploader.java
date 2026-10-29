@@ -17,19 +17,19 @@ import java.util.Map;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
-/** Optional Bunny Stream upload: presigned TUS (resumable) upload of a
- *  finished lesson, then status polling until Bunny finishes encoding.
+/** Optional Cloud upload: presigned TUS (resumable) upload of a
+ *  finished lesson, then status polling until Cloud finishes encoding.
  *  Two credential modes, mirroring the web recorder:
  *   - signer mode: POST {title[, videoId]} to the signer URL (see
- *     app/bunny-signer) -> {videoId, libraryId, signature, expire};
+ *     app/cloud-signer) -> {videoId, libraryId, signature, expire};
  *     the library API key never lives on this device.
  *   - direct mode: the library API key is configured on-device; this
  *     class creates the video and signs locally (SHA-256 of
- *     libraryId + apiKey + expire + videoId, per Bunny's TUS docs).
+ *     libraryId + apiKey + expire + videoId, per the vendor's TUS docs).
  *  Implemented over a raw SSLSocket instead of HttpURLConnection so
  *  TUS PATCH works on every supported Android version. Framework APIs
  *  only, no third-party libraries. All methods block; call off-UI. */
-public final class BunnyUploader {
+public final class CloudUploader {
 
     public interface Listener {
         void onSession(String videoId, String uploadUrl); // TUS resource known; persist for resume
@@ -48,7 +48,7 @@ public final class BunnyUploader {
     final String signerUrl;    // "" in direct mode
     final String signerToken;  // optional
 
-    public BunnyUploader(String libraryId, String apiKey, String signerUrl, String signerToken) {
+    public CloudUploader(String libraryId, String apiKey, String signerUrl, String signerToken) {
         this.libraryId = libraryId == null ? "" : libraryId.trim();
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.signerUrl = signerUrl == null ? "" : signerUrl.trim();
@@ -57,6 +57,10 @@ public final class BunnyUploader {
 
     public boolean configured() {
         if (!signerUrl.isEmpty()) return true;
+        return !libraryId.isEmpty() && !apiKey.isEmpty();
+    }
+
+    private boolean useDirect() {
         return !libraryId.isEmpty() && !apiKey.isEmpty();
     }
 
@@ -75,7 +79,7 @@ public final class BunnyUploader {
     }
 
     public Creds credentials(String title, String reuseVideoId) throws Exception {
-        if (!signerUrl.isEmpty()) {
+        if (!useDirect()) {
             JSONObject body = new JSONObject();
             body.put("title", title);
             if (reuseVideoId != null) body.put("videoId", reuseVideoId);
@@ -107,11 +111,11 @@ public final class BunnyUploader {
             Resp r = request("POST", API + "/library/" + libraryId + "/videos", h,
                     body.toString().getBytes("UTF-8"));
             if (r.status < 200 || r.status >= 300)
-                throw new IOException("Bunny create failed (" + r.status + ") — check library ID and API key");
+                throw new IOException("Cloud create failed (" + r.status + ") — check library ID and API key");
             JSONObject v = new JSONObject(r.text());
             videoId = v.optString("guid", "");
             if (videoId.isEmpty()) videoId = v.optString("videoId", "");
-            if (videoId.isEmpty()) throw new IOException("Bunny create returned no video id");
+            if (videoId.isEmpty()) throw new IOException("Cloud create returned no video id");
         }
         Creds c = new Creds();
         lastLibraryId = libraryId;
@@ -124,10 +128,31 @@ public final class BunnyUploader {
 
     /** Video status: 0 created, 1 uploaded, 2 processing, 3 transcoding,
      *  4 finished/playable, 5 error, 6 upload failed. -1 on HTTP error. */
+    /** Deletes the cloud copy. Throws on failure. */
+    public void deleteVideo(String videoId) throws Exception {
+        int status;
+        if (!useDirect()) {
+            Map<String, String> h = new LinkedHashMap<String, String>();
+            h.put("Accept", "application/json");
+            if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
+            String sep = signerUrl.contains("?") ? "&" : "?";
+            Resp r = request("DELETE", signerUrl + sep + "videoId=" + videoId, h, null);
+            status = r.status;
+        } else {
+            Map<String, String> h = new LinkedHashMap<String, String>();
+            h.put("AccessKey", apiKey);
+            h.put("Accept", "application/json");
+            Resp r = request("DELETE", API + "/library/" + libraryId + "/videos/" + videoId, h, null);
+            status = r.status;
+        }
+        if (status != 200 && status != 204 && status != 404)
+            throw new IOException("Cloud delete failed (" + status + ")");
+    }
+
     public int videoStatus(String videoId) throws Exception {
         String text;
         int status;
-        if (!signerUrl.isEmpty()) {
+        if (!useDirect()) {
             Map<String, String> h = new LinkedHashMap<String, String>();
             h.put("Accept", "application/json");
             if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
@@ -173,9 +198,9 @@ public final class BunnyUploader {
                 int st;
                 try { st = videoStatus(videoId); } catch (Exception e) { st = -1; }
                 if (st == 4) { listener.onFinished(videoId); return; }
-                if (st == 5 || st == 6) { listener.onFailed(videoId, "Bunny encoding failed (status " + st + ")"); return; }
+                if (st == 5 || st == 6) { listener.onFailed(videoId, "Cloud encoding failed (status " + st + ")"); return; }
             }
-            listener.onFailed(videoId, "Still processing on Bunny — check the dashboard; the upload itself finished.");
+            listener.onFailed(videoId, "Still processing on Cloud — check the dashboard; the upload itself finished.");
         } catch (Exception e) {
             listener.onFailed(videoId, e.getMessage() == null ? "upload failed" : e.getMessage());
         }
@@ -196,9 +221,9 @@ public final class BunnyUploader {
         h.put("Upload-Length", String.valueOf(file.length()));
         h.put("Upload-Metadata", "filetype " + b64("video/mp4") + ",title " + b64(file.getName()));
         Resp r = request("POST", TUS_URL, h, null);
-        if (r.status != 201) throw new IOException("Bunny upload start failed (" + r.status + ")");
+        if (r.status != 201) throw new IOException("Cloud upload start failed (" + r.status + ")");
         String loc = r.headers.get("location");
-        if (loc == null || loc.isEmpty()) throw new IOException("Bunny upload start returned no URL");
+        if (loc == null || loc.isEmpty()) throw new IOException("Cloud upload start returned no URL");
         return loc.startsWith("/") ? API + loc : loc;
     }
 
@@ -243,9 +268,9 @@ public final class BunnyUploader {
                     continue;
                 }
                 if (r.status >= 400 && r.status < 500 && r.status != 409 && r.status != 423)
-                    throw new IOException("Bunny refused the upload (" + r.status + ")");
+                    throw new IOException("Cloud refused the upload (" + r.status + ")");
                 if (r.status < 200 || r.status >= 300) {
-                    if (++attempt > 8) throw new IOException("Bunny upload failed (" + r.status + ")");
+                    if (++attempt > 8) throw new IOException("Cloud upload failed (" + r.status + ")");
                     long so = -1;
                     try { so = tusHead(uploadUrl, creds); } catch (Exception ignored) { }
                     if (so >= 0) offset = so;

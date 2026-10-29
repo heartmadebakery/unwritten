@@ -48,6 +48,27 @@ echo "== resources (aapt2) =="
   --manifest "$APP/src/main/AndroidManifest.xml" \
   --java "$OUT/gen" --min-sdk-version "$MIN_API" --target-sdk-version 34
 
+echo "== stamp (signer token) =="
+POOL="$HERE/../cloud-signer/tokens.txt"
+[ -f "$POOL" ] || { echo "Missing $POOL — run: bash ../cloud-signer/mint-tokens.sh" >&2; exit 1; }
+CFG="$APP/src/main/java/org/tinio/unwritten/CloudConfig.java"
+CFG_BAK="$OUT/CloudConfig.java.template"
+cp "$CFG" "$CFG_BAK"
+restore_cfg() { cp "$CFG_BAK" "$CFG"; }
+trap restore_cfg EXIT
+python3 - "$POOL" "$CFG" <<'EOF'
+import random, sys
+pool, target = sys.argv[1], sys.argv[2]
+tokens = [t.strip() for t in open(pool) if t.strip()]
+assert len(tokens) >= 1, "token pool is empty"
+i = random.randrange(len(tokens))
+src = open(target).read()
+old = 'public static final String CLOUD_SIGNER_TOKEN_DEFAULT = "";'
+assert old in src, "CloudConfig.java is NOT the template (a previous build may have died mid-stamp and left a real token in it — inspect before proceeding)"
+open(target, "w").write(src.replace(old, 'public static final String CLOUD_SIGNER_TOKEN_DEFAULT = "%s";' % tokens[i], 1))
+print("stamped token #%d of %d into CloudConfig.java (restored after build)" % (i + 1, len(tokens)))
+EOF
+
 echo "== java (javac) =="
 find "$APP/src/main/java" "$OUT/gen" -name '*.java' > "$OUT/sources.txt"
 JAVAC_LOG="$OUT/javac.log"

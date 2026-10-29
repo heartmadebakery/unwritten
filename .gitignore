@@ -12,3 +12,6 @@ app/android/debug.keystore
 app/android/.gradle/
 app/android/app/build/
 .certs/
+app/cloud-signer/tokens.txt
+app/cloud-signer/.wrangler/
+app/recorder/dist/

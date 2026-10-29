@@ -119,27 +119,32 @@ class Pixel4BaselineTests(unittest.TestCase):
         self.assertNotIn("SDK_INT", self.main)
 
 
-BUNNY_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
+CLOUD_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
                               "java", "org", "tinio", "unwritten",
-                              "BunnyUploader.java")
-SIGNER = os.path.join(ROOT, "app", "bunny-signer", "worker.js")
+                              "CloudUploader.java")
+SIGNER = os.path.join(ROOT, "app", "cloud-signer", "worker.js")
 ANDROID_MANIFEST = os.path.join(ROOT, "app", "android", "app", "src", "main",
                                 "AndroidManifest.xml")
 
 
-class BunnyWebTests(unittest.TestCase):
-    """Optional Bunny Stream upload (Oct 2026): local save stays first;
-    Bunny only ever receives a copy, and only when turned on."""
+class CloudWebTests(unittest.TestCase):
+    """Optional Cloud upload (Oct 2026): local save stays first;
+    Cloud only ever receives a copy, and only when turned on."""
 
     @classmethod
     def setUpClass(cls):
         cls.html = read(WEB)
 
-    def test_bunny_is_opt_in_with_settings(self):
-        self.assertIn('id="bunnytoggle"', self.html)
-        self.assertIn('id="bunnypanel"', self.html)
-        self.assertIn('id="bunnysigner"', self.html)
-        self.assertIn("bunnyReady()", self.html)
+    def test_cloud_is_opt_in_with_settings(self):
+        self.assertIn('id="cloudtoggle"', self.html)
+        self.assertIn('id="cloudpanel"', self.html)
+        self.assertIn('id="cloudsigner"', self.html)
+        self.assertIn("cloudReady()", self.html)
+        self.assertIn("CLOUD_SIGNER_DEFAULT", self.html)
+        self.assertIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.html)
+        self.assertIn("data-cloud-delete", self.html)
+        self.assertIn("cloudDeleteLesson", self.html)
+        self.assertNotIn("a.click()", self.html)
 
     def test_upload_uses_presigned_tus(self):
         self.assertIn("https://video.bunnycdn.com/tusupload", self.html)
@@ -147,22 +152,22 @@ class BunnyWebTests(unittest.TestCase):
         self.assertIn("AuthorizationExpire", self.html)
         self.assertIn("Upload-Offset", self.html)
 
-    def test_streaming_link_is_bunny_embed(self):
+    def test_streaming_link_is_cloud_embed(self):
         self.assertIn("https://player.mediadelivery.net/embed/", self.html)
 
     def test_local_save_still_comes_first(self):
-        # The vault write and download copy stay; Bunny hooks after them.
+        # The vault write and download copy stay; Cloud hooks after them.
         save = self.html.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("idbPut", save)
-        self.assertLess(save.index("idbPut"), save.index("startBunnyUpload"))
+        self.assertLess(save.index("idbPut"), save.index("startCloudUpload"))
 
 
-class BunnyAndroidTests(unittest.TestCase):
+class CloudAndroidTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.main = read(MAIN)
-        cls.uploader = read(BUNNY_UPLOADER)
+        cls.uploader = read(CLOUD_UPLOADER)
         cls.manifest = read(ANDROID_MANIFEST)
 
     def test_internet_permission_added_for_upload_only(self):
@@ -174,21 +179,27 @@ class BunnyAndroidTests(unittest.TestCase):
         self.assertIn("SHA-256", self.uploader)
 
     def test_main_activity_gates_upload_behind_settings(self):
-        self.assertIn("BunnyUploader", self.main)
-        self.assertIn("bunnyEnabledCfg", self.main)
-        self.assertIn("maybeBunnyUpload", self.main)
+        self.assertIn("CloudUploader", self.main)
+        self.assertIn("cloudEnabledCfg", self.main)
+        self.assertIn("maybeCloudUpload", self.main)
+        self.assertIn("CLOUD_SIGNER_DEFAULT", self.main)
+        self.assertIn("CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT", self.main)
+        self.assertIn("confirmDeleteLesson", self.main)
+        self.assertIn("deleteLesson", self.main)
 
 
-class BunnySignerTests(unittest.TestCase):
+class CloudSignerTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
         cls.worker = read(SIGNER)
 
     def test_signer_holds_key_and_signs(self):
-        self.assertIn("BUNNY_API_KEY", self.worker)
+        self.assertIn("CLOUD_API_KEY", self.worker)
         self.assertIn("SHA-256", self.worker)
         self.assertIn("player.mediadelivery.net/embed/", self.worker)
+        self.assertIn("SIGNER_TOKENS", self.worker)
+        self.assertIn('"DELETE"', self.worker)
 
     def test_signer_supports_resume_and_status(self):
         self.assertIn("videoId", self.worker)

@@ -70,30 +70,33 @@ Studio, or run `gradle assembleDebug` with the same SDK/NDK installed.
 Note: the manifest carries `package=` + version attributes for the
 manual route; AGP's `namespace` says the same thing.
 
-## Optional: Bunny Stream upload
+## Cloud upload (on by default)
 
-Off by default; toggle under **Bunny streaming (optional)** on the one
-screen. Lessons are always saved on-device first — with Bunny on, a
-copy then uploads (resumable TUS, retries on flaky links, resumes
-after the app restarts) and the lesson gains a ☁▶ marker; tapping it
-opens the streamed-playback (HLS) link, which is also copied to the
-clipboard and offered via **Share Bunny link**. Bunny has **no live
-ingest** — this is store-then-stream, not live broadcast.
+Lessons are always saved on-device first — with Cloud on, a copy then
+uploads (resumable TUS, retries on flaky links, resumes after the app
+restarts) and the lesson gains a ☁▶ marker; tapping it opens the
+streamed-playback (HLS) link, which is also copied to the clipboard
+and offered via **Share Cloud link**. Cloud has **no live ingest** —
+this is store-then-stream, not live broadcast. **☁ Cloud** toggles
+saving off (lessons stay on-device only); **⚙ Cloud settings** holds
+overrides. Long-press a lesson to delete it from the phone *and* its
+cloud copy (cloud first — if that fails, the local lesson is kept).
 
-Authorisation mirrors the web recorder: either a **signer URL**
-(recommended — the tiny Cloudflare Worker in
-[`app/bunny-signer/`](../../bunny-signer/) holds the library API key)
-or the **library API key on-device** (stored in app-private
-SharedPreferences, sent only to Bunny). `BunnyUploader.java` implements
-create-video, TUS upload, and status polling over a raw `SSLSocket` —
-framework APIs only, no third-party libraries, and no
-`HttpURLConnection` PATCH trap on older Android.
+No typing needed: `build.sh` stamps one random token from the signer
+pool into the APK (`token #N of 10` in the build log), so uploads work
+out of the box. As a fallback, a library key pasted in ⚙️ settings
+talks to the library directly instead of the signer (stored in
+app-private SharedPreferences, sent only to Cloud).
+`CloudUploader.java` implements create-video, TUS upload, status
+polling, and delete over a raw `SSLSocket` — framework APIs only, no
+third-party libraries, and no `HttpURLConnection` PATCH trap on older
+Android.
 
 ## Device notes
 
 - Permissions: CAMERA + RECORD_AUDIO, plus INTERNET — used *only* for
-  the optional Bunny upload. With Bunny off (the default) the app
-  makes no network calls. Export uses MediaStore Downloads (API 29+),
+  the Cloud upload. With Cloud toggled off the app makes no network
+  calls. Export uses MediaStore Downloads (API 29+),
   which needs no storage permission.
 - Lessons live in the app's external files dir (`Android/data/
   org.tinio.unwritten/files/clips`) — visible over USB, no permission

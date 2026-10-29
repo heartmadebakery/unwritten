@@ -2,6 +2,7 @@ package org.tinio.unwritten;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
@@ -37,6 +38,7 @@ import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -78,14 +81,15 @@ public class MainActivity extends Activity {
     private long recordStartMs;
     private boolean pendingRecord;
 
-    // Bunny streaming (optional): settings + per-lesson link state.
-    private static final String BUNNY_PREFS = "unwritten_bunny";
-    private LinearLayout bunnyPanel;
-    private EditText bunnySignerEdit, bunnySignerTokenEdit, bunnyLibEdit, bunnyKeyEdit;
-    private Button bunnyToggleButton, bunnyShareButton;
+    // Cloud streaming (optional): settings + per-lesson link state.
+    private static final String CLOUD_PREFS = "unwritten_cloud";
+    private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
+    private LinearLayout cloudPanel;
+    private EditText cloudSignerEdit, cloudSignerTokenEdit, cloudLibEdit, cloudKeyEdit;
+    private Button cloudToggleButton, cloudShareButton;
     private File lastLessonFile;
-    private final ExecutorService bunnyExec = Executors.newSingleThreadExecutor();
-    private final Set<String> bunnyInFlight = new HashSet<String>();
+    private final ExecutorService cloudExec = Executors.newSingleThreadExecutor();
+    private final Set<String> cloudInFlight = new HashSet<String>();
 
     private final Runnable timerRunnable = new Runnable() {
         @Override public void run() {
@@ -130,9 +134,10 @@ public class MainActivity extends Activity {
         clipsDir.mkdirs();
         buildScreen();
         refreshClipList();
-        paintBunnyToggle();
+        migrateCloudPrefs();
+        paintCloudToggle();
         updateShareButton();
-        bunnyResumePending();
+        cloudResumePending();
         if (hasPermissions()) openPreview();
     }
 
@@ -143,7 +148,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
-        try { bunnyExec.shutdownNow(); } catch (Throwable ignored) { }
+        try { cloudExec.shutdownNow(); } catch (Throwable ignored) { }
         handler.removeCallbacksAndMessages(null);
         try { if (engine != null) engine.close(); } catch (Throwable ignored) {}
         engine = null;
@@ -158,12 +163,12 @@ public class MainActivity extends Activity {
 
         TextView title = label("Unwritten Craft — Recorder", 24, TEXT); title.setGravity(Gravity.CENTER);
         l.addView(title);
-        l.addView(label("Film one lesson, the way she'd teach it anyway. Press Record, let it happen, press Stop at the end.", 16, DIM));
+        l.addView(label("Film one lesson, the way the mentor would teach it anyway. Press Record, let it happen, press Stop at the end.", 16, DIM));
 
         preview = new TextureView(this);
         l.addView(preview, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
 
-        status = label("Point the camera at her hands and the work.", 16, TEXT);
+        status = label("Point the camera at the mentor's hands and the work.", 16, TEXT);
         l.addView(status);
 
         recordButton = button("● Record the lesson");
@@ -177,7 +182,7 @@ public class MainActivity extends Activity {
                 TextView t = (TextView) super.getView(pos, convert, parent);
                 t.setTextColor(TEXT); t.setTextSize(15); t.setBackgroundColor(BG);
                 String item = getItem(pos);
-                if (item != null) t.setText(item + bunnySuffix(item));
+                if (item != null) t.setText(item + cloudSuffix(item));
                 return t;
             }
         };
@@ -189,47 +194,56 @@ public class MainActivity extends Activity {
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
-        l.addView(label("Bunny streaming (optional)", 17, DIM));
-        bunnyToggleButton = button("☁ Bunny: off");
-        bunnyToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleBunnyPanel(); } });
-        l.addView(bunnyToggleButton);
+        l.addView(label("Cloud streaming", 17, DIM));
+        cloudToggleButton = button("☁ Cloud: on");
+        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
+        l.addView(cloudToggleButton);
+        Button cloudSettingsButton = button("⚙ Cloud settings");
+        cloudSettingsButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudPanel(); } });
+        l.addView(cloudSettingsButton);
 
-        bunnyPanel = new LinearLayout(this);
-        bunnyPanel.setOrientation(LinearLayout.VERTICAL);
-        bunnyPanel.setVisibility(View.GONE);
-        bunnySignerEdit = bunnyEdit("Signer URL — recommended (app/bunny-signer)", false);
-        bunnySignerTokenEdit = bunnyEdit("Signer token (only if you set one)", true);
-        bunnyLibEdit = bunnyEdit("— or without a signer: Bunny library ID", false);
-        bunnyKeyEdit = bunnyEdit("Library API key (then lives on this phone)", true);
-        bunnyPanel.addView(bunnyFieldLabel("Signer URL")); bunnyPanel.addView(bunnySignerEdit);
-        bunnyPanel.addView(bunnyFieldLabel("Signer token")); bunnyPanel.addView(bunnySignerTokenEdit);
-        bunnyPanel.addView(bunnyFieldLabel("Bunny library ID")); bunnyPanel.addView(bunnyLibEdit);
-        bunnyPanel.addView(bunnyFieldLabel("Library API key")); bunnyPanel.addView(bunnyKeyEdit);
-        bunnyPanel.addView(label("Purely additive: lessons are saved on this phone first. With Bunny on, a copy uploads for streamed playback and the lesson gets a ▶ link. A signer holds the API key so no key lives in this app; without one, the key stays on this phone and is only sent to Bunny.", 14, DIM));
-        l.addView(bunnyPanel);
+        cloudPanel = new LinearLayout(this);
+        cloudPanel.setOrientation(LinearLayout.VERTICAL);
+        cloudPanel.setVisibility(View.GONE);
+        cloudSignerEdit = cloudEdit("Signer URL (prefilled by the build)", false);
+        cloudSignerTokenEdit = cloudEdit("Signer token (prefilled by the build)", true);
+        cloudLibEdit = cloudEdit("— or without a signer: Cloud library ID", false);
+        cloudKeyEdit = cloudEdit("Library API key (then lives on this phone)", true);
+        cloudPanel.addView(cloudFieldLabel("Signer URL")); cloudPanel.addView(cloudSignerEdit);
+        cloudPanel.addView(cloudFieldLabel("Signer token")); cloudPanel.addView(cloudSignerTokenEdit);
+        cloudPanel.addView(cloudFieldLabel("Cloud library ID")); cloudPanel.addView(cloudLibEdit);
+        cloudPanel.addView(cloudFieldLabel("Library API key")); cloudPanel.addView(cloudKeyEdit);
+        cloudPanel.addView(label("On by default and purely additive: lessons are saved on this phone first, then a copy uploads for streamed playback. The signer URL and token arrive baked into this build; these fields are only overrides. A library key pasted below talks to the library directly instead of the signer.", 14, DIM));
+        l.addView(cloudPanel);
 
-        bunnyShareButton = button("Share Bunny link");
-        bunnyShareButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareBunnyLink(); } });
-        l.addView(bunnyShareButton);
+        cloudShareButton = button("Share Cloud link");
+        cloudShareButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLink(); } });
+        l.addView(cloudShareButton);
 
         clipList.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
             @Override public void onItemClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
                 String name = clipNames.get(pos);
-                JSONObject link = bunnyLink(name);
+                JSONObject link = cloudLink(name);
                 if (link == null) return;
                 String st = link.optString("state", "");
                 if ("ready".equals(st)) {
-                    String lib = link.optString("libraryId", bunnyCfgString("libraryId"));
+                    String lib = link.optString("libraryId", cloudCfgString("libraryId"));
                     String url = "https://player.mediadelivery.net/embed/" + lib + "/" + link.optString("videoId", "");
                     try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
                     catch (Throwable e) { Toast.makeText(MainActivity.this, url, Toast.LENGTH_LONG).show(); }
                 } else if ("failed".equals(st)) {
                     File f = new File(clipsDir, name);
-                    if (f.exists()) startBunnyUpload(f);
+                    if (f.exists()) startCloudUpload(f);
                 } else if ("processing".equals(st)) {
-                    pollBunny(name, link.optString("videoId", ""));
-                    Toast.makeText(MainActivity.this, "Still preparing on Bunny…", Toast.LENGTH_SHORT).show();
+                    pollCloud(name, link.optString("videoId", ""));
+                    Toast.makeText(MainActivity.this, "Still preparing on Cloud…", Toast.LENGTH_SHORT).show();
                 }
+            }
+        });
+        clipList.setOnItemLongClickListener(new android.widget.AdapterView.OnItemLongClickListener() {
+            @Override public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
+                confirmDeleteLesson(clipNames.get(pos));
+                return true;
             }
         });
 
@@ -295,7 +309,7 @@ public class MainActivity extends Activity {
         recordButton.setText("● Record the lesson");
         status.setText("Lesson saved. Record another, or export below.");
         refreshClipList();
-        if (lastLessonFile != null) maybeBunnyUpload(lastLessonFile);
+        if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);
     }
 
     // ---------- clips / files / export ----------
@@ -371,12 +385,28 @@ public class MainActivity extends Activity {
         refreshClipList();
     }
 
-    // ---------- Bunny streaming (optional) ----------
+    // ---------- Cloud streaming (optional) ----------
 
-    private SharedPreferences bunnyPrefs() { return getSharedPreferences(BUNNY_PREFS, MODE_PRIVATE); }
-    private String bunnyCfgString(String key) { return bunnyPrefs().getString(key, ""); }
+    private SharedPreferences cloudPrefs() { return getSharedPreferences(CLOUD_PREFS, MODE_PRIVATE); }
+    private void migrateCloudPrefs() {
+        // One-time move from the pre-rename store: the legacy release's
+        // keys are adopted, then the legacy store is cleared.
+        try {
+            SharedPreferences legacy = getSharedPreferences("unwritten_bunny", MODE_PRIVATE); // legacy store name
+            if (legacy.getAll().isEmpty()) return;
+            SharedPreferences.Editor e = cloudPrefs().edit();
+            for (Map.Entry<String, ?> en : legacy.getAll().entrySet()) {
+                Object v = en.getValue();
+                if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
+                else if (v != null) e.putString(en.getKey(), String.valueOf(v));
+            }
+            e.apply();
+            legacy.edit().clear().apply();
+        } catch (Throwable ignored) { }
+    }
+    private String cloudCfgString(String key) { return cloudPrefs().getString(key, ""); }
 
-    private EditText bunnyEdit(String hint, boolean password) {
+    private EditText cloudEdit(String hint, boolean password) {
         EditText e = new EditText(this);
         e.setHint(hint); e.setTextSize(15); e.setTextColor(TEXT); e.setHintTextColor(DIM);
         e.setBackgroundColor(PANEL); e.setSingleLine(true);
@@ -384,69 +414,121 @@ public class MainActivity extends Activity {
         e.setPadding(dp(10), dp(8), dp(10), dp(8));
         return e;
     }
-    private TextView bunnyFieldLabel(String s) { return label(s, 14, DIM); }
+    private TextView cloudFieldLabel(String s) { return label(s, 14, DIM); }
 
-    private BunnyUploader bunnyUploader() {
-        BunnyUploader up = new BunnyUploader(bunnyCfgString("libraryId"), bunnyCfgString("apiKey"),
-                bunnyCfgString("signerUrl"), bunnyCfgString("signerToken"));
+    private String cloudEffSignerUrl() {
+        String s = cloudCfgString("signerUrl");
+        return s.isEmpty() ? CLOUD_SIGNER_DEFAULT : s;
+    }
+    private String cloudEffSignerToken() {
+        String t = cloudCfgString("signerToken");
+        return t.isEmpty() ? CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT : t;
+    }
+    private CloudUploader cloudUploader() {
+        CloudUploader up = new CloudUploader(cloudCfgString("libraryId"), cloudCfgString("apiKey"),
+                cloudEffSignerUrl(), cloudEffSignerToken());
         return up.configured() ? up : null;
     }
-    private boolean bunnyEnabledCfg() {
-        return bunnyPrefs().getBoolean("enabled", false) && bunnyUploader() != null;
+    private boolean cloudEnabledCfg() {
+        return cloudPrefs().getBoolean("enabled", true) && cloudUploader() != null;
     }
 
-    private void toggleBunnyPanel() {
-        if (bunnyPrefs().getBoolean("enabled", false)) {
-            bunnyPrefs().edit().putBoolean("enabled", false).apply();
-            bunnyPanel.setVisibility(View.GONE);
-            paintBunnyToggle();
-            status.setText("☁ Bunny off. Lessons stay on this phone only, as before.");
-            return;
-        }
-        if (bunnyPanel.getVisibility() != View.VISIBLE) {
-            bunnySignerEdit.setText(bunnyCfgString("signerUrl"));
-            bunnySignerTokenEdit.setText(bunnyCfgString("signerToken"));
-            bunnyLibEdit.setText(bunnyCfgString("libraryId"));
-            bunnyKeyEdit.setText(bunnyCfgString("apiKey"));
-            bunnyPanel.setVisibility(View.VISIBLE);
-            return;
-        }
-        String signer = bunnySignerEdit.getText().toString().trim();
-        String lib = bunnyLibEdit.getText().toString().trim();
-        String key = bunnyKeyEdit.getText().toString().trim();
-        if (signer.isEmpty() && (lib.isEmpty() || key.isEmpty())) {
-            status.setText("☁ Fill in either the signer URL, or the library ID and API key (Bunny dashboard → Stream → your library → API).");
-            return;
-        }
-        bunnyPrefs().edit()
-                .putString("signerUrl", signer)
-                .putString("signerToken", bunnySignerTokenEdit.getText().toString().trim())
-                .putString("libraryId", lib)
-                .putString("apiKey", key)
-                .putBoolean("enabled", true)
-                .apply();
-        bunnyPanel.setVisibility(View.GONE);
-        paintBunnyToggle();
-        status.setText("☁ Bunny on. New lessons will also upload for streamed playback; tap a lesson with ☁▶ to open its Watch link.");
+    private void toggleCloudEnabled() {
+        boolean on = !cloudPrefs().getBoolean("enabled", true);
+        cloudPrefs().edit().putBoolean("enabled", on).apply();
+        paintCloudToggle();
+        status.setText(on
+                ? "☁ Cloud on. New lessons will also upload for streamed playback; tap a lesson with ☁▶ to open its Watch link."
+                : "☁ Cloud off. Lessons stay on this phone only.");
     }
 
-    private void paintBunnyToggle() {
-        if (bunnyToggleButton == null) return;
-        bunnyToggleButton.setText(bunnyEnabledCfg() ? "☁ Bunny: on" : "☁ Bunny: off");
+    private void toggleCloudPanel() {
+        if (cloudPanel.getVisibility() != View.VISIBLE) {
+            cloudSignerEdit.setText(cloudEffSignerUrl());
+            cloudSignerTokenEdit.setText(cloudEffSignerToken());
+            cloudLibEdit.setText(cloudCfgString("libraryId"));
+            cloudKeyEdit.setText(cloudCfgString("apiKey"));
+            cloudPanel.setVisibility(View.VISIBLE);
+        } else {
+            cloudPrefs().edit()
+                    .putString("signerUrl", cloudSignerEdit.getText().toString().trim())
+                    .putString("signerToken", cloudSignerTokenEdit.getText().toString().trim())
+                    .putString("libraryId", cloudLibEdit.getText().toString().trim())
+                    .putString("apiKey", cloudKeyEdit.getText().toString().trim())
+                    .apply();
+            cloudPanel.setVisibility(View.GONE);
+            paintCloudToggle();
+        }
     }
 
-    private JSONObject bunnyLinks() {
-        try { return new JSONObject(bunnyPrefs().getString("links", "{}")); }
+    private void paintCloudToggle() {
+        if (cloudToggleButton == null) return;
+        cloudToggleButton.setText(cloudEnabledCfg() ? "☁ Cloud: on" : "☁ Cloud: off");
+    }
+
+    private JSONObject cloudLinks() {
+        try { return new JSONObject(cloudPrefs().getString("links", "{}")); }
         catch (Throwable e) { return new JSONObject(); }
     }
-    private JSONObject bunnyLink(String name) {
-        JSONObject l = bunnyLinks().optJSONObject(name);
+    private JSONObject cloudLink(String name) {
+        JSONObject l = cloudLinks().optJSONObject(name);
         return l;
     }
-    private void setBunnyLink(String name, String state, String videoId, String libraryId,
+    private void delCloudLink(String name) {
+        try {
+            JSONObject links = cloudLinks();
+            if (links.optJSONObject(name) != null) {
+                links.remove(name);
+                cloudPrefs().edit().putString("links", links.toString()).apply();
+            }
+        } catch (Throwable ignored) { }
+    }
+    private void confirmDeleteLesson(final String name) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete lesson?")
+                .setMessage("Delete '" + name + "' from this phone and the cloud?")
+                .setPositiveButton("Delete", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        deleteLesson(name);
+                    }
+                })
+                .setNegativeButton("Keep", null)
+                .show();
+    }
+    private void deleteLesson(final String name) {
+        cloudExec.execute(new Runnable() {
+            @Override public void run() {
+                final JSONObject link = cloudLink(name);
+                final String videoId = link == null ? "" : link.optString("videoId", "");
+                if (!videoId.isEmpty()) {
+                    try {
+                        CloudUploader up = cloudUploader();
+                        if (up == null) throw new IOException("Cloud settings incomplete.");
+                        up.deleteVideo(videoId);
+                    } catch (final Exception e) {
+                        runOnUiThread(new Runnable() { @Override public void run() {
+                            status.setText("☁ Couldn't delete the cloud copy (" + e.getMessage() + ") Keeping the local lesson so nothing is lost.");
+                        } });
+                        return;
+                    }
+                }
+                new File(clipsDir, name).delete();
+                delCloudLink(name);
+                if (name.equals(cloudPrefs().getString("lastName", "")))
+                    cloudPrefs().edit().remove("lastLink").remove("lastName").apply();
+                if (lastLessonFile != null && name.equals(lastLessonFile.getName())) lastLessonFile = null;
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    refreshClipList();
+                    updateShareButton();
+                    status.setText("🗑 Lesson deleted from this phone" + (videoId.isEmpty() ? "." : " and the cloud."));
+                } });
+            }
+        });
+    }
+    private void setCloudLink(String name, String state, String videoId, String libraryId,
                               String uploadUrl, int progress) {
         try {
-            JSONObject links = bunnyLinks();
+            JSONObject links = cloudLinks();
             JSONObject cur = links.optJSONObject(name);
             if (cur == null) cur = new JSONObject();
             if (state != null) cur.put("state", state);
@@ -455,11 +537,11 @@ public class MainActivity extends Activity {
             if (uploadUrl != null) cur.put("uploadUrl", uploadUrl);
             if (progress >= 0) cur.put("progress", progress);
             links.put(name, cur);
-            bunnyPrefs().edit().putString("links", links.toString()).apply();
+            cloudPrefs().edit().putString("links", links.toString()).apply();
         } catch (Throwable ignored) { }
     }
-    private String bunnySuffix(String name) {
-        JSONObject link = bunnyLink(name);
+    private String cloudSuffix(String name) {
+        JSONObject link = cloudLink(name);
         if (link == null) return "";
         String st = link.optString("state", "");
         if ("ready".equals(st)) return "  ☁▶";
@@ -469,137 +551,137 @@ public class MainActivity extends Activity {
         return "";
     }
 
-    private void maybeBunnyUpload(File f) {
-        if (f == null || !f.exists() || !bunnyEnabledCfg()) return;
-        JSONObject link = bunnyLink(f.getName());
+    private void maybeCloudUpload(File f) {
+        if (f == null || !f.exists() || !cloudEnabledCfg()) return;
+        JSONObject link = cloudLink(f.getName());
         String st = link == null ? "" : link.optString("state", "");
         if ("ready".equals(st)) { updateShareButton(); return; }
-        if ("processing".equals(st)) { pollBunny(f.getName(), link.optString("videoId", "")); return; }
-        if ("uploading".equals(st) && bunnyInFlight.contains(f.getName())) return;
-        startBunnyUpload(f);
+        if ("processing".equals(st)) { pollCloud(f.getName(), link.optString("videoId", "")); return; }
+        if ("uploading".equals(st) && cloudInFlight.contains(f.getName())) return;
+        startCloudUpload(f);
     }
 
-    private void startBunnyUpload(final File f) {
-        if (!bunnyEnabledCfg()) { Toast.makeText(this, "Turn Bunny on first.", Toast.LENGTH_SHORT).show(); return; }
+    private void startCloudUpload(final File f) {
+        if (!cloudEnabledCfg()) { Toast.makeText(this, "Turn Cloud on first.", Toast.LENGTH_SHORT).show(); return; }
         final String name = f.getName();
-        synchronized (bunnyInFlight) { if (!bunnyInFlight.add(name)) return; }
-        JSONObject link = bunnyLink(name);
+        synchronized (cloudInFlight) { if (!cloudInFlight.add(name)) return; }
+        JSONObject link = cloudLink(name);
         final String savedUrl = link == null ? null : link.optString("uploadUrl", null);
         final String savedVid = link == null ? null : link.optString("videoId", null);
-        setBunnyLink(name, "uploading", savedVid, null, savedUrl, 0);
+        setCloudLink(name, "uploading", savedVid, null, savedUrl, 0);
         refreshClipList();
-        status.setText("☁ Uploading " + name + " to Bunny… The lesson is already saved on this phone.");
-        bunnyExec.execute(new Runnable() {
+        status.setText("☁ Uploading " + name + " to Cloud… The lesson is already saved on this phone.");
+        cloudExec.execute(new Runnable() {
             @Override public void run() {
                 try {
-                    final BunnyUploader up = bunnyUploader();
-                    if (up == null) { bunnyFailed(name, savedVid, "Bunny settings incomplete."); return; }
-                    up.upload(f, savedUrl, savedVid, new BunnyUploader.Listener() {
+                    final CloudUploader up = cloudUploader();
+                    if (up == null) { cloudFailed(name, savedVid, "Cloud settings incomplete."); return; }
+                    up.upload(f, savedUrl, savedVid, new CloudUploader.Listener() {
                         @Override public void onSession(String videoId, String uploadUrl) {
-                            setBunnyLink(name, "uploading", videoId, null, uploadUrl, -1);
+                            setCloudLink(name, "uploading", videoId, null, uploadUrl, -1);
                         }
                         @Override public void onProgress(final long sent, final long total) {
                             final int pct = total > 0 ? (int) (sent * 100 / total) : 0;
-                            setBunnyLink(name, "uploading", null, null, null, pct);
+                            setCloudLink(name, "uploading", null, null, null, pct);
                             runOnUiThread(new Runnable() { @Override public void run() { refreshClipList(); } });
                         }
                         @Override public void onUploaded(String videoId) {
-                            setBunnyLink(name, "processing", videoId, null, null, 100);
+                            setCloudLink(name, "processing", videoId, null, null, 100);
                             runOnUiThread(new Runnable() { @Override public void run() {
-                                status.setText("☁ Uploaded. Bunny is preparing the streaming version…");
+                                status.setText("☁ Uploaded. Cloud is preparing the streaming version…");
                                 refreshClipList();
                             } });
                         }
-                        @Override public void onFinished(String videoId) { bunnyFinished(name, videoId); }
-                        @Override public void onFailed(String videoId, String message) { bunnyFailed(name, videoId, message); }
+                        @Override public void onFinished(String videoId) { cloudFinished(name, videoId); }
+                        @Override public void onFailed(String videoId, String message) { cloudFailed(name, videoId, message); }
                     });
                 } finally {
-                    synchronized (bunnyInFlight) { bunnyInFlight.remove(name); }
+                    synchronized (cloudInFlight) { cloudInFlight.remove(name); }
                 }
             }
         });
     }
 
-    private void bunnyFinished(final String name, final String videoId) {
-        BunnyUploader up = bunnyUploader();
+    private void cloudFinished(final String name, final String videoId) {
+        CloudUploader up = cloudUploader();
         String lib = "";
-        JSONObject link = bunnyLink(name);
+        JSONObject link = cloudLink(name);
         if (link != null) lib = link.optString("libraryId", "");
         if ((lib == null || lib.isEmpty()) && up != null && up.lastLibraryId != null && !up.lastLibraryId.isEmpty()) lib = up.lastLibraryId;
-        if (lib == null || lib.isEmpty()) lib = bunnyCfgString("libraryId");
+        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
         final String url = "https://player.mediadelivery.net/embed/" + lib + "/" + videoId;
-        setBunnyLink(name, "ready", videoId, lib, null, 100);
-        bunnyPrefs().edit().putString("lastLink", url).putString("lastName", name).apply();
+        setCloudLink(name, "ready", videoId, lib, null, 100);
+        cloudPrefs().edit().putString("lastLink", url).putString("lastName", name).apply();
         runOnUiThread(new Runnable() { @Override public void run() {
             try {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Bunny lesson link", url));
+                if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Cloud lesson link", url));
             } catch (Throwable ignored) { }
-            status.setText("☁ Ready: " + name + " — ▶ Watch link copied. Tap the lesson or Share Bunny link to send it.");
+            status.setText("☁ Ready: " + name + " — ▶ Watch link copied. Tap the lesson or Share Cloud link to send it.");
             updateShareButton();
             refreshClipList();
         } });
     }
 
-    private void bunnyFailed(final String name, String videoId, final String message) {
-        setBunnyLink(name, "failed", videoId, null, null, -1);
+    private void cloudFailed(final String name, String videoId, final String message) {
+        setCloudLink(name, "failed", videoId, null, null, -1);
         runOnUiThread(new Runnable() { @Override public void run() {
-            status.setText("☁ Bunny didn't finish for " + name + " (" + message + ") The lesson is safe on this phone — tap it in the list to retry.");
+            status.setText("☁ Cloud didn't finish for " + name + " (" + message + ") The lesson is safe on this phone — tap it in the list to retry.");
             refreshClipList();
         } });
     }
 
-    private final Set<String> bunnyPolling = new HashSet<String>();
-    private void pollBunny(final String name, final String videoId) {
+    private final Set<String> cloudPolling = new HashSet<String>();
+    private void pollCloud(final String name, final String videoId) {
         if (videoId == null || videoId.isEmpty()) return;
-        synchronized (bunnyPolling) { if (!bunnyPolling.add(name)) return; }
-        bunnyExec.execute(new Runnable() {
+        synchronized (cloudPolling) { if (!cloudPolling.add(name)) return; }
+        cloudExec.execute(new Runnable() {
             @Override public void run() {
                 try {
-                    BunnyUploader up = bunnyUploader();
+                    CloudUploader up = cloudUploader();
                     if (up == null) return;
                     for (int i = 0; i < 120; i++) {
                         try { Thread.sleep(5000); } catch (InterruptedException e) { return; }
                         int st;
                         try { st = up.videoStatus(videoId); } catch (Throwable e) { st = -1; }
-                        if (st == 4) { bunnyFinished(name, videoId); return; }
-                        if (st == 5 || st == 6) { bunnyFailed(name, videoId, "Bunny encoding failed."); return; }
+                        if (st == 4) { cloudFinished(name, videoId); return; }
+                        if (st == 5 || st == 6) { cloudFailed(name, videoId, "Cloud encoding failed."); return; }
                     }
                 } finally {
-                    synchronized (bunnyPolling) { bunnyPolling.remove(name); }
+                    synchronized (cloudPolling) { cloudPolling.remove(name); }
                 }
             }
         });
     }
 
-    private void bunnyResumePending() {
-        if (!bunnyEnabledCfg()) return;
-        JSONObject links = bunnyLinks();
+    private void cloudResumePending() {
+        if (!cloudEnabledCfg()) return;
+        JSONObject links = cloudLinks();
         java.util.Iterator<String> it = links.keys();
         while (it.hasNext()) {
             String name = it.next();
             JSONObject link = links.optJSONObject(name);
             if (link == null) continue;
             String st = link.optString("state", "");
-            if ("processing".equals(st)) pollBunny(name, link.optString("videoId", ""));
+            if ("processing".equals(st)) pollCloud(name, link.optString("videoId", ""));
             else if ("uploading".equals(st)) {
                 File f = new File(clipsDir, name);
-                if (f.exists()) startBunnyUpload(f);
+                if (f.exists()) startCloudUpload(f);
             }
         }
     }
 
     private void updateShareButton() {
-        if (bunnyShareButton == null) return;
-        String last = bunnyPrefs().getString("lastLink", "");
-        bunnyShareButton.setEnabled(last != null && !last.isEmpty());
+        if (cloudShareButton == null) return;
+        String last = cloudPrefs().getString("lastLink", "");
+        cloudShareButton.setEnabled(last != null && !last.isEmpty());
     }
 
-    private void shareBunnyLink() {
-        String url = bunnyPrefs().getString("lastLink", "");
-        String name = bunnyPrefs().getString("lastName", "lesson");
+    private void shareCloudLink() {
+        String url = cloudPrefs().getString("lastLink", "");
+        String name = cloudPrefs().getString("lastName", "lesson");
         if (url == null || url.isEmpty()) {
-            Toast.makeText(this, "No Bunny link yet — record a lesson with Bunny on.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "No Cloud link yet — record a lesson with Cloud on.", Toast.LENGTH_LONG).show();
             return;
         }
         Intent share = new Intent(Intent.ACTION_SEND);
