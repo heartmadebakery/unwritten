@@ -29,10 +29,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.text.InputType;
-import android.view.View;
-import android.widget.CheckBox;
-import android.widget.EditText;
+import android.widget.SeekBar;
 
 import org.json.JSONObject;
 
@@ -74,19 +71,22 @@ public class MainActivity extends Activity {
     private TextureView preview;
     private TextView status;
     private Button recordButton;
-    private ListView clipList;
-    private ArrayAdapter<String> clipAdapter;
+    private LinearLayout lessonContainer;
     private final List<String> clipNames = new ArrayList<String>();
     private CameraEngine engine;
     private long recordStartMs;
     private boolean pendingRecord;
+    private android.widget.VideoView localPlayer;
+    private android.widget.FrameLayout viewfinderBox;
+    private LinearLayout playerControls;
+    private boolean isViewfinderPlaying = false;
 
-    // Cloud streaming (optional): settings + per-lesson link state.
+    // Cloud streaming (on by default, prefilled at build time): per-lesson link state.
     private static final String CLOUD_PREFS = "unwritten_cloud";
     private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
-    private LinearLayout cloudPanel;
-    private EditText cloudSignerEdit, cloudSignerTokenEdit, cloudLibEdit, cloudKeyEdit;
-    private Button cloudToggleButton, cloudShareButton;
+    private Button cloudToggleButton, exportBtn;
+    private TextView zoomLabel;
+    private SeekBar zoomSeek;
     private File lastLessonFile;
     private final ExecutorService cloudExec = Executors.newSingleThreadExecutor();
     private final Set<String> cloudInFlight = new HashSet<String>();
@@ -128,6 +128,8 @@ public class MainActivity extends Activity {
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // Allow file:// playback intents on Android 7+ without a FileProvider (simple recorder, external player).
+        try { android.os.StrictMode.setVmPolicy(new android.os.StrictMode.VmPolicy.Builder().build()); } catch (Throwable ignored) {}
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         clipsDir = new File(getExternalFilesDir(null), "clips");
         //noinspection ResultOfMethodCallIgnored
@@ -136,7 +138,6 @@ public class MainActivity extends Activity {
         refreshClipList();
         migrateCloudPrefs();
         paintCloudToggle();
-        updateShareButton();
         cloudResumePending();
         if (hasPermissions()) openPreview();
     }
@@ -165,8 +166,70 @@ public class MainActivity extends Activity {
         l.addView(title);
         l.addView(label("Film one lesson, the way the mentor would teach it anyway. Press Record, let it happen, press Stop at the end.", 16, DIM));
 
+        // Viewfinder with in-player overlay (playback appears inside viewfinder)
+        viewfinderBox = new android.widget.FrameLayout(this);
         preview = new TextureView(this);
-        l.addView(preview, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
+        viewfinderBox.addView(preview, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)));
+        localPlayer = new android.widget.VideoView(this);
+        localPlayer.setVisibility(View.GONE);
+        viewfinderBox.addView(localPlayer, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)));
+        // playback controls overlay at bottom of viewfinder
+        playerControls = new LinearLayout(this);
+        playerControls.setOrientation(LinearLayout.HORIZONTAL);
+        playerControls.setGravity(Gravity.CENTER);
+        playerControls.setBackgroundColor(Color.parseColor("#AA000000"));
+        playerControls.setVisibility(View.GONE);
+        playerControls.setPadding(dp(6), dp(4), dp(6), dp(4));
+        Button vfPlay = new Button(this);
+        vfPlay.setText("▶"); vfPlay.setTextSize(14); vfPlay.setTextColor(TEXT); vfPlay.setBackgroundColor(PANEL); vfPlay.setAllCaps(false);
+        vfPlay.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null && isViewfinderPlaying) localPlayer.start(); } });
+        Button vfPause = new Button(this);
+        vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackgroundColor(PANEL); vfPause.setAllCaps(false);
+        vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
+        Button vfClose = new Button(this);
+        vfClose.setText("✕ Close"); vfClose.setTextSize(14); vfClose.setTextColor(TEXT); vfClose.setBackgroundColor(PANEL); vfClose.setAllCaps(false);
+        vfClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { stopLocalPlayback(); } });
+        LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        vfp.setMargins(dp(4), 0, dp(4), 0);
+        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp); vfClose.setLayoutParams(vfp);
+        playerControls.addView(vfPlay); playerControls.addView(vfPause); playerControls.addView(vfClose);
+        android.widget.FrameLayout.LayoutParams ctrlLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ctrlLp.gravity = Gravity.BOTTOM;
+        viewfinderBox.addView(playerControls, ctrlLp);
+        l.addView(viewfinderBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Zoom directly below viewfinder
+        LinearLayout zoomRow = new LinearLayout(this);
+        zoomRow.setOrientation(LinearLayout.HORIZONTAL);
+        zoomRow.setGravity(Gravity.CENTER_VERTICAL);
+        zoomRow.setPadding(0, dp(6), 0, dp(6));
+        Button zoomOut = button("−");
+        zoomOut.setTextSize(18);
+        LinearLayout.LayoutParams zp = new LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.WRAP_CONTENT);
+        zoomOut.setLayoutParams(zp);
+        zoomSeek = new SeekBar(this);
+        zoomSeek.setMax(100);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        zoomSeek.setLayoutParams(sp);
+        Button zoomIn = button("+");
+        zoomIn.setTextSize(18);
+        zoomIn.setLayoutParams(zp);
+        zoomLabel = label("1.0×", 14, DIM);
+        zoomLabel.setMinWidth(dp(48));
+        zoomLabel.setGravity(Gravity.CENTER);
+        zoomRow.addView(zoomOut);
+        zoomRow.addView(zoomSeek);
+        zoomRow.addView(zoomIn);
+        zoomRow.addView(zoomLabel);
+        l.addView(label("Zoom", 14, DIM));
+        l.addView(zoomRow);
+        zoomOut.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(-0.2f); } });
+        zoomIn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(+0.2f); } });
+        zoomSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar s, int p, boolean fromUser) { if (fromUser) applyZoomFromSlider(); }
+            @Override public void onStartTrackingTouch(SeekBar s) {}
+            @Override public void onStopTrackingTouch(SeekBar s) {}
+        });
 
         status = label("Point the camera at the mentor's hands and the work.", 16, TEXT);
         l.addView(status);
@@ -176,78 +239,24 @@ public class MainActivity extends Activity {
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
         l.addView(recordButton);
 
-        l.addView(label("Lessons on this device", 17, DIM));
-        clipAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, clipNames) {
-            @Override public View getView(int pos, View convert, ViewGroup parent) {
-                TextView t = (TextView) super.getView(pos, convert, parent);
-                t.setTextColor(TEXT); t.setTextSize(15); t.setBackgroundColor(BG);
-                String item = getItem(pos);
-                if (item != null) t.setText(item + cloudSuffix(item));
-                return t;
-            }
-        };
-        clipList = new ListView(this); clipList.setAdapter(clipAdapter); clipList.setBackgroundColor(BG);
-        l.addView(clipList, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+        // Cloud toggle directly below Record
+        cloudToggleButton = button("☁ Cloud: on");
+        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
+        l.addView(cloudToggleButton);
 
-        Button exportBtn = button("Export lessons to Downloads");
+        exportBtn = button("Export lessons to Downloads");
         exportBtn.setBackgroundColor(AMBER); exportBtn.setTextColor(BG);
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
-        l.addView(label("Cloud streaming", 17, DIM));
-        cloudToggleButton = button("☁ Cloud: on");
-        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
-        l.addView(cloudToggleButton);
-        Button cloudSettingsButton = button("⚙ Cloud settings");
-        cloudSettingsButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudPanel(); } });
-        l.addView(cloudSettingsButton);
+        // Lessons at bottom: left icon (☁/device), middle date+duration, right share/download
+        l.addView(label("Lessons on this device", 17, DIM));
+        lessonContainer = new LinearLayout(MainActivity.this);
+        lessonContainer.setOrientation(LinearLayout.VERTICAL);
+        lessonContainer.setBackgroundColor(BG);
+        l.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        cloudPanel = new LinearLayout(this);
-        cloudPanel.setOrientation(LinearLayout.VERTICAL);
-        cloudPanel.setVisibility(View.GONE);
-        cloudSignerEdit = cloudEdit("Signer URL (prefilled by the build)", false);
-        cloudSignerTokenEdit = cloudEdit("Signer token (prefilled by the build)", true);
-        cloudLibEdit = cloudEdit("— or without a signer: Cloud library ID", false);
-        cloudKeyEdit = cloudEdit("Library API key (then lives on this phone)", true);
-        cloudPanel.addView(cloudFieldLabel("Signer URL")); cloudPanel.addView(cloudSignerEdit);
-        cloudPanel.addView(cloudFieldLabel("Signer token")); cloudPanel.addView(cloudSignerTokenEdit);
-        cloudPanel.addView(cloudFieldLabel("Cloud library ID")); cloudPanel.addView(cloudLibEdit);
-        cloudPanel.addView(cloudFieldLabel("Library API key")); cloudPanel.addView(cloudKeyEdit);
-        cloudPanel.addView(label("On by default and purely additive: lessons are saved on this phone first, then a copy uploads for streamed playback. The signer URL and token arrive baked into this build; these fields are only overrides. A library key pasted below talks to the library directly instead of the signer.", 14, DIM));
-        l.addView(cloudPanel);
-
-        cloudShareButton = button("Share Cloud link");
-        cloudShareButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLink(); } });
-        l.addView(cloudShareButton);
-
-        clipList.setOnItemClickListener(new android.widget.AdapterView.OnItemClickListener() {
-            @Override public void onItemClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
-                String name = clipNames.get(pos);
-                JSONObject link = cloudLink(name);
-                if (link == null) return;
-                String st = link.optString("state", "");
-                if ("ready".equals(st)) {
-                    String lib = link.optString("libraryId", cloudCfgString("libraryId"));
-                    String url = "https://player.mediadelivery.net/embed/" + lib + "/" + link.optString("videoId", "");
-                    try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); }
-                    catch (Throwable e) { Toast.makeText(MainActivity.this, url, Toast.LENGTH_LONG).show(); }
-                } else if ("failed".equals(st)) {
-                    File f = new File(clipsDir, name);
-                    if (f.exists()) startCloudUpload(f);
-                } else if ("processing".equals(st)) {
-                    pollCloud(name, link.optString("videoId", ""));
-                    Toast.makeText(MainActivity.this, "Still preparing on Cloud…", Toast.LENGTH_SHORT).show();
-                }
-            }
-        });
-        clipList.setOnItemLongClickListener(new android.widget.AdapterView.OnItemLongClickListener() {
-            @Override public boolean onItemLongClick(android.widget.AdapterView<?> parent, View view, int pos, long id) {
-                confirmDeleteLesson(clipNames.get(pos));
-                return true;
-            }
-        });
-
-        ScrollView sv = new ScrollView(this); sv.setBackgroundColor(BG); sv.addView(l);
+        ScrollView sv = new ScrollView(MainActivity.this); sv.setBackgroundColor(BG); sv.addView(l);
         setContentView(sv);
     }
 
@@ -278,6 +287,8 @@ public class MainActivity extends Activity {
                 }
             });
             engine.openPreview(preview);
+            handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 1200);
+            handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 2500);
         } catch (Throwable e) { status.setText("Camera error: " + e.getMessage()); }
     }
 
@@ -328,10 +339,156 @@ public class MainActivity extends Activity {
         return out;
     }
 
+    // left icon: ☁ if cloud-backed (has cloud link), otherwise device-only ▣
+    private String leftIconFor(String name) {
+        JSONObject link = cloudLink(name);
+        if (link == null) return "\u25A3"; // ▣ device-only
+        String st = link.optString("state", "");
+        if ("uploading".equals(st)) return "\u2601\u2191"; // ☁↑
+        if ("processing".equals(st)) return "\u2601\u2026"; // ☁…
+        if ("failed".equals(st)) return "\u2601!"; // ☁!
+        return "\u2601"; // ☁ ready/other
+    }
+
+    private String displayDateFor(String name) {
+        try {
+            // unwritten_lesson_20261029-064439-473.mp4 -> 20261029-064439
+            String base = name;
+            int us = base.lastIndexOf('_');
+            if (us >= 0) base = base.substring(us + 1);
+            int dot = base.lastIndexOf('.');
+            if (dot > 0) base = base.substring(0, dot);
+            if (base.length() >= 15) base = base.substring(0, 15); // yyyyMMdd-HHmmss
+            java.text.SimpleDateFormat src = new java.text.SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US);
+            java.util.Date d = src.parse(base);
+            java.text.SimpleDateFormat dst = new java.text.SimpleDateFormat("MMM d, yyyy HH:mm", Locale.US);
+            return dst.format(d);
+        } catch (Throwable e) {
+            return name;
+        }
+    }
+
+    private final Map<String,String> durationCache = new java.util.HashMap<String,String>();
+    private String durationFor(String name) {
+        if (durationCache.containsKey(name)) return durationCache.get(name);
+        String out = "";
+        try {
+            File f = new File(clipsDir, name);
+            android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
+            mmr.setDataSource(f.getAbsolutePath());
+            String dur = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+            mmr.release();
+            if (dur != null) {
+                long ms = Long.parseLong(dur);
+                long s = ms / 1000;
+                long m = s / 60;
+                long h = m / 60;
+                s = s % 60; m = m % 60;
+                if (h > 0) out = String.format(Locale.US, "%d:%02d:%02d", h, m, s);
+                else out = String.format(Locale.US, "%d:%02d", m, s);
+            }
+        } catch (Throwable ignored) {}
+        durationCache.put(name, out);
+        return out;
+    }
+
+    private void downloadSingle(String name) {
+        File f = new File(clipsDir, name);
+        if (!f.exists()) { Toast.makeText(this, "File missing.", Toast.LENGTH_SHORT).show(); return; }
+        try {
+            ContentResolver cr = getContentResolver();
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
+            cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
+            cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
+            cv.put(MediaStore.Downloads.IS_PENDING, 1);
+            Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+            if (uri == null) throw new Exception("MediaStore insert failed");
+            OutputStream out = cr.openOutputStream(uri);
+            if (out == null) throw new Exception("Could not open output");
+            FileInputStream in = new FileInputStream(f);
+            copyStream(in, out); in.close(); out.close();
+            ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
+            cr.update(uri, done, null, null);
+            Toast.makeText(this, "Saved " + f.getName() + " to Downloads/Unwritten", Toast.LENGTH_LONG).show();
+        } catch (Throwable e) {
+            Toast.makeText(this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void refreshClipList() {
         clipNames.clear();
         for (File f : clipFiles()) clipNames.add(f.getName());
-        if (clipAdapter != null) clipAdapter.notifyDataSetChanged();
+        if (lessonContainer == null) return;
+        lessonContainer.removeAllViews();
+        for (final String name : clipNames) {
+            File file = new File(clipsDir, name);
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setBackgroundColor(BG);
+            row.setPadding(dp(8), dp(6), dp(8), dp(6));
+
+            // left: cloud/device icon
+            TextView left = label(leftIconFor(name), 16, TEXT);
+            left.setMinWidth(dp(32)); left.setGravity(Gravity.CENTER);
+            row.addView(left);
+
+            // middle: date + duration (click to play in viewfinder)
+            String date = displayDateFor(name);
+            String dur = durationFor(name);
+            String middleText = dur.isEmpty() ? date : date + "  \u2022  " + dur;
+            TextView mid = new TextView(this);
+            mid.setText(middleText);
+            mid.setTextColor(TEXT); mid.setTextSize(15); mid.setSingleLine(true);
+            mid.setPadding(dp(8), 0, dp(8), 0);
+            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            mid.setLayoutParams(mp);
+            mid.setClickable(true);
+            row.addView(mid);
+            // whole row (including left icon) plays in viewfinder; right button is separate
+            row.setClickable(true);
+            View.OnClickListener playClick = new View.OnClickListener() { @Override public void onClick(View v) { playInViewfinder(name); } };
+            row.setOnClickListener(playClick);
+            mid.setOnClickListener(playClick);
+            left.setOnClickListener(playClick);
+
+            // right: Share if cloud ready, else Download
+            JSONObject link = cloudLink(name);
+            String st = link == null ? "" : link.optString("state", "");
+            boolean isReady = "ready".equals(st);
+            Button right = new Button(this);
+            right.setAllCaps(false);
+            right.setTextSize(13);
+            right.setTextColor(isReady ? TEXT : BG);
+            right.setBackgroundColor(isReady ? PANEL : AMBER);
+            right.setPadding(dp(8), dp(4), dp(8), dp(4));
+            right.setFocusable(false); right.setFocusableInTouchMode(false);
+            if (isReady) {
+                right.setText("Share \u2197");
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(88), dp(36));
+                bp.setMargins(dp(8), 0, 0, 0);
+                right.setLayoutParams(bp);
+                right.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+            } else {
+                right.setText("\u2B07 Download");
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(110), dp(36));
+                bp.setMargins(dp(8), 0, 0, 0);
+                right.setLayoutParams(bp);
+                right.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+            }
+            row.addView(right);
+
+            // long-press row to delete
+            row.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override public boolean onLongClick(View v) { confirmDeleteLesson(name); return true; }
+            });
+
+            lessonContainer.addView(row);
+            View divider = new View(this);
+            divider.setBackgroundColor(Color.parseColor("#2E2213"));
+            lessonContainer.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+        }
     }
 
     private String mimeFor(String name) {
@@ -406,16 +563,6 @@ public class MainActivity extends Activity {
     }
     private String cloudCfgString(String key) { return cloudPrefs().getString(key, ""); }
 
-    private EditText cloudEdit(String hint, boolean password) {
-        EditText e = new EditText(this);
-        e.setHint(hint); e.setTextSize(15); e.setTextColor(TEXT); e.setHintTextColor(DIM);
-        e.setBackgroundColor(PANEL); e.setSingleLine(true);
-        if (password) e.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        e.setPadding(dp(10), dp(8), dp(10), dp(8));
-        return e;
-    }
-    private TextView cloudFieldLabel(String s) { return label(s, 14, DIM); }
-
     private String cloudEffSignerUrl() {
         String s = cloudCfgString("signerUrl");
         return s.isEmpty() ? CLOUD_SIGNER_DEFAULT : s;
@@ -437,33 +584,115 @@ public class MainActivity extends Activity {
         boolean on = !cloudPrefs().getBoolean("enabled", true);
         cloudPrefs().edit().putBoolean("enabled", on).apply();
         paintCloudToggle();
+        applyCloudDependentVisibility();
         status.setText(on
                 ? "☁ Cloud on. New lessons will also upload for streamed playback; tap a lesson with ☁▶ to open its Watch link."
                 : "☁ Cloud off. Lessons stay on this phone only.");
     }
 
-    private void toggleCloudPanel() {
-        if (cloudPanel.getVisibility() != View.VISIBLE) {
-            cloudSignerEdit.setText(cloudEffSignerUrl());
-            cloudSignerTokenEdit.setText(cloudEffSignerToken());
-            cloudLibEdit.setText(cloudCfgString("libraryId"));
-            cloudKeyEdit.setText(cloudCfgString("apiKey"));
-            cloudPanel.setVisibility(View.VISIBLE);
-        } else {
-            cloudPrefs().edit()
-                    .putString("signerUrl", cloudSignerEdit.getText().toString().trim())
-                    .putString("signerToken", cloudSignerTokenEdit.getText().toString().trim())
-                    .putString("libraryId", cloudLibEdit.getText().toString().trim())
-                    .putString("apiKey", cloudKeyEdit.getText().toString().trim())
-                    .apply();
-            cloudPanel.setVisibility(View.GONE);
-            paintCloudToggle();
-        }
+    private void applyCloudDependentVisibility() {
+        boolean on = cloudEnabledCfg();
+        if (exportBtn != null) exportBtn.setVisibility(on ? View.GONE : View.VISIBLE);
+        refreshClipList();
     }
 
     private void paintCloudToggle() {
         if (cloudToggleButton == null) return;
         cloudToggleButton.setText(cloudEnabledCfg() ? "☁ Cloud: on" : "☁ Cloud: off");
+        applyCloudDependentVisibility();
+    }
+
+    private void playInViewfinder(String name) {
+        File f = new File(clipsDir, name);
+        if (!f.exists()) { Toast.makeText(this, "Lesson file missing.", Toast.LENGTH_SHORT).show(); return; }
+        try {
+            if (localPlayer != null && viewfinderBox != null && preview != null) {
+                preview.setVisibility(View.INVISIBLE);
+                localPlayer.setVisibility(View.VISIBLE);
+                if (playerControls != null) playerControls.setVisibility(View.VISIBLE);
+                isViewfinderPlaying = true;
+                localPlayer.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                    @Override public void onPrepared(android.media.MediaPlayer mp) { localPlayer.start(); }
+                });
+                localPlayer.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
+                    @Override public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
+                        Toast.makeText(MainActivity.this, "Playback failed — trying external player…", Toast.LENGTH_SHORT).show();
+                        fallbackExternalPlay(f, name);
+                        return true;
+                    }
+                });
+                localPlayer.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                    @Override public void onCompletion(android.media.MediaPlayer mp) { stopLocalPlayback(); }
+                });
+                localPlayer.setVideoPath(f.getAbsolutePath());
+                localPlayer.requestFocus();
+                status.setText("Playing " + displayDateFor(name) + " — ✕ Close to stop.");
+                return;
+            }
+        } catch (Throwable ignored) { }
+        fallbackExternalPlay(f, name);
+    }
+
+    // legacy alias for old call sites
+    private void playLocalLesson(String name) { playInViewfinder(name); }
+
+    private void fallbackExternalPlay(File f, String name) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            Uri uri = Uri.fromFile(f);
+            String mime = mimeFor(name);
+            if (mime == null) mime = "video/*";
+            i.setDataAndType(uri, mime);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(Intent.createChooser(i, "Play lesson"));
+        } catch (Throwable e) {
+            Toast.makeText(this, "No player for " + name + " (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void stopLocalPlayback() {
+        try { if (localPlayer != null) { localPlayer.stopPlayback(); localPlayer.setVisibility(View.GONE); } } catch (Throwable ignored) {}
+        try { if (preview != null) preview.setVisibility(View.VISIBLE); } catch (Throwable ignored) {}
+        if (playerControls != null) playerControls.setVisibility(View.GONE);
+        isViewfinderPlaying = false;
+        status.setText("Playback stopped.");
+    }
+
+    @Override public void onBackPressed() {
+        if (isViewfinderPlaying) { stopLocalPlayback(); return; }
+        super.onBackPressed();
+    }
+
+    private String cloudWatchUrl(String name) {
+        JSONObject link = cloudLink(name);
+        if (link == null) return null;
+        String vid = link.optString("videoId", "");
+        if (vid.isEmpty()) return null;
+        String lib = link.optString("libraryId", "");
+        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
+        if (lib == null || lib.isEmpty()) {
+            CloudUploader up = cloudUploader();
+            if (up != null && up.lastLibraryId != null) lib = up.lastLibraryId;
+        }
+        if (lib == null || lib.isEmpty()) return null;
+        return "https://player.mediadelivery.net/embed/" + lib + "/" + vid;
+    }
+
+    private void shareCloudLinkFor(String name) {
+        String url = cloudWatchUrl(name);
+        if (url == null) {
+            // fallback to lastLink
+            url = cloudPrefs().getString("lastLink", "");
+            if (url == null || url.isEmpty()) {
+                Toast.makeText(this, "No Cloud link yet for this lesson.", Toast.LENGTH_LONG).show();
+                return;
+            }
+        }
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_SUBJECT, name);
+        share.putExtra(Intent.EXTRA_TEXT, url);
+        startActivity(Intent.createChooser(share, "Share lesson link"));
     }
 
     private JSONObject cloudLinks() {
@@ -519,7 +748,6 @@ public class MainActivity extends Activity {
                 if (lastLessonFile != null && name.equals(lastLessonFile.getName())) lastLessonFile = null;
                 runOnUiThread(new Runnable() { @Override public void run() {
                     refreshClipList();
-                    updateShareButton();
                     status.setText("🗑 Lesson deleted from this phone" + (videoId.isEmpty() ? "." : " and the cloud."));
                 } });
             }
@@ -555,7 +783,7 @@ public class MainActivity extends Activity {
         if (f == null || !f.exists() || !cloudEnabledCfg()) return;
         JSONObject link = cloudLink(f.getName());
         String st = link == null ? "" : link.optString("state", "");
-        if ("ready".equals(st)) { updateShareButton(); return; }
+        if ("ready".equals(st)) return;
         if ("processing".equals(st)) { pollCloud(f.getName(), link.optString("videoId", "")); return; }
         if ("uploading".equals(st) && cloudInFlight.contains(f.getName())) return;
         startCloudUpload(f);
@@ -617,8 +845,7 @@ public class MainActivity extends Activity {
                 ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                 if (cm != null) cm.setPrimaryClip(ClipData.newPlainText("Cloud lesson link", url));
             } catch (Throwable ignored) { }
-            status.setText("☁ Ready: " + name + " — ▶ Watch link copied. Tap the lesson or Share Cloud link to send it.");
-            updateShareButton();
+            status.setText("☁ Ready: " + name + " — ▶ Watch link copied. Tap lesson to play locally, ↗ to share.");
             refreshClipList();
         } });
     }
@@ -671,23 +898,36 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void updateShareButton() {
-        if (cloudShareButton == null) return;
-        String last = cloudPrefs().getString("lastLink", "");
-        cloudShareButton.setEnabled(last != null && !last.isEmpty());
-    }
+    // legacy global share removed — per-lesson share via shareCloudLinkFor() / cloudWatchUrl()
 
-    private void shareCloudLink() {
-        String url = cloudPrefs().getString("lastLink", "");
-        String name = cloudPrefs().getString("lastName", "lesson");
-        if (url == null || url.isEmpty()) {
-            Toast.makeText(this, "No Cloud link yet — record a lesson with Cloud on.", Toast.LENGTH_LONG).show();
-            return;
+    // ---------- Zoom ----------
+    private void nudgeZoom(float delta) {
+        if (engine == null) return;
+        float max = engine.getMaxZoom();
+        float cur = engine.getZoom();
+        float next = Math.max(1.0f, Math.min(max, cur + delta));
+        engine.setZoom(next);
+        syncZoomUi(next, max);
+    }
+    private void applyZoomFromSlider() {
+        if (engine == null || zoomSeek == null) return;
+        float max = engine.getMaxZoom();
+        float ratio = 1.0f + (zoomSeek.getProgress() / 100f) * (max - 1.0f);
+        engine.setZoom(ratio);
+        syncZoomUi(ratio, max);
+    }
+    private void syncZoomUi(float ratio, float max) {
+        if (zoomLabel != null) zoomLabel.setText(String.format(Locale.US, "%.1f×", ratio));
+        if (zoomSeek != null && max > 1.0f) {
+            int p = Math.round((ratio - 1.0f) / (max - 1.0f) * 100f);
+            if (Math.abs(zoomSeek.getProgress() - p) > 1) zoomSeek.setProgress(p);
         }
-        Intent share = new Intent(Intent.ACTION_SEND);
-        share.setType("text/plain");
-        share.putExtra(Intent.EXTRA_SUBJECT, name);
-        share.putExtra(Intent.EXTRA_TEXT, url);
-        startActivity(Intent.createChooser(share, "Share lesson link"));
+    }
+    private void refreshZoomUi() {
+        if (engine == null || zoomSeek == null) return;
+        float max = engine.getMaxZoom();
+        float cur = engine.getZoom();
+        syncZoomUi(cur, max);
+        zoomSeek.setEnabled(max > 1.0f);
     }
 }

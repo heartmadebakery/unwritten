@@ -75,6 +75,10 @@ public final class CameraEngine {
     private ImageReader yuvReader;
     private ImageReader jpegReader;
 
+    private float maxDigitalZoom = 1.0f;
+    private float currentZoom = 1.0f;
+    private android.graphics.Rect activeArrayRect;
+
     private volatile LumaListener lumaListener;
     private long lastLumaMs;
 
@@ -257,6 +261,56 @@ public final class CameraEngine {
         return recording;
     }
 
+    public float getMaxZoom() { return maxDigitalZoom > 1.0f ? maxDigitalZoom : 1.0f; }
+    public float getZoom() { return currentZoom; }
+    public void setZoom(final float zoom) {
+        final float clamped = Math.max(1.0f, Math.min(getMaxZoom(), zoom));
+        currentZoom = clamped;
+        final int gen = generation;
+        Handler h = handler();
+        if (h != null && camera != null) {
+            post(gen, new Runnable() { @Override public void run() { applyZoomToSession(clamped); } });
+        }
+    }
+    private void applyZoomToSession(float zoom) {
+        if (session == null || camera == null) return;
+        try {
+            boolean hasRecorder = recorderSurface != null && recorder != null;
+            CaptureRequest.Builder b = camera.createCaptureRequest(
+                    hasRecorder ? CameraDevice.TEMPLATE_RECORD : CameraDevice.TEMPLATE_PREVIEW);
+            b.addTarget(previewSurface);
+            if (hasRecorder) b.addTarget(recorderSurface);
+            if (lumaListener != null && yuvReader != null) {
+                try { b.addTarget(yuvReader.getSurface()); } catch (Throwable ignored) {}
+            }
+            b.set(CaptureRequest.CONTROL_AF_MODE, hasRecorder
+                    ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
+                    : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            try { b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON); } catch (Throwable ignored) {}
+            applyZoom(b, zoom);
+            session.setRepeatingRequest(b.build(), null, handler());
+        } catch (Throwable t) {
+            reportError("Zoom failed: " + t.getMessage());
+        }
+    }
+    private void applyZoom(CaptureRequest.Builder b, float zoom) {
+        if (zoom <= 1.0f) return;
+        // Prefer CONTROL_ZOOM_RATIO on API 30+ (compileSdk 34 has it)
+        try {
+            b.set(CaptureRequest.CONTROL_ZOOM_RATIO, zoom);
+            return;
+        } catch (Throwable ignored) {}
+        // Fallback: crop region
+        if (activeArrayRect == null) return;
+        int cx = activeArrayRect.centerX();
+        int cy = activeArrayRect.centerY();
+        int w = (int) (activeArrayRect.width() / zoom);
+        int h = (int) (activeArrayRect.height() / zoom);
+        w = w & ~1; h = h & ~1; // even
+        android.graphics.Rect crop = new android.graphics.Rect(cx - w/2, cy - h/2, cx + w/2, cy + h/2);
+        try { b.set(CaptureRequest.SCALER_CROP_REGION, crop); } catch (Throwable ignored) {}
+    }
+
     public void takePhoto(final PhotoListener l) {
         try {
             if (l == null) { reportError("takePhoto: null listener"); return; }
@@ -370,6 +424,14 @@ public final class CameraEngine {
             lensFacing = chosenFacing;
             Integer so = chosenChars.get(CameraCharacteristics.SENSOR_ORIENTATION);
             sensorOrientation = so != null ? so : 0;
+            try {
+                Float mz = chosenChars.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+                if (mz != null) maxDigitalZoom = mz;
+            } catch (Throwable ignored) { maxDigitalZoom = 1.0f; }
+            try {
+                android.graphics.Rect aa = chosenChars.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
+                if (aa != null) activeArrayRect = aa;
+            } catch (Throwable ignored) {}
             computeSizes(chosenChars);
             cameraOpening = true;
             manager.openCamera(chosen, new CameraDevice.StateCallback() {
@@ -774,6 +836,7 @@ public final class CameraEngine {
                     ? CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO
                     : CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
             try { b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON); } catch (Throwable ignored) { }
+            applyZoom(b, currentZoom);
             session.setRepeatingRequest(b.build(), null, handler());
         } catch (Throwable t) {
             // A closed session during teardown is not fatal.
@@ -971,6 +1034,7 @@ public final class CameraEngine {
             b.set(CaptureRequest.CONTROL_AF_TRIGGER, CameraMetadata.CONTROL_AF_TRIGGER_START);
             try { b.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON); } catch (Throwable ignored) { }
             try { b.set(CaptureRequest.JPEG_ORIENTATION, computeOrientationHint()); } catch (Throwable ignored) { }
+            applyZoom(b, currentZoom);
             session.capture(b.build(), new CameraCaptureSession.CaptureCallback() {
                 @Override public void onCaptureCompleted(CameraCaptureSession s,
                                                            CaptureRequest request, TotalCaptureResult result) {

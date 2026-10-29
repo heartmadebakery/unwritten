@@ -14,6 +14,8 @@ import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import javax.net.ssl.SNIHostName;
+import javax.net.ssl.SSLParameters;
 import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
@@ -311,6 +313,11 @@ public final class CloudUploader {
 
         SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket();
         try {
+            try {
+                SSLParameters params = socket.getSSLParameters();
+                params.setServerNames(java.util.Collections.singletonList(new SNIHostName(host)));
+                socket.setSSLParameters(params);
+            } catch (Exception ignored) { /* SNI not available — handshake will fail on SNI-required hosts */ }
             socket.connect(new InetSocketAddress(host, port), 20000);
             socket.setSoTimeout(60000);
             socket.startHandshake();
@@ -319,6 +326,7 @@ public final class CloudUploader {
             head.append(method).append(' ').append(path).append(" HTTP/1.1\r\n");
             head.append("Host: ").append(host).append("\r\n");
             head.append("Connection: close\r\n");
+            head.append("User-Agent: UnwrittenRecorder/1.0\r\n");
             if (headers != null) for (Map.Entry<String, String> e : headers.entrySet())
                 head.append(e.getKey()).append(": ").append(e.getValue()).append("\r\n");
             head.append("Content-Length: ").append(body == null ? 0 : body.length).append("\r\n\r\n");
@@ -336,7 +344,7 @@ public final class CloudUploader {
         byte[] buf = new byte[16384];
         int headerEnd = -1, total = 0, n;
         byte[] all = new byte[0];
-        // Read until headers complete, then per Content-Length.
+        // Read until headers complete, then per Content-Length or chunked.
         while ((n = in.read(buf)) != -1) {
             raw.write(buf, 0, n);
             total += n;
@@ -346,27 +354,63 @@ public final class CloudUploader {
                 if (headerEnd >= 0) {
                     Resp probe = parseHead(all, headerEnd);
                     String cl = probe.headers.get("content-length");
-                    if (cl != null) {
+                    String te = probe.headers.get("transfer-encoding");
+                    if (te != null && te.toLowerCase(java.util.Locale.US).contains("chunked")) {
+                        // chunked: need to see terminating 0-chunk; wait for close or parse
+                        // Don't break early — collect until stream closes, then decode
+                    } else if (cl != null) {
                         int want = headerEnd + Integer.parseInt(cl.trim());
                         if (total >= want) break;
                     } else if (probe.status == 204 || probe.status == 304) break;
+                    // otherwise (no length, no chunked): read until close
                 }
             } else {
                 Resp probe = parseHead(all, headerEnd);
                 String cl = probe.headers.get("content-length");
-                if (cl != null && total >= headerEnd + Integer.parseInt(cl.trim())) break;
+                String te = probe.headers.get("transfer-encoding");
+                if (te != null && te.toLowerCase(java.util.Locale.US).contains("chunked")) {
+                    // wait for close
+                } else if (cl != null && total >= headerEnd + Integer.parseInt(cl.trim())) break;
             }
         }
         all = raw.toByteArray();
         if (headerEnd < 0) headerEnd = indexOfHeaderEnd(all, all.length);
         if (headerEnd < 0) throw new IOException("no HTTP response");
         Resp resp = parseHead(all, headerEnd);
-        int bodyLen = Math.max(0, all.length - headerEnd);
-        String cl = resp.headers.get("content-length");
-        if (cl != null) bodyLen = Math.min(bodyLen, Integer.parseInt(cl.trim()));
-        resp.body = new byte[bodyLen];
-        System.arraycopy(all, headerEnd, resp.body, 0, bodyLen);
+        String te = resp.headers.get("transfer-encoding");
+        if (te != null && te.toLowerCase(java.util.Locale.US).contains("chunked")) {
+            resp.body = decodeChunked(all, headerEnd);
+        } else {
+            int bodyLen = Math.max(0, all.length - headerEnd);
+            String cl = resp.headers.get("content-length");
+            if (cl != null) bodyLen = Math.min(bodyLen, Integer.parseInt(cl.trim()));
+            resp.body = new byte[bodyLen];
+            System.arraycopy(all, headerEnd, resp.body, 0, bodyLen);
+        }
         return resp;
+    }
+
+    private static byte[] decodeChunked(byte[] all, int headerEnd) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        int pos = headerEnd;
+        while (pos < all.length) {
+            int lineEnd = -1;
+            for (int i = pos; i + 1 < all.length; i++) {
+                if (all[i] == '\r' && all[i+1] == '\n') { lineEnd = i; break; }
+            }
+            if (lineEnd < 0) break;
+            String hex = new String(all, pos, lineEnd - pos, "UTF-8").trim();
+            int semi = hex.indexOf(';');
+            if (semi >= 0) hex = hex.substring(0, semi).trim();
+            int chunkSize;
+            try { chunkSize = Integer.parseInt(hex, 16); } catch (NumberFormatException e) { break; }
+            pos = lineEnd + 2;
+            if (chunkSize == 0) break;
+            if (pos + chunkSize > all.length) break; // incomplete
+            out.write(all, pos, chunkSize);
+            pos += chunkSize + 2; // skip trailing CRLF
+        }
+        return out.toByteArray();
     }
 
     private static int indexOfHeaderEnd(byte[] b, int len) {

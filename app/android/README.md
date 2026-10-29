@@ -78,15 +78,15 @@ restarts) and the lesson gains a ☁▶ marker; tapping it opens the
 streamed-playback (HLS) link, which is also copied to the clipboard
 and offered via **Share Cloud link**. Cloud has **no live ingest** —
 this is store-then-stream, not live broadcast. **☁ Cloud** toggles
-saving off (lessons stay on-device only); **⚙ Cloud settings** holds
-overrides. Long-press a lesson to delete it from the phone *and* its
-cloud copy (cloud first — if that fails, the local lesson is kept).
+saving off (lessons stay on-device only). Long-press a lesson to
+delete it from the phone *and* its cloud copy (cloud first — if that
+fails, the local lesson is kept). **Export lessons to Downloads** is
+shown only when Cloud is off (offline fallback); **Share Cloud link**
+only when Cloud is on.
 
 No typing needed: `build.sh` stamps one random token from the signer
 pool into the APK (`token #N of 10` in the build log), so uploads work
-out of the box. As a fallback, a library key pasted in ⚙️ settings
-talks to the library directly instead of the signer (stored in
-app-private SharedPreferences, sent only to Cloud).
+out of the box.
 `CloudUploader.java` implements create-video, TUS upload, status
 polling, and delete over a raw `SSLSocket` — framework APIs only, no
 third-party libraries, and no `HttpURLConnection` PATCH trap on older
