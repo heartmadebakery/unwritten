@@ -14,6 +14,11 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Recorder builds refreshed.** Rebuild the committed Android APK
+  with default Cloud uploads, signer-token stamping, and lesson
+  deletion; regenerate the ignored web `dist/` output as well. Verify
+  the APK signature and restored source-token templates. All 47 tests,
+  signer request smoke checks, and script syntax checks pass.
 - **Mentor wording throughout live material.** Use generic mentor
   language in the pipeline, prompts, fictional samples, harness, and
   current documentation. Add terminology checks for mentor and Cloud
