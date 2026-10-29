@@ -61,8 +61,8 @@ public class MainActivity extends Activity {
     private static final int PANEL = Color.parseColor("#241C12");
     private static final int TEXT = Color.parseColor("#F5EAD6");
     private static final int DIM = Color.parseColor("#B8A888");
-    private static final int AMBER = Color.parseColor("#E8A13A");
-    private static final int RED = Color.parseColor("#C0392B");
+    private static final int AMBER = Color.parseColor("#E8A13A"); // retained for compat, not used
+    private static final int RED = Color.parseColor("#C0392B"); // retained for compat, not used
     private static final int PERM_RECORD = 7;
 
     private File clipsDir;
@@ -88,7 +88,7 @@ public class MainActivity extends Activity {
     private TextView zoomLabel;
     private SeekBar zoomSeek;
     private File lastLessonFile;
-    private final ExecutorService cloudExec = Executors.newSingleThreadExecutor();
+    private final ExecutorService cloudExec = Executors.newCachedThreadPool();
     private final Set<String> cloudInFlight = new HashSet<String>();
 
     private final Runnable timerRunnable = new Runnable() {
@@ -116,6 +116,7 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(text); b.setTextSize(18); b.setTextColor(TEXT);
         b.setBackgroundColor(PANEL); b.setAllCaps(false);
+        try { b.setBackgroundTintList(null); } catch (Throwable ignored) {}
         b.setPadding(dp(12), dp(10), dp(12), dp(10));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -182,9 +183,11 @@ public class MainActivity extends Activity {
         playerControls.setPadding(dp(6), dp(4), dp(6), dp(4));
         Button vfPlay = new Button(this);
         vfPlay.setText("▶"); vfPlay.setTextSize(14); vfPlay.setTextColor(TEXT); vfPlay.setBackgroundColor(PANEL); vfPlay.setAllCaps(false);
+        try { vfPlay.setBackgroundTintList(null); } catch (Throwable ignored) {}
         vfPlay.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null && isViewfinderPlaying) localPlayer.start(); } });
         Button vfPause = new Button(this);
         vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackgroundColor(PANEL); vfPause.setAllCaps(false);
+        try { vfPause.setBackgroundTintList(null); } catch (Throwable ignored) {}
         vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
         LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         vfp.setMargins(dp(4), 0, dp(4), 0);
@@ -229,17 +232,20 @@ public class MainActivity extends Activity {
 
         status = label("", 16, TEXT); // hidden - status conveyed via list icons
         recordButton = button("● Record");
-        recordButton.setBackgroundColor(RED); recordButton.setTextColor(Color.WHITE);
+        recordButton.setBackgroundColor(PANEL); recordButton.setTextColor(TEXT);
+        try { recordButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
         l.addView(recordButton);
 
         // Cloud toggle directly below Record
         cloudToggleButton = button("☁ Cloud: on");
+        try { cloudToggleButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
         cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
         l.addView(cloudToggleButton);
 
         exportBtn = button("Export sessions to Downloads");
         exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
+        try { exportBtn.setBackgroundTintList(null); } catch (Throwable ignored) {}
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
@@ -466,12 +472,12 @@ public class MainActivity extends Activity {
                 dl.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
                 row.addView(dl);
             } else if (isReady) {
-                // cloud ready: share icon — ensure visible even if libraryId missing (fallback uses lastLink)
                 TextView sh = new TextView(this);
-                sh.setText("\u2197"); // ↗
+                sh.setText("\u2197"); // ↗ cloud ready
                 sh.setTextSize(20);
                 sh.setTextColor(TEXT);
                 sh.setBackgroundColor(PANEL);
+                try { sh.setBackgroundTintList(null); } catch (Throwable ignored) {}
                 sh.setGravity(Gravity.CENTER);
                 sh.setPadding(dp(6), dp(4), dp(6), dp(4));
                 LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
@@ -481,30 +487,9 @@ public class MainActivity extends Activity {
                 sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
                 row.addView(sh);
             } else {
-                // for uploading/processing, still show share if we have a videoId (cloud-backed) — otherwise status
-                String vid = link.optString("videoId", "");
-                if (!vid.isEmpty()) {
-                    TextView sh = new TextView(this);
-                    sh.setText("\u2197");
-                    sh.setTextSize(20);
-                    sh.setTextColor(DIM);
-                    sh.setBackgroundColor(PANEL);
-                    sh.setGravity(Gravity.CENTER);
-                    sh.setPadding(dp(6), dp(4), dp(6), dp(4));
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
-                    bp.setMargins(dp(8), 0, 0, 0);
-                    sh.setLayoutParams(bp);
-                    sh.setClickable(true);
-                    sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
-                    row.addView(sh);
-                    // also show tiny processing badge alongside? keep row clean — share takes precedence
-                } else {
-                // uploading / processing / failed: show status, no download button
-                String badge = "";
-                if ("uploading".equals(st)) badge = link.optInt("progress", 0) + "%";
-                else if ("processing".equals(st)) badge = "\u2026";
-                else if ("failed".equals(st)) badge = "!";
-                if (!badge.isEmpty()) {
+                // uploading: show progress %; processing: show share; failed: !
+                if ("uploading".equals(st)) {
+                    String badge = link.optInt("progress", 0) + "%";
                     TextView stv = label(badge, 13, DIM);
                     stv.setPadding(dp(8), 0, 0, 0);
                     LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
@@ -512,7 +497,40 @@ public class MainActivity extends Activity {
                     stv.setGravity(Gravity.CENTER);
                     stv.setLayoutParams(bp);
                     row.addView(stv);
-                }
+                } else if ("processing".equals(st)) {
+                    String vid = link.optString("videoId", "");
+                    if (!vid.isEmpty()) {
+                        TextView sh = new TextView(this);
+                        sh.setText("\u2197");
+                        sh.setTextSize(20);
+                        sh.setTextColor(DIM);
+                        sh.setBackgroundColor(PANEL);
+                        try { sh.setBackgroundTintList(null); } catch (Throwable ignored) {}
+                        sh.setGravity(Gravity.CENTER);
+                        sh.setPadding(dp(6), dp(4), dp(6), dp(4));
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                        bp.setMargins(dp(8), 0, 0, 0);
+                        sh.setLayoutParams(bp);
+                        sh.setClickable(true);
+                        sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+                        row.addView(sh);
+                    } else {
+                        TextView stv = label("\u2026", 13, DIM);
+                        stv.setPadding(dp(8), 0, 0, 0);
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                        bp.setMargins(dp(8), 0, 0, 0);
+                        stv.setGravity(Gravity.CENTER);
+                        stv.setLayoutParams(bp);
+                        row.addView(stv);
+                    }
+                } else if ("failed".equals(st)) {
+                    TextView stv = label("!", 13, DIM);
+                    stv.setPadding(dp(8), 0, 0, 0);
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    bp.setMargins(dp(8), 0, 0, 0);
+                    stv.setGravity(Gravity.CENTER);
+                    stv.setLayoutParams(bp);
+                    row.addView(stv);
                 }
             }
 

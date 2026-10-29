@@ -2,6 +2,8 @@ package org.tinio.unwritten;
 
 import org.json.JSONObject;
 
+import android.util.Log;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
@@ -32,6 +34,8 @@ import javax.net.ssl.SSLSocketFactory;
  *  TUS PATCH works on every supported Android version. Framework APIs
  *  only, no third-party libraries. All methods block; call off-UI. */
 public final class CloudUploader {
+
+    private static final String TAG = "UWCloud";
 
     public interface Listener {
         void onSession(String videoId, String uploadUrl); // TUS resource known; persist for resume
@@ -81,6 +85,7 @@ public final class CloudUploader {
     }
 
     public Creds credentials(String title, String reuseVideoId) throws Exception {
+        Log.i(TAG, "credentials title=" + title + " reuse=" + reuseVideoId + " signerUrl=" + signerUrl);
         if (!useDirect()) {
             JSONObject body = new JSONObject();
             body.put("title", title);
@@ -90,7 +95,8 @@ public final class CloudUploader {
             h.put("Accept", "application/json");
             if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
             Resp r = request("POST", signerUrl, h, body.toString().getBytes("UTF-8"));
-            if (r.status < 200 || r.status >= 300) throw new IOException("signer refused (" + r.status + ")");
+            Log.i(TAG, "signer POST status=" + r.status + " body=" + r.text());
+            if (r.status < 200 || r.status >= 300) throw new IOException("signer refused (" + r.status + "): " + r.text());
             JSONObject d = new JSONObject(r.text());
             Creds c = new Creds();
             lastLibraryId = d.optString("libraryId", libraryId);
@@ -99,7 +105,8 @@ public final class CloudUploader {
             c.expire = d.optLong("expire", 0);
             c.libraryId = d.optString("libraryId", libraryId);
             if (c.videoId.isEmpty() || c.signature.isEmpty() || c.expire == 0)
-                throw new IOException("signer returned incomplete credentials");
+                throw new IOException("signer returned incomplete credentials: " + r.text());
+            Log.i(TAG, "credentials ok videoId=" + c.videoId + " libraryId=" + c.libraryId);
             return c;
         }
         String videoId = reuseVideoId;
@@ -179,31 +186,39 @@ public final class CloudUploader {
     public void upload(final File file, String savedUploadUrl, String savedVideoId,
                        final Listener listener) {
         String videoId = savedVideoId;
+        Log.i(TAG, "upload start file=" + file.getName() + " len=" + file.length() + " savedUrl=" + savedUploadUrl + " savedVid=" + savedVideoId);
         try {
             Creds creds = credentials(file.getName(), savedVideoId);
             videoId = creds.videoId;
+            Log.i(TAG, "upload creds ok videoId=" + videoId);
             String uploadUrl = savedUploadUrl;
             long offset = -1;
             if (uploadUrl != null && !uploadUrl.isEmpty()) {
-                try { offset = tusHead(uploadUrl, creds); } catch (Exception ignored) { offset = -1; }
+                try { offset = tusHead(uploadUrl, creds); Log.i(TAG, "tusHead resume offset=" + offset); } catch (Exception e) { Log.w(TAG, "tusHead failed: " + e.getMessage()); offset = -1; }
                 if (offset < 0 || offset > file.length()) { uploadUrl = null; offset = -1; }
             }
             if (uploadUrl == null) {
+                Log.i(TAG, "tusCreate for " + file.getName() + " len=" + file.length());
                 uploadUrl = tusCreate(creds, file);
+                Log.i(TAG, "tusCreate ok url=" + uploadUrl);
                 offset = 0;
             }
             listener.onSession(videoId, uploadUrl);
+            Log.i(TAG, "tusSend start offset=" + offset + " url=" + uploadUrl);
             tusSend(file, uploadUrl, creds, offset, listener);
+            Log.i(TAG, "tusSend done videoId=" + videoId);
             listener.onUploaded(videoId);
             for (int i = 0; i < 120; i++) {
                 Thread.sleep(5000);
                 int st;
-                try { st = videoStatus(videoId); } catch (Exception e) { st = -1; }
+                try { st = videoStatus(videoId); } catch (Exception e) { Log.w(TAG, "videoStatus err: " + e.getMessage()); st = -1; }
+                Log.i(TAG, "poll videoId=" + videoId + " status=" + st + " iter=" + i);
                 if (st == 4) { listener.onFinished(videoId); return; }
                 if (st == 5 || st == 6) { listener.onFailed(videoId, "Cloud encoding failed (status " + st + ")"); return; }
             }
             listener.onFailed(videoId, "Still processing on Cloud — check the dashboard; the upload itself finished.");
         } catch (Exception e) {
+            Log.e(TAG, "upload failed file=" + file.getName() + " videoId=" + videoId, e);
             listener.onFailed(videoId, e.getMessage() == null ? "upload failed" : e.getMessage());
         }
     }
@@ -222,17 +237,21 @@ public final class CloudUploader {
         Map<String, String> h = authHeaders(creds);
         h.put("Upload-Length", String.valueOf(file.length()));
         h.put("Upload-Metadata", "filetype " + b64("video/mp4") + ",title " + b64(file.getName()));
+        Log.i(TAG, "tusCreate POST " + TUS_URL + " length=" + file.length());
         Resp r = request("POST", TUS_URL, h, null);
-        if (r.status != 201) throw new IOException("Cloud upload start failed (" + r.status + ")");
+        Log.i(TAG, "tusCreate resp status=" + r.status + " headers=" + r.headers + " body=" + r.text());
+        if (r.status != 201) throw new IOException("Cloud upload start failed (" + r.status + "): " + r.text());
         String loc = r.headers.get("location");
-        if (loc == null || loc.isEmpty()) throw new IOException("Cloud upload start returned no URL");
+        if (loc == null || loc.isEmpty()) throw new IOException("Cloud upload start returned no URL headers=" + r.headers);
         return loc.startsWith("/") ? API + loc : loc;
     }
 
     private long tusHead(String uploadUrl, Creds creds) throws Exception {
+        Log.i(TAG, "tusHead " + uploadUrl);
         Resp r = request("HEAD", uploadUrl, authHeaders(creds), null);
+        Log.i(TAG, "tusHead status=" + r.status + " headers=" + r.headers);
         if (r.status == 404 || r.status == 410) return -1;
-        if (r.status < 200 || r.status >= 300) throw new IOException("resume check " + r.status);
+        if (r.status < 200 || r.status >= 300) throw new IOException("resume check " + r.status + ": " + r.text());
         String off = r.headers.get("upload-offset");
         try { return off == null ? -1 : Long.parseLong(off.trim()); }
         catch (NumberFormatException e) { return -1; }
@@ -241,6 +260,7 @@ public final class CloudUploader {
     private void tusSend(File file, String uploadUrl, Creds creds, long offset,
                          Listener listener) throws Exception {
         long total = file.length();
+        Log.i(TAG, "tusSend total=" + total + " offset=" + offset);
         int attempt = 0;
         RandomAccessFile raf = new RandomAccessFile(file, "r");
         try {
@@ -254,7 +274,7 @@ public final class CloudUploader {
                     if (n < 0) break;
                     read += n;
                 }
-                if (read <= 0) throw new IOException("could not read lesson file");
+                if (read <= 0) throw new IOException("could not read lesson file at offset " + offset);
                 Resp r;
                 try {
                     Map<String, String> h = authHeaders(creds);
@@ -269,10 +289,11 @@ public final class CloudUploader {
                     Thread.sleep(Math.min(3000L * attempt, 15000L));
                     continue;
                 }
-                if (r.status >= 400 && r.status < 500 && r.status != 409 && r.status != 423)
-                    throw new IOException("Cloud refused the upload (" + r.status + ")");
+                if (r.status >= 400 && r.status < 500 && r.status != 409 && r.status != 423) {
+                    throw new IOException("Cloud refused the upload (" + r.status + "): " + r.text());
+                }
                 if (r.status < 200 || r.status >= 300) {
-                    if (++attempt > 8) throw new IOException("Cloud upload failed (" + r.status + ")");
+                    if (++attempt > 8) throw new IOException("Cloud upload failed (" + r.status + "): " + r.text());
                     long so = -1;
                     try { so = tusHead(uploadUrl, creds); } catch (Exception ignored) { }
                     if (so >= 0) offset = so;
@@ -284,6 +305,7 @@ public final class CloudUploader {
                 long server = -1;
                 if (so != null) { try { server = Long.parseLong(so.trim()); } catch (NumberFormatException ignored) { } }
                 offset = server >= 0 ? server : offset + read;
+                Log.i(TAG, "tusSend progress offset=" + offset + " total=" + total);
                 listener.onProgress(offset, total);
             }
         } finally {
@@ -333,7 +355,11 @@ public final class CloudUploader {
             out.write(head.toString().getBytes("UTF-8"));
             if (body != null && body.length > 0) out.write(body);
             out.flush();
-            return readResponse(socket.getInputStream());
+            Resp resp = readResponse(socket.getInputStream());
+            return resp;
+        } catch (Exception e) {
+            Log.e(TAG, "request failed " + method + " https://" + host + path + " err=" + e.getMessage(), e);
+            throw e;
         } finally {
             try { socket.close(); } catch (IOException ignored) { }
         }
