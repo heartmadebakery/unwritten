@@ -47,6 +47,8 @@
   #playercontrols button{flex:1;background:var(--panel);color:var(--ink);border:none;
     border-radius:4px;font-size:15px;padding:8px 0;}
   #micwarn{background:var(--red);color:#fff;font-size:15px;padding:10px 14px;line-height:1.45;}
+  #speechwarn{background:var(--panel);color:var(--ink);border:1px solid var(--bright);
+    font-size:15px;padding:10px 14px;line-height:1.45;}
   #zoomrow{display:flex;gap:8px;align-items:center;padding:8px 0;}
   #zoomrow button{background:var(--panel);color:var(--ink);border:none;border-radius:4px;
     width:48px;font-size:18px;padding:7px 0;}
@@ -103,6 +105,7 @@
     </div>
   </div>
   <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
+  <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
   <div id="zoomrow" class="hidden">
     <button id="zoomout" title="Zoom out">−</button>
     <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
@@ -175,6 +178,7 @@ async function wakeLock(){
 }
 async function openCamera(){
   stopLocalPlayback();
+  stopSpeechMonitor();
   if(state.stream){ state.stream.getTracks().forEach(function(t){ t.stop(); }); state.stream = null; }
   if(!CAPS.gum){ showCaptureControls(); return; }
   var opts = { video:{ facingMode: state.facing, width:{ideal:1280}, height:{ideal:720} }, audio:true };
@@ -206,6 +210,45 @@ function hideCaptureControls(){
   $("capcontrols").classList.add("hidden");
   $("recbtn").classList.remove("hidden");
   refreshZoomUi();
+}
+/* Live mic check: while recording, sample the mic level every 2 s
+   and warn after a quiet minute — silence discovered now can still
+   be fixed; silence discovered at transcription cannot. Purely
+   local energy detection: no audio leaves the device. */
+var speechMon = {ctx:null, analyser:null, timer:null, quietSince:0};
+function startSpeechMonitor(){
+  stopSpeechMonitor();
+  try{
+    if(!state.stream || !state.stream.getAudioTracks().length) return;
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC) return;
+    var ctx = new AC();
+    if(ctx.resume) ctx.resume();
+    var src = ctx.createMediaStreamSource(state.stream);
+    var an = ctx.createAnalyser(); an.fftSize = 512;
+    src.connect(an);
+    speechMon.ctx = ctx; speechMon.analyser = an;
+    speechMon.quietSince = Date.now();
+    var buf = new Float32Array(an.fftSize);
+    speechMon.timer = setInterval(function(){
+      if(!state.recording) return;
+      an.getFloatTimeDomainData(buf);
+      var sum = 0, i;
+      for(i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      if(Math.sqrt(sum / buf.length) > 0.008){
+        speechMon.quietSince = Date.now();
+        $("speechwarn").classList.add("hidden");
+      }else if(Date.now() - speechMon.quietSince > 60000){
+        $("speechwarn").classList.remove("hidden");
+      }
+    }, 2000);
+  }catch(e){}
+}
+function stopSpeechMonitor(){
+  if(speechMon.timer){ clearInterval(speechMon.timer); speechMon.timer = null; }
+  if(speechMon.ctx){ try{ speechMon.ctx.close(); }catch(e){} speechMon.ctx = null; }
+  speechMon.analyser = null;
+  $("speechwarn").classList.add("hidden");
 }
 function fmt(s){ return Math.floor(s/60) + ":" + ("0" + (s%60)).slice(-2); }
 function fmtDur(sec){
@@ -779,6 +822,7 @@ function startRec(){
   };
   try{ rec.start(250); }catch(e){ try{ rec.start(); }catch(e2){ showCaptureControls(); return; } }
   state.recording = true;
+  startSpeechMonitor();
   $("recbtn").textContent = "■ Stop  0:00"; $("recbtn").classList.add("stop");
   $("recbadge").classList.remove("hidden");
   $("status").innerHTML = "● <b>Recording.</b> Teach the way you'd teach anyway — the corrections are found afterwards.";
@@ -793,6 +837,7 @@ function startRec(){
 function stopRec(){
   if(state.recorder && state.recording){ try{ state.recorder.stop(); }catch(e){} }
   state.recording = false;
+  stopSpeechMonitor();
   $("recbtn").textContent = "● Record"; $("recbtn").classList.remove("stop");
   $("recbadge").classList.add("hidden");
   clearInterval(state.timerInt);

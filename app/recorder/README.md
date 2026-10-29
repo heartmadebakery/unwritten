@@ -29,6 +29,8 @@ and adapts on its own:
   Record** / **■ Stop** button carrying the running timer, and the
   sessions list below. If the stream ends up video-only, a red **No
   microphone** banner says so — the mentor's words are the whole point.
+  While recording, a local mic-level monitor warns after a quiet
+  minute, so a dead mic is caught during the lesson, not after.
 - **In-page recording unavailable** (old Safari, `file://`,
   locked-down browsers): **Record video** / **Record audio** buttons
   open the device's own camera / voice-memo apps, and the takes land

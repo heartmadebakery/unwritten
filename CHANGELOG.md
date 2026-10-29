@@ -32,6 +32,10 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Live mic check in the web recorder.** A local mic-energy monitor
+  warns after a quiet minute of recording, so a dead mic is caught
+  during the lesson; no audio leaves the device. 1 test; service
+  worker bumped to v4.
 - **Chaptered sessions.** `try_chapters` builds `chapters.json` via
   video understanding (key + MP4 only, validated against
   `prompts/chapters_schema.json`, never blocks a run) and the

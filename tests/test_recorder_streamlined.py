@@ -260,6 +260,12 @@ class WebAndroidParityTests(unittest.TestCase):
     def test_manifest_uses_android_theme_color(self):
         self.assertIn("#17130E", self.manifest)
 
+    def test_live_mic_check_warns_after_quiet_minute(self):
+        for token in ['id="speechwarn"', "startSpeechMonitor",
+                      "stopSpeechMonitor", "getFloatTimeDomainData",
+                      "60000"]:
+            self.assertIn(token, self.html, token)
+
 
 if __name__ == "__main__":
     unittest.main()
