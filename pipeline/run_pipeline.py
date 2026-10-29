@@ -57,7 +57,7 @@ VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
 STALE_FILES = ("manifest.json", "transcript.txt",
                "transcript_timestamped.txt", "segments.json",
                "writeup.md", "corrections.json", "corrections.md",
-               "poster.jpg")
+               "poster.jpg", "chapters.json")
 STALE_DIRS = ("clips", "transcript")
 
 
@@ -274,6 +274,12 @@ POSTER_PROMPT = ("At what timestamp does the finished work look its "
                  "best — the single frame that would best represent "
                  "this lesson? Answer with only mm:ss.")
 
+CHAPTERS_PROMPT = ("List the main chapters of this lesson video as a "
+                   "JSON array of {\"start\": \"mm:ss\", \"label\": "
+                   "\"...\"} objects: 3 to 8 chapters covering the "
+                   "whole lesson in time order, labels of 2 to 5 "
+                   "words. Output ONLY the JSON array.")
+
 
 def pick_poster_ts(text):
     """Seconds from a '... mm:ss ...' answer, or None."""
@@ -284,6 +290,55 @@ def pick_poster_ts(text):
         return parse_ts(m.group(1))
     except ValueError:
         return None
+
+
+def parse_chapters(text):
+    """Chapters JSON into [{start, label}] with validated mm:ss starts.
+    Raises ValueError on anything else."""
+    import schemas
+    cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", (text or "").strip())
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        raise ValueError("chapters were not JSON")
+    with open(os.path.join(HERE, "..", "prompts",
+                           "chapters_schema.json")) as fh:
+        try:
+            schemas.validate(obj, json.load(fh))
+        except schemas.SchemaError as exc:
+            raise ValueError(f"chapters failed validation: {exc}")
+    chapters = []
+    for entry in obj:
+        chapters.append({"start": entry["start"].strip(),
+                         "label": entry["label"].strip()})
+        parse_ts(chapters[-1]["start"])  # raises on bad stamps
+    return chapters
+
+
+def try_chapters(work, lesson):
+    """Chapter timeline (chapters.json) via video understanding. Needs
+    a key and MP4-family media; never raises, never blocks the run."""
+    if not lesson or not os.path.exists(lesson) or not meta_api.api_key():
+        return ""
+    if os.path.splitext(lesson)[1].lower() not in (".mp4", ".mov", ".m4v"):
+        return ""
+    try:
+        file_id = meta_api.upload_file(lesson)
+        try:
+            answer = meta_api.ask_video(
+                {"file_id": file_id}, CHAPTERS_PROMPT, meta_api.api_key(),
+                cache_key="unwritten-chapters")
+        finally:
+            meta_api.delete_file(file_id)
+        chapters = parse_chapters(answer)
+        if not chapters:
+            return ""
+        with open(work("chapters.json"), "w") as fh:
+            json.dump(chapters, fh, indent=1)
+        return "chapters.json"
+    except Exception as exc:
+        print(f"  [chapters] {exc} — skipped")
+        return ""
 
 
 def try_poster(work, lesson):
@@ -492,10 +547,14 @@ def main():
         produced.add("corrections.json")
         with open(work("corrections.json")) as fh:
             hits = json.load(fh)
-    # 3.5 poster — one representative frame, never blocks the run
+    # 3.5 poster + chapters — representative frame and timeline,
+    #    never block the run
     poster = try_poster(work, lesson) if lesson else ""
     if poster:
         print(f"[poster] {poster}")
+    chapters = try_chapters(work, lesson) if lesson else ""
+    if chapters:
+        print(f"[chapters] {chapters}")
 
     clips = {}
     highlights = {}

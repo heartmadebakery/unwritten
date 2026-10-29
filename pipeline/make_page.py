@@ -65,6 +65,18 @@ def main():
     poster_block = ('<p><img src="poster.jpg" alt="Lesson poster"></p>'
                     if os.path.exists(os.path.join(work, "poster.jpg"))
                     else "")
+    chapters_path = os.path.join(work, "chapters.json")
+    chapters_block = ""
+    if os.path.exists(chapters_path):
+        try:
+            chapters = json.load(open(chapters_path))
+            rows = "".join(
+                f"<li><b>{esc(c.get('start', ''))}</b> "
+                f"{esc(c.get('label', ''))}</li>" for c in chapters)
+            chapters_block = (f"<h2>Chapters</h2><ul>{rows}</ul>"
+                              if rows else "")
+        except (OSError, ValueError):
+            pass
 
     technique_blocks = []
     for i, hit in enumerate(hits, 1):
@@ -94,6 +106,7 @@ footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
 <h1>{esc(args.title)}</h1>
 <p><em>Film a lesson. Keep the corrections.</em></p>
 {poster_block}
+{chapters_block}
 <h2>The write-up</h2><ol>{steps_html}</ol>
 {wisdom_block}
 <h2>The Knack — the corrections</h2>{knacks_html}

@@ -206,6 +206,26 @@ class TestCaching(unittest.TestCase):
         self.assertEqual(meta_api.cached_tokens(None), (0, 0))
 
 
+class TestChapters(unittest.TestCase):
+    def test_parse_chapters(self):
+        out = rp.parse_chapters('[{"start": "00:00", "label": "Prep veg"},'
+                                ' {"start": "04:12", "label": "Simmer"}]')
+        self.assertEqual(out, [{"start": "00:00", "label": "Prep veg"},
+                               {"start": "04:12", "label": "Simmer"}])
+        with self.assertRaises(ValueError):
+            rp.parse_chapters("not json")
+        with self.assertRaises(ValueError):
+            rp.parse_chapters('[{"start": "xx", "label": "Bad"}]')
+
+    def test_no_key_no_chapters(self):
+        env = dict(os.environ)
+        env.pop("MODEL_API_KEY", None)
+        with mock.patch.dict(os.environ, env, clear=True):
+            work = lambda *p: os.path.join("w", *p)
+            self.assertEqual(rp.try_chapters(work, "lesson.mp4"), "")
+            self.assertEqual(rp.try_chapters(work, ""), "")
+
+
 class TestHighlightRender(unittest.TestCase):
     def test_clamp_box(self):
         self.assertEqual(hl.clamp_box((2, 2, 6, 6), 8, 8), (2, 2, 6, 6))

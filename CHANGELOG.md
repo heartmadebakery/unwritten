@@ -32,6 +32,10 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Chaptered sessions.** `try_chapters` builds `chapters.json` via
+  video understanding (key + MP4 only, validated against
+  `prompts/chapters_schema.json`, never blocks a run) and the
+  optional page shows the timeline. 2 tests.
 - **Prompt cache keys on direct API calls.** `responses_create`
   sends a stable `prompt_cache_key` per use case
   (`unwritten-video`, `unwritten-segmentation`, ...) and logs the
