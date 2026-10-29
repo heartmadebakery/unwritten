@@ -90,10 +90,13 @@ mentor data — samples are fictional.
   produces the write-up and the correction clips out. `ingest.py`
   finds the lesson (largest media file in the folder) →
   `transcribe.py` (local faster-whisper) → `draft_writeup.py` (Muse
-  Spark: transcript + lesson-video frames) drafts the write-up →
+  Spark: whole-video understanding with `MODEL_API_KEY`, else
+  transcript + still frames) drafts the write-up →
   `find_corrections.py` (Spark, `prompts/correction_finder.md`)
   surfaces the correction moments, which the runner cuts from the
-  lesson into `clips/`. `make_page.py` renders the optional page/guide
+  lesson into `clips/` (plus SAM-tracked `highlight-NN.mp4` with the
+  key). `meta_api.py` is the stdlib Files + Responses client;
+  `highlight.py` renders the spotlight overlays. `make_page.py` renders the optional page/guide
   from those outputs — later, not core, and the core never calls it.
   `sam_overlay.py` and `frames.py` belong to the retired apprentice
   design. `cloud_fetch.py` pulls finished Cloud lessons so

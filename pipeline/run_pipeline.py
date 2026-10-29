@@ -25,7 +25,10 @@ protocol, no step names, nothing performed for the machine. Stages:
                    + corrections.md, and each moment is cut from the
                    lesson video into clips/ when the lesson is a local
                    media file. Core thing #2: the correction clips,
-                   each anchored to the mentor's exact words.
+                   each anchored to the mentor's exact words. With
+                   MODEL_API_KEY, each video clip also gains a
+                   SAM-tracked spotlight highlight (subject named by
+                   the finder's "segment" phrase).
 
 The run exits non-zero unless a write-up AND a corrections list were
 produced THIS run. Stale outputs from a previous run are deleted up
@@ -41,9 +44,13 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
+sys.path.insert(0, HERE)
+import highlight as highlight_mod
+import meta_api
 VENV_PY = os.path.join(ROOT, ".venv", "bin", "python")
 VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"}
 STALE_FILES = ("manifest.json", "transcript.txt",
@@ -111,9 +118,10 @@ def clip_window(start_s, end_s):
     return max(0, start_s - 2), (end_s + 2 if end_s else start_s + 20)
 
 
-def render_corrections_md(hits, clips):
-    """clips: {index: filename or ''}. The techniques list — together,
-    the Knack."""
+def render_corrections_md(hits, clips, highlights=None):
+    """clips/highlights: {index: filename or ''}. The techniques list —
+    together, the Knack."""
+    highlights = highlights or {}
     lines = ["# Corrections — the techniques", "",
              "Every moment the mentor corrected the beginner, anchored "
              "to the mentor's exact words. Together these are the Knack.",
@@ -129,6 +137,11 @@ def render_corrections_md(hits, clips):
         clip = clips.get(i, "")
         if clip:
             lines.append(f"Clip: `clips/{clip}`")
+        highlight = highlights.get(i, "")
+        if highlight:
+            lines.append(f"Highlight: `clips/{highlight}` "
+                         "(subject tracked, rest dimmed)")
+        if clip or highlight:
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -145,6 +158,77 @@ def cut_clip(lesson, start_s, end_s, out_path):
     cmd.append(out_path)
     proc = subprocess.run(cmd, capture_output=True, text=True)
     return proc.returncode == 0 and os.path.exists(out_path)
+
+
+def _validate_masks_advisory(parsed_frames):
+    """Decode a few masks so API drift fails loudly in the log while the
+    boxes-only spotlight still renders. Returns True when checked."""
+    try:
+        from meta_sam_parser import (SegmentationMask,
+                                     decode_mask_to_raster)
+    except ImportError:
+        return False
+    checked = 0
+    for entry in parsed_frames:
+        for rec in entry["records"]:
+            mask = rec["mask"]
+            raster = decode_mask_to_raster(SegmentationMask(
+                encoding="one_bit" if mask["enc"] == "!" else "lossless",
+                payload=mask["enc"] + mask["payload"],
+                width=mask["w"], height=mask["h"]))
+            if len(raster) != mask["w"] * mask["h"]:
+                raise ValueError("mask raster size mismatch")
+            checked += 1
+            if checked >= 3:
+                return True
+    return checked > 0
+
+
+def try_highlight(work, clip_name, concept, index):
+    """SAM-tracked spotlight version of a correction clip. Returns the
+    highlight filename or "": needs MODEL_API_KEY, never raises, never
+    blocks the run — the plain clip and the timestamp anchor stand."""
+    if not concept or not meta_api.api_key():
+        return ""
+    clip_path = work("clips", clip_name)
+    hl_name = "highlight-%02d.mp4" % index
+    tracks_name = "segments-%02d.json" % index
+    try:
+        file_id = meta_api.upload_file(clip_path)
+        try:
+            wire = meta_api.segment_video_lines(
+                file_id, concept, meta_api.api_key())
+        finally:
+            meta_api.delete_file(file_id)
+        parsed = meta_api.parse_segmentation(wire)
+        if not parsed:
+            print(f"  [highlights] correction {index}: {concept!r} not "
+                  f"visible — plain clip kept")
+            return ""
+        try:
+            _validate_masks_advisory(parsed)
+        except Exception as exc:
+            print(f"  [highlights] correction {index}: mask check ({exc}) "
+                  f"— boxes still render")
+        highlight_mod.save_tracks(work("clips", tracks_name), concept, parsed)
+        tmpdir = tempfile.mkdtemp(prefix="unwritten_highlight_")
+        try:
+            ok = highlight_mod.highlight_clip(
+                clip_path, parsed, work("clips", hl_name), tmpdir)
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+        if not ok:
+            print(f"  [highlights] correction {index}: render failed — "
+                  f"plain clip kept")
+            return ""
+        return hl_name
+    except meta_api.MetaApiError as exc:
+        print(f"  [highlights] correction {index}: {exc} — plain clip kept")
+        return ""
+    except Exception as exc:
+        print(f"  [highlights] correction {index}: unexpected ({exc}) — "
+              f"plain clip kept")
+        return ""
 
 
 def _run_one(lesson, work):
@@ -255,7 +339,6 @@ def main():
     produced = set()
 
     # 1. lesson — core thing #1, the lesson video, kept whole
-    sys.path.insert(0, HERE)
     from ingest import ingest, pick_lesson
     lesson = None
     if args.lesson:
@@ -317,6 +400,7 @@ def main():
         with open(work("corrections.json")) as fh:
             hits = json.load(fh)
     clips = {}
+    highlights = {}
     if hits and lesson and os.path.exists(lesson):
         ends = segment_ends(timestamped_text)
         os.makedirs(work("clips"), exist_ok=True)
@@ -333,17 +417,23 @@ def main():
             name = f"correction-{i:02d}{ext}"
             if cut_clip(lesson, lo, hi, work("clips", name)):
                 clips[i] = name
+                if is_video:
+                    hl = try_highlight(work, name, hit.get("segment", ""), i)
+                    if hl:
+                        highlights[i] = hl
             else:
                 print(f"  [clips] correction {i}: ffmpeg cut failed — "
                       "anchor kept, no clip cut")
         if clips:
             print(f"[clips] {len(clips)} correction clip(s) cut")
+        if highlights:
+            print(f"[highlights] {len(highlights)} spotlight clip(s) cut")
     elif hits:
         print("[clips] no local lesson media — corrections are anchored "
               "by timestamp only, no clips cut")
     if "corrections.json" in produced:
         with open(work("corrections.md"), "w") as fh:
-            fh.write(render_corrections_md(hits, clips))
+            fh.write(render_corrections_md(hits, clips, highlights))
 
     if "writeup.md" not in produced or "corrections.json" not in produced:
         sys.exit(f"Pipeline incomplete: produced {sorted(produced) or 'nothing'} "

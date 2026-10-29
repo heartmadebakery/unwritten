@@ -21,6 +21,17 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Meta video understanding + SAM highlights in the pipeline.** New
+  stdlib-only `pipeline/meta_api.py` (Files + Responses): with
+  `MODEL_API_KEY`, the write-up watches the whole lesson video
+  (visuals and speech, owner's choice; MP4 remux when needed) with
+  automatic fallback to still frames, and each correction clip gains
+  a SAM-3.1-tracked `highlight-NN.mp4` spotlight plus
+  `segments-NN.json` (subject from the finder's new `"segment"`
+  phrase; new `pipeline/highlight.py` renders the overlays). Uploads
+  are deleted after use; without the key the pipeline is unchanged.
+  25 tests in `tests/test_meta_api.py`; render path proven on a real
+  clip, live API calls await a keyed run.
 - **Write-ups are polished and video-grounded.** `draft_writeup.py`
   now attaches up to 16 evenly spaced lesson frames to the Spark
   call; the rewritten `prompts/writeup_drafter.md` produces an intro,

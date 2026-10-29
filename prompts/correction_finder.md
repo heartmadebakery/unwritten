@@ -25,6 +25,10 @@ For each correction, output one object:
   transcript (the key sentence or two, not the whole segment).
 - "correcting": one short phrase naming what they were doing or believing
   that the mentor corrected.
+- "segment": a short noun phrase naming the visible subject of the
+  correction for the camera — the hands, tool, or material the viewer
+  should watch (e.g. "person's hands", "knife", "dough"). Omit it only
+  when the correction has no visible subject.
 
 Output ONLY a JSON array of these objects, in transcript order. No prose,
 no code fences. If there are no corrections, output [].

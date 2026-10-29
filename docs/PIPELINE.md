@@ -67,13 +67,27 @@ stdlib + ffmpeg + Muse calls.
   trades speed for accuracy. Negations matter: a dropped "don't"
   inverts a step, so the write-up's imperatives get checked back
   against this transcript.
-- **The write-up** is `draft_writeup.py`: transcript + evenly spaced
-  frames of the lesson video (`--image` attachments) + the prompt
-  (`prompts/writeup_drafter.md`) into Muse Spark via Muse. A
-  polished, sectioned document in the mentor's voice; the transcript
-  is the spine, and what it leaves unsaid is filled in from the
-  frames — never from outside knowledge. Without lesson media (or
-  when frames fail), it degrades to transcript-only.
+- **The Model API is opt-in per run.** Video understanding and SAM
+  segmentation need `MODEL_API_KEY`; without it the pipeline takes
+  the keyless path (still frames, plain clips) and nothing changes.
+  With it, the lesson video — picture and voice, by the owner's
+  explicit choice — is uploaded for the write-up, and each
+  correction clip for its highlight; uploads are deleted
+  afterwards. Transcription itself always stays local.
+- **The write-up** is `draft_writeup.py`: a polished, sectioned
+  document in the mentor's voice; the transcript is the spine, and
+  what it leaves unsaid is filled in from the lesson video — never
+  from outside knowledge. With `MODEL_API_KEY` set, Spark watches
+  the whole video (Meta video understanding, visuals and speech);
+  otherwise evenly spaced still frames go along (`--image`
+  attachments), and without lesson media it degrades to
+  transcript-only.
+- **Correction highlights** ride on the clips: when the finder names
+  a visible subject (`"segment"`) and `MODEL_API_KEY` is set, SAM
+  3.1 tracks it through the cut clip (Meta media segmentation) and
+  the runner renders `highlight-NN.mp4` — subject spotlighted, rest
+  dimmed — plus `segments-NN.json` with the tracks. Any failure
+  keeps the plain clip and the anchor; highlights never block a run.
 - **The corrections** are `find_corrections.py`: the timestamped
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, the mentor's exact words, what they were

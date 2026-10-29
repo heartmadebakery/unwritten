@@ -10,3 +10,6 @@ faster-whisper==1.2.1
 segment-anything==1.0
 pillow==12.3.0
 numpy==2.5.2
+# Advisory only: decodes a few SAM masks per highlight to catch API
+# drift (lazy import — the boxes-only spotlight renders without it).
+meta_sam_parser==0.1.0
