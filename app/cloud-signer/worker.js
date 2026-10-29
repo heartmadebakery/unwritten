@@ -87,7 +87,9 @@ export default {
         const r = await fetch(`${CLOUD_API}/library/${env.CLOUD_LIBRARY_ID}/videos/${videoId}`, {
           headers: { "AccessKey": env.CLOUD_API_KEY, "Accept": "application/json" },
         });
-        return json(await r.json(), r.status);
+        let body;
+        try { body = await r.json(); } catch (_) { body = { status: r.status, error: r.status === 404 ? "not found" : "empty response" }; }
+        return json(body, r.status);
       }
       if (request.method === "DELETE") {
         const videoId = url.searchParams.get("videoId");

@@ -9,6 +9,13 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-10-29
 
 ### Added
+- **Cloud fetch for the pipeline.** `pipeline/cloud_fetch.py` lists the
+  Cloud library, downloads each new finished lesson (highest MP4
+  rendition, HLS remux fallback), and `run_pipeline.py --cloud
+  <work_root>` runs one full pipeline per new video into its own dir,
+  tracking seen videos in `cloud_state.json`. Credentials come from
+  `CLOUD_LIBRARY_ID` / `CLOUD_LIBRARY_KEY` / `CLOUD_CDN_HOSTNAME` on
+  the pipeline machine only. 13 tests in `tests/test_cloud_fetch.py`.
 - **Baseten Muse Spark example request.** `baseten.py` sends a greeting
   through the OpenAI-compatible client using `BASETEN_API_KEY` from the
   environment; it requires the `openai` Python package.

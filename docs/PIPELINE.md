@@ -34,6 +34,27 @@ timestamped transcript — how the core test in
 unless a write-up **and** a corrections list were produced this run;
 stale outputs from a previous run are deleted up front.
 
+## Cloud lessons
+
+When the recorders upload with Cloud on, finished lessons can be
+processed without copying files off the phone first:
+
+```
+export CLOUD_LIBRARY_ID=... CLOUD_LIBRARY_KEY=... CLOUD_CDN_HOSTNAME=...
+pipeline/run_pipeline.py --cloud work/cloud [--max N] [--retry-failed]
+```
+
+`--cloud` lists the Cloud library, downloads each new finished video
+(status 4) into `cloud_downloads/`, and runs the full pipeline on
+each into its own `work/cloud/<title>__<videoid>/` dir. Seen videos
+are remembered in `cloud_state.json`, so reruns only pick up new
+lessons; failed ones stay failed unless `--retry-failed` is given.
+`CLOUD_LIBRARY_KEY` is the library AccessKey and `CLOUD_CDN_HOSTNAME`
+the pull-zone hostname — both on the Stream dashboard's library API
+page — and both stay on this machine only (same trust as the
+recorders' direct mode). Without `--cloud` the pipeline never touches
+the network: same single-lesson flow as before.
+
 Python deps live in `.venv` (faster-whisper); the runner re-invokes
 the transcription stage under it when present. Everything else is
 stdlib + ffmpeg + Muse calls.

@@ -3,6 +3,8 @@
 
   python3 pipeline/run_pipeline.py <session_dir> <work_dir>
       [--lesson FILE] [--transcript FILE]
+  python3 pipeline/run_pipeline.py --cloud <work_root> [--max N]
+      [--retry-failed] [--cloud-state FILE]
 
 A session is one ordinary lesson filmed on a phone — no recorder
 protocol, no step names, nothing performed for the machine. Stages:
@@ -143,16 +145,100 @@ def cut_clip(lesson, start_s, end_s, out_path):
     return proc.returncode == 0 and os.path.exists(out_path)
 
 
+def _run_one(lesson, work):
+    """Run one single-lesson pipeline. Split out so tests can stub it."""
+    proc = subprocess.run(
+        [sys.executable, os.path.abspath(__file__), lesson, work])
+    return proc.returncode
+
+
+def run_cloud_mode(root, max_n=0, retry_failed=False, state_path=""):
+    """Fetch every new finished Cloud lesson and run the full pipeline
+    on each into its own subdir of root. Returns an exit code."""
+    import cloud_fetch  # lazy so local-only runs never touch the cloud path
+
+    cfg = cloud_fetch.load_config()
+    os.makedirs(root, exist_ok=True)
+    state_path = state_path or os.path.join(root, "cloud_state.json")
+    state = cloud_fetch.load_state(state_path)
+    videos = cloud_fetch.list_videos(cfg)
+    ready = cloud_fetch.select_ready(videos, state,
+                                     retry_failed=retry_failed)
+    if max_n and max_n > 0:
+        ready = ready[:max_n]
+    if not ready:
+        print("[cloud] no new finished videos.")
+        return 0
+    dl_dir = os.path.join(root, "cloud_downloads")
+    os.makedirs(dl_dir, exist_ok=True)
+    failures = 0
+    for vid in ready:
+        guid = vid.get("guid", "")
+        title = vid.get("title") or "lesson"
+        slug = "%s__%s" % (cloud_fetch.sanitize(title), guid[:8])
+        entry = state.get(guid, {})
+        lesson = entry.get("lesson", "")
+        if not (lesson and os.path.exists(lesson)):
+            try:
+                lesson = cloud_fetch.download_video(cfg, vid, dl_dir)
+            except Exception as exc:
+                failures += 1
+                print("[cloud] download failed for %r: %s" % (title, exc))
+                state[guid] = {"title": title, "result": "failed",
+                               "error": str(exc)}
+                cloud_fetch.save_state(state_path, state)
+                continue
+            state[guid] = {"title": title, "lesson": lesson,
+                           "result": "downloaded"}
+            cloud_fetch.save_state(state_path, state)
+        work = os.path.join(root, slug)
+        code = _run_one(lesson, work)
+        state[guid] = {"title": title, "lesson": lesson, "workDir": work,
+                       "result": "done" if code == 0 else "failed"}
+        cloud_fetch.save_state(state_path, state)
+        if code != 0:
+            failures += 1
+            print("[cloud] pipeline failed for %r — recorded as failed; "
+                  "use --retry-failed to retry it." % title)
+        else:
+            print("[cloud] done %r -> %s" % (title, work))
+    print("[cloud] %d video(s) processed, %d failed."
+          % (len(ready), failures))
+    return 1 if failures else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("session_dir",
+    ap.add_argument("session_dir", nargs="?",
                     help="folder with the lesson media (or the media file itself)")
-    ap.add_argument("work_dir")
+    ap.add_argument("work_dir", nargs="?",
+                    help="output dir for the run (or the cloud work root with --cloud)")
     ap.add_argument("--lesson", default="",
                     help="the lesson media file, if not the largest in the folder")
     ap.add_argument("--transcript", default="",
                     help="timestamped transcript file; skips transcription")
+    ap.add_argument("--cloud", action="store_true",
+                    help="fetch new finished Cloud lessons and run one "
+                         "pipeline per video into subdirs of the work root")
+    ap.add_argument("--max", type=int, default=0,
+                    help="max cloud videos per --cloud run (0 = no cap)")
+    ap.add_argument("--retry-failed", action="store_true",
+                    help="retry cloud videos recorded as failed")
+    ap.add_argument("--cloud-state", default="",
+                    help="state file for --cloud "
+                         "(default <work_root>/cloud_state.json)")
     args = ap.parse_args()
+
+    if args.cloud:
+        if args.session_dir is not None or not args.work_dir:
+            ap.error("--cloud takes exactly one positional: the work root "
+                     "(e.g. run_pipeline.py --cloud work/cloud)")
+        sys.exit(run_cloud_mode(args.work_dir, max_n=args.max,
+                                retry_failed=args.retry_failed,
+                                state_path=args.cloud_state))
+    if not args.session_dir or not args.work_dir:
+        ap.error("the following arguments are required: "
+                 "session_dir, work_dir")
 
     os.makedirs(args.work_dir, exist_ok=True)
     for stale in STALE_FILES:

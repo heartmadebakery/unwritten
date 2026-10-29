@@ -95,7 +95,9 @@ mentor data — samples are fictional.
   lesson into `clips/`. `make_page.py` renders the optional page/guide
   from those outputs — later, not core, and the core never calls it.
   `sam_overlay.py` and `frames.py` belong to the retired apprentice
-  design. See [the pipeline guide](docs/PIPELINE.md).
+  design. `cloud_fetch.py` pulls finished Cloud lessons so
+  `run_pipeline.py --cloud` processes each into its own dir.
+  See [the pipeline guide](docs/PIPELINE.md).
 - `prompts/` — `writeup_drafter.md` carries the stenographer rule;
   `correction_finder.md` defines a correction. `apprentice.md` /
   `apprentice_instruction.txt` are retired with the apprentice design.

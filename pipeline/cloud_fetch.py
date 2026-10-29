@@ -1,0 +1,247 @@
+#!/usr/bin/env python3
+"""Fetch finished Cloud lessons so the pipeline can process them.
+
+The recorders upload a copy of every lesson to Cloud (see
+app/cloud-signer/); this module pulls the finished ones back down with
+the library credentials, which stay on the pipeline machine only:
+
+  CLOUD_LIBRARY_ID   Stream library ID (same value as wrangler.toml)
+  CLOUD_LIBRARY_KEY  library AccessKey (Stream dashboard -> library -> API)
+  CLOUD_CDN_HOSTNAME pull-zone hostname, e.g. vz-1234abcd.b-cdn.net
+                     (Stream dashboard -> library -> API page)
+
+Only videos with status 4 (finished/playable) are candidates,
+and a JSON state file remembers every video already handled so reruns
+only pick up new lessons. Downloads prefer the highest MP4 rendition
+and fall back to remuxing the HLS playlist with ffmpeg (already a
+pipeline dependency). Stdlib only, except ffmpeg for the fallback.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+
+API = "https://video.bunnycdn.com"
+PER_PAGE = 100
+FINISHED = 4  # finished/playable in the library API
+
+
+class DownloadError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+
+def load_config(env=None):
+    """Read Cloud library credentials from the environment. Exits loudly
+    if any are missing so a --cloud run never silently processes nothing."""
+    env = os.environ if env is None else env
+    library_id = (env.get("CLOUD_LIBRARY_ID") or "").strip()
+    api_key = (env.get("CLOUD_LIBRARY_KEY") or "").strip()
+    cdn = (env.get("CLOUD_CDN_HOSTNAME") or "").strip().rstrip("/")
+    missing = [name for name, val in
+               (("CLOUD_LIBRARY_ID", library_id),
+                ("CLOUD_LIBRARY_KEY", api_key),
+                ("CLOUD_CDN_HOSTNAME", cdn)) if not val]
+    if missing:
+        raise SystemExit("Missing %s — export them to fetch cloud videos."
+                         % ", ".join(missing))
+    return {"library_id": library_id, "api_key": api_key, "cdn": cdn}
+
+
+def http_get_json(url, headers):
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError("Cloud library API %s for %s: %s"
+                           % (exc.code, url, body))
+    except urllib.error.URLError as exc:
+        raise RuntimeError("Cloud library request failed for %s: %s"
+                           % (url, exc.reason))
+
+
+def http_download(url, dest):
+    """Stream a URL to dest. 404s raise DownloadError(404); anything
+    else missing raises DownloadError with its status."""
+    req = urllib.request.Request(url, headers={"User-Agent": "UnwrittenCraft/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp, \
+                open(dest, "wb") as fh:
+            shutil.copyfileobj(resp, fh, length=1024 * 256)
+    except urllib.error.HTTPError as exc:
+        raise DownloadError(exc.code, "HTTP %s for %s" % (exc.code, url))
+    except urllib.error.URLError as exc:
+        raise DownloadError(-1, "request failed for %s: %s"
+                            % (url, exc.reason))
+    if not os.path.exists(dest) or os.path.getsize(dest) == 0:
+        raise DownloadError(-1, "empty download for %s" % url)
+    return dest
+
+
+def list_videos(cfg):
+    """Every video in the library, oldest first. Raises RuntimeError
+    with the library status when the API refuses."""
+    videos = []
+    page = 1
+    while True:
+        url = ("%s/library/%s/videos?page=%d&itemsPerPage=%d&orderBy=date"
+               % (API, cfg["library_id"], page, PER_PAGE))
+        data = http_get_json(url, {"AccessKey": cfg["api_key"],
+                                   "Accept": "application/json"})
+        batch = data.get("items", [])
+        videos.extend(batch)
+        if len(batch) < PER_PAGE:
+            break
+        page += 1
+    return videos
+
+
+def select_ready(videos, state, retry_failed=False):
+    """Finished videos this machine has not handled yet. Entries marked
+    failed are skipped unless retry_failed is set; done entries never
+    come back."""
+    ready = []
+    for vid in videos:
+        guid = vid.get("guid", "")
+        if not guid or vid.get("status") != FINISHED:
+            continue
+        entry = state.get(guid, {})
+        if entry.get("result") == "done":
+            continue
+        if entry.get("result") == "failed" and not retry_failed:
+            continue
+        ready.append(vid)
+    return ready
+
+
+def sanitize(title):
+    """A filename-safe slug of a Cloud video title."""
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", (title or "").strip())
+    slug = re.sub(r"_+", "_", slug).strip("._-")[:80]
+    return slug or "lesson"
+
+
+def mp4_candidates(cdn, guid, resolutions):
+    """Direct MP4 rendition URLs, highest resolution first."""
+    found = []
+    for part in str(resolutions or "").split(","):
+        num = re.sub(r"\D", "", part)
+        if num:
+            found.append(int(num))
+    return ["https://%s/%s/play_%dp.mp4" % (cdn, guid, res)
+            for res in sorted(set(found), reverse=True)]
+
+
+def playlist_url(cdn, guid):
+    return "https://%s/%s/playlist.m3u8" % (cdn, guid)
+
+
+def remux_hls(url, dest):
+    """Remux a finished video's HLS playlist to mp4 (used when no MP4
+    rendition is downloadable)."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not found on PATH — needed to fetch %s"
+                           % url)
+    proc = subprocess.run(
+        [ffmpeg, "-y", "-v", "error", "-i", url, "-c", "copy", dest],
+        capture_output=True, text=True)
+    if proc.returncode != 0 or not os.path.exists(dest):
+        tail = (proc.stderr or "").strip().splitlines()
+        raise RuntimeError("ffmpeg remux failed for %s: %s"
+                           % (url, tail[-1] if tail else proc.returncode))
+    return dest
+
+
+def download_video(cfg, vid, dest_dir):
+    """Download one finished video; returns the local path. Reuses an
+    existing non-empty file so interrupted runs resume cheaply."""
+    guid = vid.get("guid", "")
+    dest = os.path.join(dest_dir,
+                        "%s__%s.mp4" % (sanitize(vid.get("title")), guid[:8]))
+    if os.path.exists(dest) and os.path.getsize(dest) > 0:
+        return dest
+    for url in mp4_candidates(cfg["cdn"], guid, vid.get("availableResolutions")):
+        try:
+            return http_download(url, dest)
+        except DownloadError as exc:
+            if exc.status == 404:
+                continue  # rendition listed but not served; try the next
+            raise
+    # No MP4 rendition served (or none listed): remux the HLS playlist.
+    try:
+        return remux_hls(playlist_url(cfg["cdn"], guid), dest)
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "%s (token-authenticated libraries block direct "
+            "downloads — check Stream -> Security in the library dashboard)"
+            % exc)
+
+
+def load_state(path):
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as fh:
+            data = json.load(fh)
+    except (ValueError, OSError) as exc:
+        raise SystemExit("Unreadable cloud state %s: %s "
+                         "(fix or move it aside — deleting it would "
+                         "reprocess every cloud video)." % (path, exc))
+    return data if isinstance(data, dict) else {}
+
+
+def save_state(path, state):
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(state, fh, indent=1, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def main():
+    ap_dest = sys.argv[1] if len(sys.argv) > 1 else ""
+    if not ap_dest or ap_dest in ("-h", "--help"):
+        print("usage: cloud_fetch.py <dest_dir> [--state PATH] [--max N]")
+        return 0 if ap_dest else 2
+    state_path = ""
+    max_n = 0
+    args = sys.argv[2:]
+    while args:
+        flag = args.pop(0)
+        if flag == "--state" and args:
+            state_path = args.pop(0)
+        elif flag == "--max" and args:
+            max_n = int(args.pop(0))
+        else:
+            print("unknown flag: %s" % flag)
+            return 2
+    cfg = load_config()
+    os.makedirs(ap_dest, exist_ok=True)
+    state_path = state_path or os.path.join(ap_dest, "cloud_state.json")
+    state = load_state(state_path)
+    videos = list_videos(cfg)
+    ready = select_ready(videos, state)
+    if max_n > 0:
+        ready = ready[:max_n]
+    if not ready:
+        print("[cloud] no new finished videos.")
+        return 0
+    for vid in ready:
+        dest = download_video(cfg, vid, ap_dest)
+        state[vid["guid"]] = {"title": vid.get("title", ""),
+                              "lesson": dest, "result": "downloaded"}
+        save_state(state_path, state)
+        print("[cloud] fetched %s -> %s" % (vid.get("title"), dest))
+    print("[cloud] %d video(s) fetched." % len(ready))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -534,10 +534,13 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // long-press row to delete
-            row.setOnLongClickListener(new View.OnLongClickListener() {
+            // long-press row to delete — also on children so anywhere on row triggers it
+            View.OnLongClickListener longDelete = new View.OnLongClickListener() {
                 @Override public boolean onLongClick(View v) { confirmDeleteLesson(name); return true; }
-            });
+            };
+            row.setOnLongClickListener(longDelete);
+            mid.setOnLongClickListener(longDelete);
+            left.setOnLongClickListener(longDelete);
 
             lessonContainer.addView(row);
             View divider = new View(this);
@@ -779,25 +782,36 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 final JSONObject link = cloudLink(name);
                 final String videoId = link == null ? "" : link.optString("videoId", "");
+                final String savedLastName = cloudPrefs().getString("lastName", "");
                 if (!videoId.isEmpty()) {
                     try {
                         CloudUploader up = cloudUploader();
                         if (up == null) throw new IOException("Cloud settings incomplete.");
+                        android.util.Log.i("UWCloud", "deleteLesson cloud delete videoId=" + videoId + " file=" + name);
                         up.deleteVideo(videoId);
+                        android.util.Log.i("UWCloud", "deleteLesson cloud delete ok videoId=" + videoId);
                     } catch (final Exception e) {
+                        android.util.Log.e("UWCloud", "deleteLesson cloud delete failed videoId=" + videoId, e);
                         runOnUiThread(new Runnable() { @Override public void run() {
                             if (status != null) status.setText("☁ Couldn't delete the cloud copy (" + e.getMessage() + ")");
+                            Toast.makeText(MainActivity.this, "Cloud delete failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
                         } });
                         return;
                     }
+                } else {
+                    android.util.Log.i("UWCloud", "deleteLesson local-only file=" + name);
                 }
-                new File(clipsDir, name).delete();
+                boolean deleted = new File(clipsDir, name).delete();
+                android.util.Log.i("UWCloud", "deleteLesson local delete file=" + name + " ok=" + deleted);
                 delCloudLink(name);
-                if (name.equals(cloudPrefs().getString("lastName", "")))
+                synchronized (cloudInFlight) { cloudInFlight.remove(name); }
+                synchronized (cloudPolling) { cloudPolling.remove(name); }
+                if (name.equals(savedLastName))
                     cloudPrefs().edit().remove("lastLink").remove("lastName").apply();
                 if (lastLessonFile != null && name.equals(lastLessonFile.getName())) lastLessonFile = null;
                 runOnUiThread(new Runnable() { @Override public void run() {
                     refreshClipList();
+                    Toast.makeText(MainActivity.this, "Session deleted" + (videoId.isEmpty() ? "" : " from device and cloud"), Toast.LENGTH_SHORT).show();
                 } });
             }
         });
