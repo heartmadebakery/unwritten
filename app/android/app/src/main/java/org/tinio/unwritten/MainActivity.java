@@ -162,9 +162,9 @@ public class MainActivity extends Activity {
         l.setBackgroundColor(BG);
         l.setPadding(dp(14), dp(14), dp(14), dp(14));
 
-        TextView title = label("Unwritten Craft — Recorder", 24, TEXT); title.setGravity(Gravity.CENTER);
+        TextView title = label("Unwritten Craft", 24, TEXT); title.setGravity(Gravity.CENTER);
         l.addView(title);
-        l.addView(label("Film one lesson, the way the mentor would teach it anyway. Press Record, let it happen, press Stop at the end.", 16, DIM));
+        l.addView(label("Film a session with a mentor. Press Record, let it happen, press Stop at the end.", 16, DIM));
 
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
@@ -186,13 +186,10 @@ public class MainActivity extends Activity {
         Button vfPause = new Button(this);
         vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackgroundColor(PANEL); vfPause.setAllCaps(false);
         vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
-        Button vfClose = new Button(this);
-        vfClose.setText("✕ Close"); vfClose.setTextSize(14); vfClose.setTextColor(TEXT); vfClose.setBackgroundColor(PANEL); vfClose.setAllCaps(false);
-        vfClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { stopLocalPlayback(); } });
         LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         vfp.setMargins(dp(4), 0, dp(4), 0);
-        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp); vfClose.setLayoutParams(vfp);
-        playerControls.addView(vfPlay); playerControls.addView(vfPause); playerControls.addView(vfClose);
+        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp);
+        playerControls.addView(vfPlay); playerControls.addView(vfPause);
         android.widget.FrameLayout.LayoutParams ctrlLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ctrlLp.gravity = Gravity.BOTTOM;
         viewfinderBox.addView(playerControls, ctrlLp);
@@ -299,6 +296,8 @@ public class MainActivity extends Activity {
             return;
         }
         if (engine == null) { openPreview(); status.setText("Camera not ready yet — try again in a moment."); return; }
+        // auto-close viewfinder playback if a recording begins
+        if (isViewfinderPlaying) stopLocalPlayback();
         try {
             if (engine.isRecording()) { stopRecording(); return; }
             File f = new File(clipsDir, Names.lessonName("mp4"));
@@ -458,12 +457,11 @@ public class MainActivity extends Activity {
             String st = link == null ? "" : link.optString("state", "");
             boolean isReady = "ready".equals(st);
             if (link == null) {
-                // device-only: small download icon
+                // device-only: simple down arrow, no background
                 TextView dl = new TextView(this);
-                dl.setText("\u2B07"); // ⬇
-                dl.setTextSize(18);
-                dl.setTextColor(BG);
-                dl.setBackgroundColor(AMBER);
+                dl.setText("\u2193"); // ↓ simple down arrow
+                dl.setTextSize(20);
+                dl.setTextColor(DIM);
                 dl.setGravity(Gravity.CENTER);
                 dl.setPadding(dp(6), dp(4), dp(6), dp(4));
                 LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
@@ -473,10 +471,10 @@ public class MainActivity extends Activity {
                 dl.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
                 row.addView(dl);
             } else if (isReady) {
-                // cloud ready: small share icon
+                // cloud ready: share icon — ensure visible even if libraryId missing (fallback uses lastLink)
                 TextView sh = new TextView(this);
                 sh.setText("\u2197"); // ↗
-                sh.setTextSize(18);
+                sh.setTextSize(20);
                 sh.setTextColor(TEXT);
                 sh.setBackgroundColor(PANEL);
                 sh.setGravity(Gravity.CENTER);
@@ -488,6 +486,24 @@ public class MainActivity extends Activity {
                 sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
                 row.addView(sh);
             } else {
+                // for uploading/processing, still show share if we have a videoId (cloud-backed) — otherwise status
+                String vid = link.optString("videoId", "");
+                if (!vid.isEmpty()) {
+                    TextView sh = new TextView(this);
+                    sh.setText("\u2197");
+                    sh.setTextSize(20);
+                    sh.setTextColor(DIM);
+                    sh.setBackgroundColor(PANEL);
+                    sh.setGravity(Gravity.CENTER);
+                    sh.setPadding(dp(6), dp(4), dp(6), dp(4));
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    bp.setMargins(dp(8), 0, 0, 0);
+                    sh.setLayoutParams(bp);
+                    sh.setClickable(true);
+                    sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+                    row.addView(sh);
+                    // also show tiny processing badge alongside? keep row clean — share takes precedence
+                } else {
                 // uploading / processing / failed: show status, no download button
                 String badge = "";
                 if ("uploading".equals(st)) badge = link.optInt("progress", 0) + "%";
@@ -501,6 +517,7 @@ public class MainActivity extends Activity {
                     stv.setGravity(Gravity.CENTER);
                     stv.setLayoutParams(bp);
                     row.addView(stv);
+                }
                 }
             }
 
@@ -651,7 +668,7 @@ public class MainActivity extends Activity {
                 });
                 localPlayer.setVideoPath(f.getAbsolutePath());
                 localPlayer.requestFocus();
-                status.setText("Playing " + displayDateFor(name) + " — ✕ Close to stop.");
+                status.setText("Playing " + displayDateFor(name) + ".");
                 return;
             }
         } catch (Throwable ignored) { }
