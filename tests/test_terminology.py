@@ -19,8 +19,10 @@ LIVE_FILES = ["README.md",
               os.path.join("docs", "PIPELINE.md"),
               os.path.join("docs", "android-app-worklog.md")]
 SCAN_EXTS = (".py", ".md", ".txt", ".js", ".java", ".xml", ".html",
-             ".webmanifest", ".toml")
-SKIP_DIRS = {"__pycache__", "build-manual", "models", "icons"}
+             ".webmanifest", ".toml",
+             ".swift", ".cpp", ".h", ".mm", ".plist", ".pbxproj",
+             ".xcscheme")
+SKIP_DIRS = {"__pycache__", "build-manual", "build", "models", "icons"}
 
 BANNED_MENTOR = re.compile(r"\b(teachers?|she|her|hers|herself)\b",
                            re.IGNORECASE)

@@ -15,3 +15,4 @@ app/android/app/build/
 app/cloud-signer/tokens.txt
 app/cloud-signer/.wrangler/
 app/recorder/dist/
+app/ios/build/

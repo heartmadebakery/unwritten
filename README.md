@@ -108,12 +108,14 @@ mentor data — samples are fictional.
   `apprentice_instruction.txt` are retired with the apprentice design.
 - `harness/` — the retired apprentice process-test harness, kept for the
   record. Its tests still run (`python3 -m unittest discover -s tests`).
-- `app/` — the recorder, in two forms: `app/recorder/` (single-file web
-  app) and `app/android/` (native Android port, base device: Pixel 4,
-  minSdk 29). Both have one job —
+- `app/` — the recorder, in three forms: `app/recorder/` (single-file web
+  app), `app/android/` (native Android port, base device: Pixel 4,
+  minSdk 29), and `app/ios/` (native iOS port, base device: iPhone,
+  iOS 17+). All three have one job —
   record one lesson, stop, keep the file; an ordinary phone camera with
   no app produces exactly the same lesson file and works just as well.
-  See [the Android work log](docs/android-app-worklog.md).
+  See [the Android work log](docs/android-app-worklog.md) and [the iOS
+  work log](docs/ios-app-worklog.md).
 - `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real mentor data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.

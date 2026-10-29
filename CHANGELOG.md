@@ -9,6 +9,17 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-10-29
 
 ### Added
+- **Native iOS recorder.** `app/ios/` is a third recorder in full
+  parity with the Android and web apps: one screen (viewfinder, zoom,
+  record, Cloud toggle, export, sessions), same session rows (newest
+  first, date + length, tap to play in the viewfinder, long-press to
+  delete from device and cloud), same `unwritten_lesson_<stamp>.mp4`
+  contract, same presigned-TUS Cloud upload with signer-token
+  stamping at build time, and the portable uwcore C++ core linked
+  through an Objective-C++ bridge. SwiftUI + AVFoundation, iOS 17+,
+  no storyboards, no third-party libraries. 30 tests in
+  `tests/test_ios_recorder.py`; build, simulator, and logic-harness
+  evidence in `docs/ios-app-worklog.md`.
 - **Cloud fetch for the pipeline.** `pipeline/cloud_fetch.py` lists the
   Cloud library, downloads each new finished lesson (highest MP4
   rendition, HLS remux fallback), and `run_pipeline.py --cloud
