@@ -8,6 +8,11 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-29
 
+### Added
+- **Baseten Muse Spark example request.** `baseten.py` sends a greeting
+  through the OpenAI-compatible client using `BASETEN_API_KEY` from the
+  environment; it requires the `openai` Python package.
+
 ### Changed
 - **Mentor wording throughout live material.** Use generic mentor
   language in the pipeline, prompts, fictional samples, harness, and
