@@ -41,12 +41,23 @@ def find(transcript):
             pass
     if proc.returncode != 0:
         sys.exit(f"correction finder failed: {proc.stderr[-300:]}")
-    raw = proc.stdout.strip()
-    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
+    return parse_hits(proc.stdout)
+
+
+def parse_hits(raw):
+    """Parse the finder's JSON array. The model sometimes emits the
+    array twice (observed: `[][]` for "no corrections") or with stray
+    prose, so take the first complete JSON value instead of requiring
+    the whole output to be exactly one document."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
     try:
-        hits = json.loads(raw)
+        hits = json.loads(text)
     except json.JSONDecodeError:
-        sys.exit(f"finder output was not JSON: {raw[:300]}")
+        try:
+            start = text.index("[")
+            hits, _ = json.JSONDecoder().raw_decode(text[start:])
+        except (ValueError, json.JSONDecodeError):
+            sys.exit(f"finder output was not JSON: {raw[:300]}")
     if not isinstance(hits, list):
         sys.exit("finder output was not a JSON array")
     return hits

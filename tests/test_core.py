@@ -11,6 +11,7 @@ sys.path.insert(0, os.path.join(ROOT, "pipeline"))
 
 import ingest as ingest_mod
 import run_pipeline as rp
+import find_corrections as fc
 import make_page
 
 
@@ -68,6 +69,28 @@ class TestRenderCorrections(unittest.TestCase):
 
     def test_render_empty(self):
         self.assertIn("No corrections found", rp.render_corrections_md([], {}))
+
+
+class TestParseFinderHits(unittest.TestCase):
+    def test_clean_array(self):
+        hits = fc.parse_hits('[{"start": "02:08", "quote": "q", "correcting": "c"}]')
+        self.assertEqual(hits[0]["start"], "02:08")
+
+    def test_fenced_array(self):
+        self.assertEqual(fc.parse_hits('```json\n[]\n```'), [])
+
+    def test_doubled_empty_array(self):
+        # Observed live (Oct 29): the finder means "no corrections"
+        # but emits the empty array twice; take the first, don't crash.
+        self.assertEqual(fc.parse_hits('[][]'), [])
+
+    def test_rejects_non_array(self):
+        with self.assertRaises(SystemExit):
+            fc.parse_hits('{"start": "02:08"}')
+
+    def test_rejects_garbage(self):
+        with self.assertRaises(SystemExit):
+            fc.parse_hits('no corrections here, just prose')
 
 
 class TestParseWriteup(unittest.TestCase):

@@ -21,6 +21,12 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Corrections finder tolerates doubled output.** `parse_hits()` in
+  `pipeline/find_corrections.py` takes the first complete JSON array
+  instead of requiring the whole model output to be exactly one
+  document (live failure: `[][]` for "no corrections" crashed the
+  run). Non-array JSON and garbage are still refused. 5 tests in
+  `tests/test_core.py`; proven on an 8.4-minute lesson run end to end.
 - **Web recorder matches the Android app.** `app/recorder/` now uses
   the same dark palette and single-column order (viewfinder, zoom,
   record, Cloud toggle, export, sessions) and the same session rows:
