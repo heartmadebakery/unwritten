@@ -339,10 +339,10 @@ public class MainActivity extends Activity {
         return out;
     }
 
-    // left icon: ☁ if cloud-backed (has cloud link), otherwise device-only ▣
+    // left icon: ☁ if cloud-backed (has cloud link), otherwise phone 📱
     private String leftIconFor(String name) {
         JSONObject link = cloudLink(name);
-        if (link == null) return "\u25A3"; // ▣ device-only
+        if (link == null) return "\uD83D\uDCF1"; // 📱 device-only
         String st = link.optString("state", "");
         if ("uploading".equals(st)) return "\u2601\u2191"; // ☁↑
         if ("processing".equals(st)) return "\u2601\u2026"; // ☁…
@@ -453,31 +453,56 @@ public class MainActivity extends Activity {
             mid.setOnClickListener(playClick);
             left.setOnClickListener(playClick);
 
-            // right: Share if cloud ready, else Download
+            // right: share icon if cloud ready, download icon if device-only, otherwise status
             JSONObject link = cloudLink(name);
             String st = link == null ? "" : link.optString("state", "");
             boolean isReady = "ready".equals(st);
-            Button right = new Button(this);
-            right.setAllCaps(false);
-            right.setTextSize(13);
-            right.setTextColor(isReady ? TEXT : BG);
-            right.setBackgroundColor(isReady ? PANEL : AMBER);
-            right.setPadding(dp(8), dp(4), dp(8), dp(4));
-            right.setFocusable(false); right.setFocusableInTouchMode(false);
-            if (isReady) {
-                right.setText("Share \u2197");
-                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(88), dp(36));
+            if (link == null) {
+                // device-only: small download icon
+                TextView dl = new TextView(this);
+                dl.setText("\u2B07"); // ⬇
+                dl.setTextSize(18);
+                dl.setTextColor(BG);
+                dl.setBackgroundColor(AMBER);
+                dl.setGravity(Gravity.CENTER);
+                dl.setPadding(dp(6), dp(4), dp(6), dp(4));
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
                 bp.setMargins(dp(8), 0, 0, 0);
-                right.setLayoutParams(bp);
-                right.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+                dl.setLayoutParams(bp);
+                dl.setClickable(true);
+                dl.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+                row.addView(dl);
+            } else if (isReady) {
+                // cloud ready: small share icon
+                TextView sh = new TextView(this);
+                sh.setText("\u2197"); // ↗
+                sh.setTextSize(18);
+                sh.setTextColor(TEXT);
+                sh.setBackgroundColor(PANEL);
+                sh.setGravity(Gravity.CENTER);
+                sh.setPadding(dp(6), dp(4), dp(6), dp(4));
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                bp.setMargins(dp(8), 0, 0, 0);
+                sh.setLayoutParams(bp);
+                sh.setClickable(true);
+                sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+                row.addView(sh);
             } else {
-                right.setText("\u2B07 Download");
-                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(110), dp(36));
-                bp.setMargins(dp(8), 0, 0, 0);
-                right.setLayoutParams(bp);
-                right.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+                // uploading / processing / failed: show status, no download button
+                String badge = "";
+                if ("uploading".equals(st)) badge = link.optInt("progress", 0) + "%";
+                else if ("processing".equals(st)) badge = "\u2026";
+                else if ("failed".equals(st)) badge = "!";
+                if (!badge.isEmpty()) {
+                    TextView stv = label(badge, 13, DIM);
+                    stv.setPadding(dp(8), 0, 0, 0);
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    bp.setMargins(dp(8), 0, 0, 0);
+                    stv.setGravity(Gravity.CENTER);
+                    stv.setLayoutParams(bp);
+                    row.addView(stv);
+                }
             }
-            row.addView(right);
 
             // long-press row to delete
             row.setOnLongClickListener(new View.OnLongClickListener() {
