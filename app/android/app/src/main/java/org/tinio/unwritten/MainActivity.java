@@ -164,7 +164,7 @@ public class MainActivity extends Activity {
 
         TextView title = label("Unwritten Craft", 24, TEXT); title.setGravity(Gravity.CENTER);
         l.addView(title);
-        l.addView(label("Film a session with a mentor. Press Record, let it happen, press Stop at the end.", 16, DIM));
+        l.addView(label("Film mentor session. Record, let it happen and Stop at the end.", 16, DIM));
 
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
@@ -218,7 +218,6 @@ public class MainActivity extends Activity {
         zoomRow.addView(zoomSeek);
         zoomRow.addView(zoomIn);
         zoomRow.addView(zoomLabel);
-        l.addView(label("Zoom", 14, DIM));
         l.addView(zoomRow);
         zoomOut.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(-0.2f); } });
         zoomIn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(+0.2f); } });
@@ -242,7 +241,7 @@ public class MainActivity extends Activity {
         l.addView(cloudToggleButton);
 
         exportBtn = button("Export lessons to Downloads");
-        exportBtn.setBackgroundColor(AMBER); exportBtn.setTextColor(BG);
+        exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
