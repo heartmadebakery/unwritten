@@ -172,5 +172,77 @@ class TestCloudMode(unittest.TestCase):
             self.assertEqual(len(calls), 2)
 
 
+class TestDownloadReferer(unittest.TestCase):
+    def test_http_download_sends_referer(self):
+        captured = {}
+
+        class Resp:
+            def __init__(self): self.left = b"data"
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n=-1):
+                out, self.left = self.left, b""
+                return out
+
+        def fake(req, timeout=None):
+            captured.update(dict(req.header_items()))
+            return Resp()
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = os.path.join(td, "v.mp4")
+            with mock.patch("urllib.request.urlopen", fake):
+                cf.http_download("https://cdn/x.mp4", dest,
+                                 "https://player.mediadelivery.net/embed/1/g")
+        self.assertEqual(captured.get("Referer"),
+                         "https://player.mediadelivery.net/embed/1/g")
+
+    def test_remux_passes_referer_header(self):
+        with mock.patch.object(cf.shutil, "which",
+                               return_value="/bin/ffmpeg"), \
+                mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            with tempfile.TemporaryDirectory() as td:
+                dest = os.path.join(td, "v.mp4")
+                with open(dest, "wb") as fh:
+                    fh.write(b"x")
+                cf.remux_hls("https://cdn/pl.m3u8", dest, "REF")
+        cmd = run.call_args[0][0]
+        self.assertIn("-headers", cmd)
+        self.assertIn("Referer: REF", cmd)
+
+    def test_download_video_uses_player_page(self):
+        cfg = {"library_id": "793098", "cdn": "vz-x.b-cdn.net"}
+        vid = {"guid": "guid-1234", "title": "t",
+               "availableResolutions": "720p"}
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(
+                    cf, "http_download",
+                    return_value=os.path.join(td, "t.mp4")) as dl:
+                cf.download_video(cfg, vid, td)
+        self.assertEqual(
+            dl.call_args[0][2],
+            "https://player.mediadelivery.net/embed/793098/guid-1234")
+
+
+class TestCloudCli(unittest.TestCase):
+    def test_single_positional_is_the_work_root(self):
+        argv = ["run_pipeline.py", "--cloud", "work/cloud"]
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.object(rp, "run_cloud_mode",
+                                  return_value=0) as mode:
+            with self.assertRaises(SystemExit) as ctx:
+                rp.main()
+        self.assertEqual(ctx.exception.code, 0)
+        self.assertEqual(mode.call_args[0][0], "work/cloud")
+
+    def test_cloud_rejects_zero_and_two_positionals(self):
+        for argv in (["run_pipeline.py", "--cloud"],
+                     ["run_pipeline.py", "--cloud", "a", "b"]):
+            with mock.patch.object(sys, "argv", argv):
+                with self.assertRaises(SystemExit) as ctx:
+                    rp.main()
+            self.assertNotEqual(ctx.exception.code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,6 +40,13 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Cloud fetch defeats CDN hotlink protection and fixes `--cloud`
+  args.** `download_video` now sends the video's player page as the
+  `Referer` on MP4 downloads and HLS remuxes (bare fetches 403),
+  and `run_pipeline.py --cloud` reads the work root from the
+  correct positional. Proven live: all 11 library videos
+  downloaded, 8 processed end to end. 5 new tests in
+  `tests/test_cloud_fetch.py`.
 - **Hub navigation and mic parity across all three recorders.**
   Session pages link back to the hub list and over to the recorder,
   and the web recorder shows a Hub link when served inside the site.

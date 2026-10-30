@@ -67,10 +67,15 @@ def http_get_json(url, headers):
                            % (url, exc.reason))
 
 
-def http_download(url, dest):
+def http_download(url, dest, referer=""):
     """Stream a URL to dest. 404s raise DownloadError(404); anything
-    else missing raises DownloadError with its status."""
-    req = urllib.request.Request(url, headers={"User-Agent": "UnwrittenCraft/1.0"})
+    else missing raises DownloadError with its status. The CDN's
+    hotlink protection 403s bare fetches, so callers pass the
+    video's player page as referer."""
+    headers = {"User-Agent": "UnwrittenCraft/1.0"}
+    if referer:
+        headers["Referer"] = referer
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=120) as resp, \
                 open(dest, "wb") as fh:
@@ -143,16 +148,18 @@ def playlist_url(cdn, guid):
     return "https://%s/%s/playlist.m3u8" % (cdn, guid)
 
 
-def remux_hls(url, dest):
+def remux_hls(url, dest, referer=""):
     """Remux a finished video's HLS playlist to mp4 (used when no MP4
-    rendition is downloadable)."""
+    rendition is downloadable). referer defeats hotlink protection."""
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
         raise RuntimeError("ffmpeg not found on PATH — needed to fetch %s"
                            % url)
-    proc = subprocess.run(
-        [ffmpeg, "-y", "-v", "error", "-i", url, "-c", "copy", dest],
-        capture_output=True, text=True)
+    cmd = [ffmpeg, "-y", "-v", "error"]
+    if referer:
+        cmd += ["-headers", "Referer: %s" % referer]
+    cmd += ["-i", url, "-c", "copy", dest]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode != 0 or not os.path.exists(dest):
         tail = (proc.stderr or "").strip().splitlines()
         raise RuntimeError("ffmpeg remux failed for %s: %s"
@@ -168,16 +175,18 @@ def download_video(cfg, vid, dest_dir):
                         "%s__%s.mp4" % (sanitize(vid.get("title")), guid[:8]))
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return dest
+    referer = ("https://player.mediadelivery.net/embed/%s/%s"
+               % (cfg["library_id"], guid))
     for url in mp4_candidates(cfg["cdn"], guid, vid.get("availableResolutions")):
         try:
-            return http_download(url, dest)
+            return http_download(url, dest, referer)
         except DownloadError as exc:
             if exc.status == 404:
                 continue  # rendition listed but not served; try the next
             raise
     # No MP4 rendition served (or none listed): remux the HLS playlist.
     try:
-        return remux_hls(playlist_url(cfg["cdn"], guid), dest)
+        return remux_hls(playlist_url(cfg["cdn"], guid), dest, referer)
     except RuntimeError as exc:
         raise RuntimeError(
             "%s (token-authenticated libraries block direct "

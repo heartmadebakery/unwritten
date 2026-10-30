@@ -464,10 +464,11 @@ def main():
     args = ap.parse_args()
 
     if args.cloud:
-        if args.session_dir is not None or not args.work_dir:
+        # The single positional lands in session_dir; that IS the root.
+        if args.work_dir is not None or not args.session_dir:
             ap.error("--cloud takes exactly one positional: the work root "
                      "(e.g. run_pipeline.py --cloud work/cloud)")
-        sys.exit(run_cloud_mode(args.work_dir, max_n=args.max,
+        sys.exit(run_cloud_mode(args.session_dir, max_n=args.max,
                                 retry_failed=args.retry_failed,
                                 state_path=args.cloud_state))
     if not args.session_dir or not args.work_dir:
