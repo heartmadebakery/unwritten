@@ -10,7 +10,9 @@ history (30 commits) and is maintained in the open from then on.
 
 ### Added
 - **Cloud proxy for local pipeline.** `app/cloud-signer/worker.js` exposes `GET /pipeline/videos` proxied with `CLOUD_API_KEY` so the local `pipeline/cloud_fetch.py --cloud` can list via `CLOUD_PROXY_URL` without holding the library key; `CLOUD_LIBRARY_KEY` becomes optional when the proxy is set. `http_get_json` now sends `User-Agent: UnwrittenCraft/1.0`.
-- **Local cloud runner.** `run_cloud.sh` (machine-local, gitignored) runs `run_pipeline.py --cloud work/cloud` + `make_site.py work/cloud work/site` every minute via `flock` to `work/cloud/cron.log`; `work/site` is served on `0.0.0.0:8787` by `~/.config/systemd/user/unwritten-site.service`.
+- **Local cloud runner (auto-publish).** `run_cloud.sh` (now tracked) runs `run_pipeline.py --cloud work/cloud` *and* publishes each finished `work/cloud/*__*/writeup.md` via `pipeline/publish.py` to `HUB_SIGNER_URL` (`app/cloud-signer/tokens.txt`) then `make_site.py work/cloud work/site` every minute via `flock` to `work/cloud/cron.log`; `work/site` on `0.0.0.0:8787`.
+- **Hub WAF fix.** `pipeline/publish.py:91` sends `User-Agent: UnwrittenCraft/1.0` (like `cloud_fetch.py`) to bypass Cloudflare WAF `1010` that blocked `Python-urllib`; plus `Android: surface hub error cause + log` at `MainActivity.java:874-884` surfaces `(Unable to resolve host…)` instead of generic.
+
 ## 2026-10-29
 
 ### Added
