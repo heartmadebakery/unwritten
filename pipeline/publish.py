@@ -88,7 +88,8 @@ def post_json(url, payload, token):
     req = urllib.request.Request(
         url, data=data,
         headers={"Content-Type": "application/json",
-                 "X-Signer-Token": token})
+                 "X-Signer-Token": token,
+                 "User-Agent": "UnwrittenCraft/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
