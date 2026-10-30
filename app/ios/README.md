@@ -12,7 +12,10 @@ libraries — SwiftUI + AVFoundation and one C++ core only.
 **Continuing this work?** Read
 [`docs/ios-app-worklog.md`](../../docs/ios-app-worklog.md)
 first — full history, build verification, simulator evidence, and the
-open items (on-device shakeout, app icon, release signing).
+open items (on-device shakeout, app icon, release signing). On-device
+note (Oct 29): the first real-iPhone run hit a `startRunning`-inside-
+`beginConfiguration` throw — fixed by committing the config before
+starting the session, proven by a test take on an iPhone 14 Pro.
 
 ## Why native, and what's in C++
 

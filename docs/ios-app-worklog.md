@@ -6,6 +6,21 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Update — 2026-10-29: recording works on a real iPhone
+
+The diagnostic build's console said it plainly:
+`startRunning threw NSGenericException: startRunning may not be
+called between calls to beginConfiguration and commitConfiguration`.
+`configureSession` started the session inside its `begin/commit`
+block (the `defer` committed only at scope exit). Never visible in
+the simulator, where the no-inputs guard returns first. The fix
+commits the configuration before starting the session, locked by a
+regression test (`test_session_committed_before_start_running`);
+the `[UWCam]` console diagnostics that found it stay in the code,
+mirroring Android's `UWCloud` logging. Verified with a test take on
+an iPhone 14 Pro: live preview, Record/Stop, session saved with the
+right date and length.
+
 ## The order
 
 Build an iOS version of the recorder with the same features, in parity
@@ -94,12 +109,13 @@ README; the notable porting decisions:
 
 ## Open items
 
-1. **On-device shakeout (real iPhone)** — the next step: granted
-   recording end to end, mic-denied video-only + banner, front/back
-   switch, zoom range, backgrounding mid-take, a real TUS upload to
-   the signer (stamped token) through encoding to ↗ share, and
-   cloud-first delete. Capture sessions vary by device; this is the
-   one thing the simulator cannot prove.
+1. **On-device shakeout (real iPhone)** — partly done (Oct 29):
+   granted recording works on an iPhone 14 Pro after the
+   begin/commit fix above. Still open: mic-denied video-only +
+   banner, front/back switch, zoom range, backgrounding mid-take, a
+   real TUS upload to the signer (stamped token) through encoding to
+   ↗ share, and cloud-first delete. Capture sessions vary by device;
+   the device is the only proof.
 2. **App icon** — no asset catalog yet (same open item as Android).
 3. **Release signing** — the project uses automatic signing; device
    and store builds need a development team.
