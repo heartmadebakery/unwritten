@@ -8,30 +8,9 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-30
 
-### Changed
-- **Hub section is always visible, with the reason.** iOS hid the whole
-  Hub section until a signer URL and token were set, so a missing token
-  looked like a missing feature; the web recorder likewise hid its Hub
-  nav. All three now render Hub unconditionally: the header always
-  shows, and the body names the state — Cloud off, signer URL/token
-  missing, server not switched on (503), token refused (401/403), load
-  failure, or simply no published sessions yet.
-
-### Fixed
-- **Uploads no longer fire doomed 401s without credentials.** Fresh
-  installs (Cloud on by default, no token yet) attempted every upload
-  and failed with "signer refused", misdiagnosed as a connection
-  problem. Both apps now fail fast (`canUpload`) with a "check the
-  token in Cloud settings" message, and 401/403 failures name the
-  token instead of the connection. Same behavior on iOS and Android.
-- **Android hub build break.** The hub commit never compiled: `MainActivity`
-  used `INK` (an iOS name — Android's identical `#F5EAD6` constant is `TEXT`)
-  and `HubClient` declared `get(String)` twice. Fixed on the first real
-  device-toolchain build (`app/android/build.sh`: JDK 17 + SDK 34 + NDK
-  26.1.10909125) and guarded by
-  `test_hub_code_uses_defined_symbols_only`. Prebuilt
-  `app/android/unwritten-recorder.apk` refreshed with the hub build.
-
+### Added
+- **Cloud proxy for local pipeline.** `app/cloud-signer/worker.js` exposes `GET /pipeline/videos` proxied with `CLOUD_API_KEY` so the local `pipeline/cloud_fetch.py --cloud` can list via `CLOUD_PROXY_URL` without holding the library key; `CLOUD_LIBRARY_KEY` becomes optional when the proxy is set. `http_get_json` now sends `User-Agent: UnwrittenCraft/1.0`.
+- **Local cloud runner.** `run_cloud.sh` (machine-local, gitignored) runs `run_pipeline.py --cloud work/cloud` + `make_site.py work/cloud work/site` every minute via `flock` to `work/cloud/cron.log`; `work/site` is served on `0.0.0.0:8787` by `~/.config/systemd/user/unwritten-site.service`.
 ## 2026-10-29
 
 ### Added

@@ -62,6 +62,17 @@ export default {
         headers: Object.assign({ "Content-Type": "application/json" }, cors),
       });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+    // Pipeline proxy: lets local pipeline list videos without holding the vendor API key.
+    {
+      const pUrl = new URL(request.url);
+      if (pUrl.pathname === "/pipeline/videos") {
+        const page = pUrl.searchParams.get("page") || "1";
+        const br = await fetch(CLOUD_API + "/library/" + env.CLOUD_LIBRARY_ID + "/videos?page=" + page + "&itemsPerPage=100&orderBy=date", {
+          headers: { AccessKey: env.CLOUD_API_KEY, Accept: "application/json" }
+        });
+        return new Response(await br.text(), { status: br.status, headers: Object.assign({ "Content-Type": "application/json" }, cors) });
+      }
+    }
     const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
     if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
     if (pool.length && !pool.includes(request.headers.get("X-Signer-Token") || "")) {

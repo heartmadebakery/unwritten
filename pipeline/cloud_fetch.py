@@ -38,23 +38,37 @@ class DownloadError(Exception):
 
 def load_config(env=None):
     """Read Cloud library credentials from the environment. Exits loudly
-    if any are missing so a --cloud run never silently processes nothing."""
+    if any are missing so a --cloud run never silently processes nothing.
+
+    When CLOUD_PROXY_URL is set (e.g. the signer Worker URL), listing
+    goes through the proxy and CLOUD_LIBRARY_KEY is not required — the
+    Worker holds the key."""
     env = os.environ if env is None else env
     library_id = (env.get("CLOUD_LIBRARY_ID") or "").strip()
     api_key = (env.get("CLOUD_LIBRARY_KEY") or "").strip()
     cdn = (env.get("CLOUD_CDN_HOSTNAME") or "").strip().rstrip("/")
+    proxy = (env.get("CLOUD_PROXY_URL") or "").strip().rstrip("/")
     missing = [name for name, val in
                (("CLOUD_LIBRARY_ID", library_id),
-                ("CLOUD_LIBRARY_KEY", api_key),
                 ("CLOUD_CDN_HOSTNAME", cdn)) if not val]
-    if missing:
+    if not proxy:
+        if not api_key:
+            missing.append("CLOUD_LIBRARY_KEY")
+        if missing:
+            raise SystemExit("Missing %s — export them to fetch cloud videos."
+                             % ", ".join(missing))
+    elif missing:
         raise SystemExit("Missing %s — export them to fetch cloud videos."
                          % ", ".join(missing))
-    return {"library_id": library_id, "api_key": api_key, "cdn": cdn}
+    return {"library_id": library_id, "api_key": api_key, "cdn": cdn,
+            "proxy": proxy}
 
 
 def http_get_json(url, headers):
-    req = urllib.request.Request(url, headers=headers or {})
+    hdrs = {"User-Agent": "UnwrittenCraft/1.0"}
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(url, headers=hdrs)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             return json.loads(resp.read().decode("utf-8"))
@@ -92,7 +106,38 @@ def http_download(url, dest, referer=""):
 
 def list_videos(cfg):
     """Every video in the library, oldest first. Raises RuntimeError
-    with the library status when the API refuses."""
+    with the library status when the API refuses. When cfg has a
+    proxy, listing goes through the signer Worker instead of the
+    vendor API directly (so the API key never leaves the Worker)."""
+    if cfg.get("proxy"):
+        headers = {"Accept": "application/json"}
+        # Signer tokens live in app/cloud-signer/tokens.txt; the proxy
+        # checks X-Signer-Token when a token pool is configured.
+        try:
+            here = os.path.dirname(os.path.abspath(__file__))
+            pool_path = os.path.join(os.path.dirname(here), "app",
+                                     "cloud-signer", "tokens.txt")
+            with open(pool_path) as fh:
+                tok = fh.readline().strip()
+                if tok:
+                    headers["X-Signer-Token"] = tok
+        except OSError:
+            pass
+        # Also honor CLOUD_PROXY_TOKEN if set explicitly.
+        tok2 = os.environ.get("CLOUD_PROXY_TOKEN", "").strip()
+        if tok2:
+            headers["X-Signer-Token"] = tok2
+        videos = []
+        page = 1
+        while True:
+            url = ("%s/pipeline/videos?page=%d" % (cfg["proxy"], page))
+            data = http_get_json(url, headers)
+            batch = data.get("items", [])
+            videos.extend(batch)
+            if len(batch) < PER_PAGE:
+                break
+            page += 1
+        return videos
     videos = []
     page = 1
     while True:
