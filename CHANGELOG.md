@@ -32,6 +32,13 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **iOS recorder commits its config before starting the camera.**
+  `configureSession` called `startRunning` inside the
+  `beginConfiguration`/`commitConfiguration` block, which throws
+  `NSGenericException` on a real camera — black viewfinder, "Camera
+  not ready yet". It now commits first, then starts; kept the
+  `[UWCam]` console diagnostics that found it. 1 test; session
+  start proven on an iPhone 14 Pro.
 - **Pipeline docs for the new stages.** `docs/PIPELINE.md` covers
   schema-first outputs, batch caching, and chapters; the deferred
   list is now Teach-back QA alone.

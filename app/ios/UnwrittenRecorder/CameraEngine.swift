@@ -43,6 +43,16 @@ final class CameraEngine: NSObject, ObservableObject {
         onMain { [weak self] in self?.statusHandler?(message) }
     }
 
+    /// Diagnostic logging (stderr + syslog + stdout) so a capture
+    /// failure can be read off the device console. Mirrors Android's
+    /// "UWCloud" Log usage; prefixed [UWCam] and never user-visible.
+    func diag(_ message: String) {
+        let line = "[UWCam] \(message)\n"
+        FileHandle.standardError.write(line.data(using: .utf8)!)
+        print(line, terminator: "")
+        NSLog("%@", line)
+    }
+
     // ---------- preview ----------
 
     func makePreviewLayer() -> AVCaptureVideoPreviewLayer {
@@ -79,11 +89,29 @@ final class CameraEngine: NSObject, ObservableObject {
         AVAudioApplication.shared.recordPermission == .granted
     }
 
+    private var observersInstalled = false
+
+    private func installSessionObservers() {
+        if observersInstalled { return }
+        observersInstalled = true
+        let nc = NotificationCenter.default
+        nc.addObserver(forName: .AVCaptureSessionRuntimeError, object: session, queue: nil) { [weak self] note in
+            let err = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
+            self?.diag("SESSION RUNTIME ERROR: \(err?.localizedDescription ?? "\(note.userInfo ?? [:])")")
+        }
+        nc.addObserver(forName: .AVCaptureSessionDidStartRunning, object: session, queue: nil) { [weak self] _ in
+            self?.diag("SESSION DID START RUNNING")
+        }
+        nc.addObserver(forName: .AVCaptureSessionWasInterrupted, object: session, queue: nil) { [weak self] note in
+            self?.diag("SESSION INTERRUPTED: \(note.userInfo ?? [:])")
+        }
+    }
+
     private func configureSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            self.installSessionObservers()
             self.session.beginConfiguration()
-            defer { self.session.commitConfiguration() }
             if self.session.canSetSessionPreset(.hd1280x720) {
                 self.session.sessionPreset = .hd1280x720
             }
@@ -91,22 +119,34 @@ final class CameraEngine: NSObject, ObservableObject {
             // No inputs (no camera, as in the simulator): starting the
             // session would throw an uncatchable exception, so stop here.
             // attachInputsLocked already reported the reason on screen.
-            guard !self.session.inputs.isEmpty else { return }
-            if !self.session.outputs.contains(self.movieOutput) {
+            self.diag("configure: inputs=\(self.session.inputs.count) videoDevice=\(self.videoDevice?.localizedName ?? "nil") outputsBefore=\(self.session.outputs.count)")
+            let hasInputs = !self.session.inputs.isEmpty
+            var outputFailed = false
+            if hasInputs && !self.session.outputs.contains(self.movieOutput) {
                 if self.session.canAddOutput(self.movieOutput) {
                     self.session.addOutput(self.movieOutput)
                 } else {
-                    self.report("Camera error: could not add the movie output.")
-                    return
+                    outputFailed = true
                 }
+            }
+            // startRunning may NOT be called between beginConfiguration
+            // and commitConfiguration (it throws NSGenericException) —
+            // commit first, then start.
+            self.session.commitConfiguration()
+            guard hasInputs else { return }
+            if outputFailed {
+                self.report("Camera error: could not add the movie output.")
+                return
             }
             self.refreshZoomLocked()
             // startRunning can throw (uncaught in Swift) in exotic states;
             // the bridge starts it behind an ObjC exception handler.
             if !UWStartCaptureSession(self.session) {
+                self.diag("startRunning failed; isRunning=\(self.session.isRunning)")
                 self.report("Camera error: could not start the camera.")
                 return
             }
+            self.diag("startRunning ok; isRunning=\(self.session.isRunning)")
             self.onMain { self.sessionRunning = true }
         }
     }
@@ -201,6 +241,7 @@ final class CameraEngine: NSObject, ObservableObject {
                 self.report("Already recording.")
                 return
             }
+            self.diag("startVideo: isRunning=\(self.session.isRunning) isRecording=\(self.movieOutput.isRecording)")
             guard self.session.isRunning else {
                 self.report("Camera not ready yet — try again in a moment.")
                 return

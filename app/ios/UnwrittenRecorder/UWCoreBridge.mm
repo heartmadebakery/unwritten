@@ -7,8 +7,15 @@ BOOL UWStartCaptureSession(AVCaptureSession *session) {
     if (session == nil) return NO;
     @try {
         [session startRunning];
+        fprintf(stderr, "[UWCam] startRunning returned, isRunning=%d\n",
+                (int)session.isRunning);
+        fflush(stderr);
         return session.isRunning ? YES : NO;
     } @catch (NSException *exception) {
+        fprintf(stderr, "[UWCam] startRunning threw %s: %s\n",
+                exception.name.UTF8String,
+                (exception.reason ?: @"(no reason)").UTF8String);
+        fflush(stderr);
         return NO;
     }
 }

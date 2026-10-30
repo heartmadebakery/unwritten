@@ -102,6 +102,19 @@ class IOSRecorderTests(unittest.TestCase):
         self.assertIn("UWStartCaptureSession", read(BRIDGE_H))
         self.assertIn("@try", read(BRIDGE_MM))
 
+    def test_session_committed_before_start_running(self):
+        # Real-device bug (Oct 29 shakeout): startRunning threw
+        # NSGenericException because it ran between beginConfiguration
+        # and commitConfiguration. The configure path must commit first.
+        engine = read(ENGINE)
+        body = engine.split("func configureSession()", 1)[1] \
+                     .split("func attachInputsLocked", 1)[0]
+        begin = body.index("beginConfiguration")
+        commit = body.index("commitConfiguration")
+        start = body.index("UWStartCaptureSession")
+        self.assertLess(begin, commit)
+        self.assertLess(commit, start)
+
 
 class IOSBaselineTests(unittest.TestCase):
     """Base device: iPhone (2019-class, like the Pixel 4) — iOS 17+,
