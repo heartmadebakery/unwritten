@@ -4,11 +4,13 @@
 # Like the Android and web builds, this stamps one random token from the
 # signer pool into the app (CloudConfig.swift) before compiling, then
 # restores the template — so the committed file NEVER carries a real
-# token. The build itself is plain xcodebuild for the simulator (no paid
-# developer account, no device needed).
+# token. Default is a simulator build (no paid developer account, no
+# device needed); pass DEVELOPMENT_TEAM=<id> for a signed real-iPhone
+# build instead. Both paths stamp, so device installs never need
+# hand-pasted credentials.
 #
 # On a dev machine with a team, open UnwrittenRecorder.xcodeproj in
-# Xcode (or pass DEVELOPMENT_TEAM=<id>) to run on a real iPhone.
+# Xcode to run on a real iPhone.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -37,6 +39,19 @@ open(target, "w").write(src.replace(old, 'static let CLOUD_SIGNER_TOKEN_DEFAULT 
 print("stamped token #%d of %d into CloudConfig.swift (restored after build)" % (i + 1, len(tokens)))
 EOF
 
+if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+echo "== build (xcodebuild, device, team $DEVELOPMENT_TEAM) =="
+rm -rf "$OUT"
+xcodebuild \
+  -project "$HERE/UnwrittenRecorder.xcodeproj" \
+  -scheme UnwrittenRecorder \
+  -configuration Debug \
+  -destination 'generic/platform=iOS' \
+  -derivedDataPath "$OUT/DerivedData" \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+  -allowProvisioningUpdates \
+  build
+else
 echo "== build (xcodebuild, simulator) =="
 rm -rf "$OUT"
 xcodebuild \
@@ -47,15 +62,19 @@ xcodebuild \
   -derivedDataPath "$OUT/DerivedData" \
   CODE_SIGNING_ALLOWED=NO \
   build
+fi
 
 APP="$(find "$OUT/DerivedData" -name 'UnwrittenRecorder.app' -maxdepth 5 | head -1)"
 [ -n "$APP" ] || { echo "Build produced no .app bundle"; exit 1; }
 echo "APP: $APP"
 ls -la "$APP/UnwrittenRecorder"
 file "$APP/UnwrittenRecorder" | head -1
-UWCOUNT=$(nm "$APP/UnwrittenRecorder" | grep -c "UWComputeLumaMean" || true)
-echo "uwcore symbols (UWComputeLumaMean): $UWCOUNT"
-[ "$UWCOUNT" -ge 1 ] || { echo "uwcore luma symbol missing from binary"; exit 1; }
+# uwcore must be linked in. (nm's symtab count is unreliable — Debug
+# strips it — so check the link list instead.)
+LINKLIST="$(find "$OUT/DerivedData" -name '*.LinkFileList' | head -1)"
+[ -n "$LINKLIST" ] || { echo "no LinkFileList found"; exit 1; }
+grep -q "uwcore_luma" "$LINKLIST" || { echo "uwcore_luma not linked into binary"; exit 1; }
+echo "uwcore_luma linked (via $LINKLIST)"
 
 echo "== template check =="
 grep -q 'CLOUD_SIGNER_TOKEN_DEFAULT = ""' "$CFG_BAK" && echo "CloudConfig.swift template intact (no token committed)"

@@ -237,14 +237,13 @@ struct ContentView: View {
                     }
                 }
 
-                if store.hubAvailable() {
-                    Text("Hub")
-                        .font(.system(size: 17))
-                        .foregroundColor(DIM)
-                        .padding(.top, 14)
-                        .padding(.bottom, 4)
-                    if store.hubRows.isEmpty {
-                        Text(store.hubNotice.isEmpty ? "No published sessions yet." : store.hubNotice)
+                Text("Hub")
+                    .font(.system(size: 17))
+                    .foregroundColor(DIM)
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
+                if store.hubRows.isEmpty {
+                        Text(store.hubStatusText())
                             .font(.system(size: 15))
                             .foregroundColor(DIM)
                             .padding(.vertical, 7)
@@ -278,7 +277,6 @@ struct ContentView: View {
                     if let detail = store.hubDetail {
                         hubDetailCard(detail)
                     }
-                }
 
                 Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it above; long-press it to delete it from the device and the cloud.")
                     .font(.system(size: 14))

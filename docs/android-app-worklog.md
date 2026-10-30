@@ -29,6 +29,14 @@ HEAD was `b4f70b7`.
   (video first, then the hub record).
 - Switch-on checklist lives in the iOS worklog ("Still to do (hub
   switch-on)"); same backend serves both apps.
+- First real build 2026-10-30 (borrowed Mac, JDK 17 + SDK 34 + NDK
+  26.1.10909125 via `build.sh`): caught two compile breaks the hub
+  commit shipped with — `INK` in `MainActivity` (iOS name; Android's
+  identical constant is `TEXT`) and a duplicate `get(String)` in
+  `HubClient` (private worker renamed `getRaw`). Prebuilt APK
+  refreshed. macOS note: NDK r26 ships no ninja — `build.sh`
+  falls back to a Linux path, so put the SDK cmake's `ninja`
+  on PATH. Not installed on a device yet.
 
 ## Update — 2026-10-28: base device is now the Pixel 4
 

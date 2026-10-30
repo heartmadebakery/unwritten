@@ -90,6 +90,7 @@ public class MainActivity extends Activity {
     private LinearLayout hubContainer;
     private JSONArray hubRows = new JSONArray();
     private JSONObject hubDetail;
+    private String hubNotice = "";
     private SeekBar zoomSeek;
     private long speechQuietSince;
     private File lastLessonFile;
@@ -208,7 +209,7 @@ public class MainActivity extends Activity {
         micWarn.setBackgroundColor(RED);
         micWarn.setVisibility(View.GONE);
         l.addView(micWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        speechWarn = label("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, INK);
+        speechWarn = label("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, TEXT);
         speechWarn.setBackgroundColor(PANEL);
         speechWarn.setVisibility(View.GONE);
         l.addView(speechWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -708,6 +709,17 @@ public class MainActivity extends Activity {
         return cloudPrefs().getBoolean("enabled", true) && cloudUploader() != null;
     }
 
+    // True when an upload could possibly succeed. Signer mode needs
+    // its token — the URL always has a compiled default, so URL-alone
+    // must not count — and direct mode needs library ID + API key.
+    // Without this, fresh installs (Cloud on by default, no
+    // credentials yet) fire doomed uploads that can only 401.
+    private boolean canUpload() {
+        if (HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) return true;
+        return !cloudCfgString("libraryId").trim().isEmpty()
+                && !cloudCfgString("apiKey").trim().isEmpty();
+    }
+
     private void toggleCloudEnabled() {
         boolean on = !cloudPrefs().getBoolean("enabled", true);
         cloudPrefs().edit().putBoolean("enabled", on).apply();
@@ -825,10 +837,22 @@ public class MainActivity extends Activity {
         return cloudEnabledCfg() && HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken());
     }
 
+    // Always-visible Hub section text: the reason when the hub cannot
+    // show rows. The "Hub sessions" header renders regardless; this
+    // keeps a missing token or a dead server visible instead of
+    // looking like a missing feature.
+    private String hubStatusText() {
+        if (!cloudPrefs().getBoolean("enabled", true)) return "Hub lives on the signer — turn Cloud on to see published lessons.";
+        if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) return "Hub lives on the signer — add the signer URL and token in Cloud settings.";
+        if (hubNotice != null && !hubNotice.isEmpty()) return hubNotice;
+        return "No published sessions yet — run the pipeline's publish step.";
+    }
+
     private void loadHub() {
         if (!hubAvailable()) {
             hubRows = new JSONArray();
             hubDetail = null;
+            hubNotice = "";
             runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             return;
         }
@@ -836,6 +860,7 @@ public class MainActivity extends Activity {
             try {
                 HubClient hub = new HubClient(cloudEffSignerUrl(), cloudEffSignerToken());
                 hubRows = hub.list();
+                hubNotice = "";
                 if (hubDetail != null) {
                     boolean stillThere = false;
                     String cur = hubDetail.optString("videoId", "");
@@ -846,9 +871,15 @@ public class MainActivity extends Activity {
                 }
                 runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             } catch (final Exception e) {
-                runOnUiThread(new Runnable() { @Override public void run() {
-                    Toast.makeText(MainActivity.this, "Hub couldn't load — check the connection and Cloud settings.", Toast.LENGTH_LONG).show();
-                } });
+                final String msg = String.valueOf(e.getMessage());
+                if (msg.contains("(401)") || msg.contains("(403)")) {
+                    hubNotice = "Signer refused the token — check it in Cloud settings.";
+                } else if (msg.contains("(503)")) {
+                    hubNotice = "Hub isn't switched on at the server yet.";
+                } else {
+                    hubNotice = "Hub couldn't load — check the connection and Cloud settings.";
+                }
+                runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             }
         } });
     }
@@ -858,7 +889,7 @@ public class MainActivity extends Activity {
         hubContainer.removeAllViews();
         if (hubDetail != null) hubContainer.addView(hubDetailView(hubDetail));
         if (hubRows == null || hubRows.length() == 0) {
-            TextView empty = label(hubAvailable() ? "No published sessions yet — run the pipeline's publish step." : "Hub lives on the signer: turn Cloud on to see published lessons.", 15, DIM);
+            TextView empty = label(hubStatusText(), 15, DIM);
             empty.setPadding(dp(6), dp(7), dp(6), dp(7));
             hubContainer.addView(empty);
             return;
@@ -869,12 +900,12 @@ public class MainActivity extends Activity {
             LinearLayout r = new LinearLayout(this);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setPadding(dp(6), dp(8), dp(6), dp(8));
-            TextView left = label("☁", 16, INK);
+            TextView left = label("☁", 16, TEXT);
             left.setMinWidth(dp(32));
             r.addView(left);
             String title = row.optString("title", row.optString("videoId", ""));
             String date = row.optString("lessonDate", "");
-            TextView mid = label(title + (date.isEmpty() ? "" : "  •  " + date), 15, INK);
+            TextView mid = label(title + (date.isEmpty() ? "" : "  •  " + date), 15, TEXT);
             LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             mid.setLayoutParams(mp);
             mid.setPadding(dp(8), 0, dp(8), 0);
@@ -908,7 +939,7 @@ public class MainActivity extends Activity {
     private Button smallHubButton(String text) {
         Button b = button(text);
         try { b.setTextSize(14); } catch (Throwable ignored) {}
-        b.setTextColor(INK);
+        b.setTextColor(TEXT);
         b.setBackgroundColor(PANEL);
         try { b.setBackgroundTintList(null); } catch (Throwable ignored) {}
         return b;
@@ -921,7 +952,7 @@ public class MainActivity extends Activity {
         card.setPadding(dp(14), dp(14), dp(14), dp(14));
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
-        TextView t = label(obj.optString("title", obj.optString("videoId", "")), 17, INK);
+        TextView t = label(obj.optString("title", obj.optString("videoId", "")), 17, TEXT);
         LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         t.setLayoutParams(tp);
         top.addView(t);
@@ -949,13 +980,13 @@ public class MainActivity extends Activity {
         actions.addView(del);
         card.addView(actions);
         String writeup = obj.optString("writeupMd", "");
-        if (!writeup.isEmpty()) card.addView(label(writeup, 15, INK));
+        if (!writeup.isEmpty()) card.addView(label(writeup, 15, TEXT));
         JSONArray corrections = obj.optJSONArray("corrections");
         if (corrections != null) {
             for (int i = 0; i < corrections.length(); i++) {
                 JSONObject c = corrections.optJSONObject(i);
                 if (c == null) continue;
-                card.addView(label("• " + c.optString("start", "") + "  " + c.optString("quote", ""), 15, INK));
+                card.addView(label("• " + c.optString("start", "") + "  " + c.optString("quote", ""), 15, TEXT));
                 if (!c.optString("correcting", "").isEmpty()) {
                     card.addView(label("  → " + c.optString("correcting", ""), 14, DIM));
                 }
@@ -1190,6 +1221,11 @@ public class MainActivity extends Activity {
     private void startCloudUpload(final File f) {
         if (!cloudEnabledCfg()) { Toast.makeText(this, "Turn Cloud on first.", Toast.LENGTH_SHORT).show(); return; }
         final String name = f.getName();
+        if (!canUpload()) {
+            cloudFailed(name, null, "Cloud credentials missing — add the signer token in Cloud settings.");
+            Toast.makeText(this, "Signer token missing — add it in Cloud settings.", Toast.LENGTH_LONG).show();
+            return;
+        }
         synchronized (cloudInFlight) { if (!cloudInFlight.add(name)) return; }
         JSONObject link = cloudLink(name);
         final String savedUrl = link == null ? null : link.optString("uploadUrl", null);
@@ -1247,7 +1283,11 @@ public class MainActivity extends Activity {
 
     private void cloudFailed(final String name, String videoId, final String message) {
         setCloudLink(name, "failed", videoId, null, null, -1);
+        final boolean auth = message != null
+                && (message.contains("(401)") || message.contains("(403)")
+                    || message.contains("credentials missing"));
         runOnUiThread(new Runnable() { @Override public void run() {
+            if (auth) Toast.makeText(MainActivity.this, "Signer refused — check the token in Cloud settings.", Toast.LENGTH_LONG).show();
             refreshClipList();
         } });
     }

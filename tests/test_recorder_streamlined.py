@@ -6,6 +6,7 @@ sync. The pipeline takes the largest media file as the lesson, so every
 take is named unwritten_lesson_<timestamp>.<ext>.
 """
 import os
+import re
 import unittest
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -60,12 +61,13 @@ class WebRecorderTests(unittest.TestCase):
         self.assertIn("Recorder", manifest)
 
     def test_hub_link_back_to_site(self):
-        # The recorder doubles as the site's recorder page: a Hub link
-        # appears only when the hub answers next door, so standalone
-        # serving never shows a dead link.
+        # The recorder doubles as the site's recorder page: the Hub nav
+        # is always visible, naming the standalone state instead of
+        # hiding, and swaps in the link when the hub answers next door.
         for token in ['id="hubnav"', 'href="../"', '"../index.html"',
-                      "HEAD"]:
+                      "HEAD", "no Hub next door"]:
             self.assertIn(token, self.html, token)
+        self.assertNotIn('id="hubnav" class="hidden"', self.html)
 
 
 class AndroidRecorderTests(unittest.TestCase):
@@ -123,6 +125,39 @@ class AndroidRecorderTests(unittest.TestCase):
                       "shareHubSession", "confirmDeleteHub",
                       "deleteHubSession", "Hub sessions"]:
             self.assertIn(token, self.main, token)
+
+    def test_hub_section_always_visible_with_reason(self):
+        # The Hub header renders regardless of Cloud state; the body
+        # names the reason (Cloud off, missing signer token, server
+        # not switched on, load failure, or simply empty) instead of
+        # hiding the section.
+        for token in ["hubStatusText",
+                      "add the signer URL and token in Cloud settings",
+                      "Signer refused the token",
+                      "isn't switched on at the server yet",
+                      "Hub couldn't load"]:
+            self.assertIn(token, self.main, token)
+
+    def test_upload_fails_fast_without_credentials(self):
+        # Fresh installs (Cloud on, no token yet) must not fire doomed
+        # uploads that can only 401: canUpload gates the attempt, and
+        # 401/403 failures name the token instead of staying silent.
+        for token in ["canUpload", "Cloud credentials missing",
+                      "Signer refused"]:
+            self.assertIn(token, self.main, token)
+
+    def test_hub_code_uses_defined_symbols_only(self):
+        # First real build (Oct 30): javac failed because hub code used
+        # INK (an iOS name — Android's identical constant is TEXT) and
+        # HubClient declared get(String) twice (public JSONObject vs
+        # private String), which also broke the JSONObject(String) call
+        # sites. Guard the fixed shape.
+        self.assertNotRegex(self.main, r"\bINK\b")
+        hub = read(HUB)
+        decls = re.findall(
+            r"(?:public|private|protected)\s+[\w<>\[\]]+\s+get\s*\(", hub)
+        self.assertEqual(len(decls), 1, decls)
+        self.assertIn("getRaw(", hub)
 
 
 class Pixel4BaselineTests(unittest.TestCase):

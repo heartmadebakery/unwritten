@@ -334,6 +334,11 @@ final class SessionStore: ObservableObject {
             status = "Turn Cloud on first."
             return
         }
+        guard cloud.canUpload() else {
+            cloudFailed(name, videoId: nil,
+                        message: "Cloud credentials missing — add the signer token in Cloud settings.")
+            return
+        }
         guard !inFlight.contains(name) else { return }
         guard let fileURL = url(for: name) else {
             status = "That session file is missing from this device."
@@ -407,7 +412,12 @@ final class SessionStore: ObservableObject {
     private func cloudFailed(_ name: String, videoId: String?, message: String) {
         cloud.setCloudLink(name, state: "failed", videoId: videoId,
                            libraryId: nil, uploadUrl: nil, progress: -1)
-        status = "☁️ Cloud upload didn't finish (\(message)) The session is safe on this device — tap ! on the session when the connection is better."
+        if message.contains("(401)") || message.contains("(403)")
+            || message.contains("credentials missing") {
+            status = "☁️ Signer refused the upload — check the token in Cloud settings. The session is safe on this device; tap ! on the session to retry."
+        } else {
+            status = "☁️ Cloud upload didn't finish (\(message)) The session is safe on this device — tap ! on the session when the connection is better."
+        }
         refresh()
     }
 
@@ -515,8 +525,24 @@ final class SessionStore: ObservableObject {
         return req
     }
 
-    /// Published lessons, newest first. Silent when the hub is not
-    /// configured; a notice when it is configured but unreachable.
+    /// Always-visible Hub section text: the reason when the hub cannot
+    /// show rows, "" when rows are showing. The section header renders
+    /// regardless; this keeps a missing token or a dead server visible
+    /// instead of looking like a missing feature.
+    func hubStatusText() -> String {
+        if !cloud.enabled {
+            return "Hub lives on the signer — turn Cloud on to see published lessons."
+        }
+        if !hubAvailable() {
+            return "Hub lives on the signer — add the signer URL and token in Cloud settings."
+        }
+        return hubNotice.isEmpty
+            ? "No published sessions yet — run the pipeline's publish step."
+            : hubNotice
+    }
+
+    /// Published lessons, newest first. Unconfigured hubs keep the
+    /// last rows but the status text explains why nothing new loads.
     func loadHub() {
         guard hubAvailable(), let req = hubRequest("/hub/sessions") else {
             hubRows = []
@@ -525,22 +551,28 @@ final class SessionStore: ObservableObject {
             return
         }
         Task { [weak self] in
+            var failedStatus = 0
             do {
                 let (data, resp) = try await URLSession.shared.data(for: req)
-                guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                failedStatus = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                guard failedStatus == 200 else {
                     throw CloudError.message("hub unavailable")
                 }
                 let rows = try JSONDecoder().decode([HubSession].self, from: data)
                 self?.hubRows = rows
-                self?.hubNotice = rows.isEmpty
-                    ? "No published sessions yet — run the pipeline's publish step."
-                    : ""
+                self?.hubNotice = ""
                 if let detail = self?.hubDetail,
                    !rows.contains(where: { $0.videoId == detail.videoId }) {
                     self?.hubDetail = nil
                 }
             } catch {
-                self?.hubNotice = "Hub couldn't load — check the connection and Cloud settings."
+                if failedStatus == 401 || failedStatus == 403 {
+                    self?.hubNotice = "Signer refused the token — check it in Cloud settings."
+                } else if failedStatus == 503 {
+                    self?.hubNotice = "Hub isn't switched on at the server yet."
+                } else {
+                    self?.hubNotice = "Hub couldn't load — check the connection and Cloud settings."
+                }
             }
         }
     }

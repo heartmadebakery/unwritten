@@ -82,7 +82,7 @@
   .rstat{color:var(--dim);font-size:13px;min-width:40px;text-align:center;}
   .sempty{color:var(--dim);font-size:15px;padding:7px 0;}
   .note{color:var(--dim);font-size:14px;line-height:1.5;margin-top:14px;}
-  #hubnav{margin:0 0 4px;}
+  #hubnav{margin:0 0 4px;color:var(--dim);font-size:15px;}
   #hubnav a{color:var(--dim);font-size:15px;text-decoration:none;}
   #caps{color:var(--dim);font-size:13px;line-height:1.55;}
   @media (min-width:700px){
@@ -96,7 +96,7 @@
     <h1>Unwritten Craft</h1>
     <p class="sub">Film mentor session. Record and let it happen.</p>
   </header>
-  <p id="hubnav" class="hidden"><a href="../">‹ Hub</a></p>
+  <p id="hubnav">‹ Hub — standalone copy, no Hub next door.</p>
   <div id="stage">
     <video id="view" autoplay playsinline muted></video>
     <video id="player" class="hidden" playsinline preload="metadata"></video>
@@ -927,12 +927,13 @@ document.addEventListener("visibilitychange", function(){
   if(document.hidden && state.recording) stopRec();
   if(!document.hidden) wakeLock();
 });
-/* Hub link: this page doubles as the recorder inside the site
-   (<site>/recorder/). Served standalone it has no hub, so the link
-   only appears when the hub page answers next door. */
+/* Hub nav: this page doubles as the recorder inside the site
+   (<site>/recorder/). Served standalone it has no hub next door,
+   so the nav names that instead of hiding; the link swaps in when
+   the hub page answers. */
 if(typeof fetch === "function"){
   fetch("../index.html", {method:"HEAD"}).then(function(r){
-    if(r && r.ok) $("hubnav").classList.remove("hidden");
+    if(r && r.ok) $("hubnav").innerHTML = '<a href="../">‹ Hub</a>';
   }).catch(function(){});
 }
 wakeLock(); idbRestore().then(function(){ cloudResumePending(); }); openCamera();

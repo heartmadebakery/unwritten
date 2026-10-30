@@ -6,6 +6,32 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-10-30
+
+### Changed
+- **Hub section is always visible, with the reason.** iOS hid the whole
+  Hub section until a signer URL and token were set, so a missing token
+  looked like a missing feature; the web recorder likewise hid its Hub
+  nav. All three now render Hub unconditionally: the header always
+  shows, and the body names the state — Cloud off, signer URL/token
+  missing, server not switched on (503), token refused (401/403), load
+  failure, or simply no published sessions yet.
+
+### Fixed
+- **Uploads no longer fire doomed 401s without credentials.** Fresh
+  installs (Cloud on by default, no token yet) attempted every upload
+  and failed with "signer refused", misdiagnosed as a connection
+  problem. Both apps now fail fast (`canUpload`) with a "check the
+  token in Cloud settings" message, and 401/403 failures name the
+  token instead of the connection. Same behavior on iOS and Android.
+- **Android hub build break.** The hub commit never compiled: `MainActivity`
+  used `INK` (an iOS name — Android's identical `#F5EAD6` constant is `TEXT`)
+  and `HubClient` declared `get(String)` twice. Fixed on the first real
+  device-toolchain build (`app/android/build.sh`: JDK 17 + SDK 34 + NDK
+  26.1.10909125) and guarded by
+  `test_hub_code_uses_defined_symbols_only`. Prebuilt
+  `app/android/unwritten-recorder.apk` refreshed with the hub build.
+
 ## 2026-10-29
 
 ### Added

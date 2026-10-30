@@ -36,13 +36,13 @@ public class HubClient {
 
     /** Published sessions, newest first. */
     public JSONArray list() throws Exception {
-        return new JSONArray(get("/hub/sessions"));
+        return new JSONArray(getRaw("/hub/sessions"));
     }
 
     /** One full session record (write-up, corrections, chapters, URLs). */
     public JSONObject get(String videoId) throws Exception {
         if (videoId == null || videoId.isEmpty()) throw new IOException("videoId required");
-        return new JSONObject(get("/hub/sessions/" + URLEncoder.encode(videoId, "UTF-8")));
+        return new JSONObject(getRaw("/hub/sessions/" + URLEncoder.encode(videoId, "UTF-8")));
     }
 
     /** Deletes a hub record. A missing record counts as gone. */
@@ -66,7 +66,7 @@ public class HubClient {
         }
     }
 
-    private String get(String path) throws Exception {
+    private String getRaw(String path) throws Exception {
         HttpURLConnection c = null;
         try {
             URL url = new URL(signerUrl + path);

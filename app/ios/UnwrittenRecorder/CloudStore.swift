@@ -72,6 +72,19 @@ final class CloudStore: @unchecked Sendable {
         return t.isEmpty ? CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT : t
     }
 
+    /// True when an upload could possibly succeed. Signer mode needs
+    /// its token — the URL always has a compiled default, so URL-alone
+    /// must not count — and direct mode needs library ID + API key.
+    /// Without this, fresh installs (Cloud on by default, no
+    /// credentials yet) fire doomed uploads that can only 401.
+    /// Uses the effective token so build-stamped tokens count, exactly
+    /// like hubAvailable.
+    func canUpload() -> Bool {
+        !effSignerToken().isEmpty
+            || (!libraryId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+    }
+
     func uploader() -> CloudUploader? {
         let up = CloudUploader(libraryId: libraryId, apiKey: apiKey,
                                signerUrl: effSignerUrl(), signerToken: effSignerToken())

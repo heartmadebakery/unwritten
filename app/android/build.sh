@@ -25,7 +25,13 @@ command -v javac >/dev/null || { echo "javac not found — set JAVA_HOME (JDK 17
 [ -f "$AJAR" ] || { echo "android.jar missing at $AJAR"; exit 1; }
 [ -d "$NDK" ] || { echo "NDK missing at $NDK"; exit 1; }
 CMAKE="$(command -v cmake || echo "$SDK/cmake/3.22.1/bin/cmake")"
-NINJA="$(command -v ninja || echo "$NDK/prebuilt/linux-x86_64/bin/ninja")"
+NINJA="$(command -v ninja || true)"
+if [ -z "$NINJA" ]; then
+  for host in linux-x86_64 darwin-x86_64; do
+    if [ -x "$NDK/prebuilt/$host/bin/ninja" ]; then NINJA="$NDK/prebuilt/$host/bin/ninja"; break; fi
+  done
+fi
+[ -n "$NINJA" ] || NINJA="$SDK/cmake/3.22.1/bin/ninja"
 [ -x "$CMAKE" ] || { echo "cmake not found"; exit 1; }
 
 rm -rf "$OUT"; mkdir -p "$OUT/gen" "$OUT/classes" "$OUT/dex" "$OUT/lib"

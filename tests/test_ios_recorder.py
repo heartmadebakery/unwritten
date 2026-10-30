@@ -118,6 +118,28 @@ class IOSRecorderTests(unittest.TestCase):
         for token in ["playHubSession", "hubDetailCard", '"Hub"']:
             self.assertIn(token, self.view, token)
 
+    def test_hub_section_always_visible_with_reason(self):
+        # The Hub header renders regardless of Cloud state; the body
+        # names the reason (Cloud off, missing signer token, server
+        # not switched on, load failure, or simply empty) instead of
+        # hiding the section.
+        self.assertNotIn("if store.hubAvailable()", self.view)
+        self.assertIn("hubStatusText()", self.view)
+        for token in ["hubStatusText",
+                      "add the signer URL and token in Cloud settings",
+                      "Signer refused the token",
+                      "isn't switched on at the server yet",
+                      "Hub couldn't load"]:
+            self.assertIn(token, self.store, token)
+
+    def test_upload_fails_fast_without_credentials(self):
+        # Fresh installs (Cloud on, no token yet) must not fire doomed
+        # uploads that can only 401: canUpload gates the attempt, and
+        # 401/403 failures name the token instead of the connection.
+        for token in ["canUpload", "Cloud credentials missing",
+                      "Signer refused the upload"]:
+            self.assertIn(token, self.store, token)
+
     def test_session_committed_before_start_running(self):
         # Real-device bug (Oct 29 shakeout): startRunning threw
         # NSGenericException because it ran between beginConfiguration
@@ -179,6 +201,12 @@ class IOSBaselineTests(unittest.TestCase):
         self.assertIn("restored after build", build)
         # The committed template carries no real token.
         self.assertIn('CLOUD_SIGNER_TOKEN_DEFAULT = ""', read(CONFIG))
+        # Device builds go through the same stamp (DEVELOPMENT_TEAM
+        # selects the signed device path); uwcore linkage is verified
+        # via the link list, which survives Debug symtab stripping.
+        self.assertIn("DEVELOPMENT_TEAM", build)
+        self.assertIn("LinkFileList", build)
+        self.assertIn("uwcore_luma", build)
 
 
 class CloudIOSTests(unittest.TestCase):
