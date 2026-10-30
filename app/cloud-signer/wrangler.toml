@@ -20,4 +20,4 @@ CORS_ORIGIN = "*"
 [[d1_databases]]
 binding = "DB"
 database_name = "unwritten-hub"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "264c37f7-44bf-4786-8741-33c183f5ea47"
