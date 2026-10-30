@@ -40,6 +40,8 @@ struct ContentView: View {
 
     @State private var showCloudPanel = false
     @State private var pendingDelete: String?
+    @State private var pendingHubDelete: HubSession?
+    @State private var playingHubId: String?
     @State private var zoomProgress: Double = 0
 
     @State private var signerUrl = ""
@@ -235,6 +237,49 @@ struct ContentView: View {
                     }
                 }
 
+                if store.hubAvailable() {
+                    Text("Hub")
+                        .font(.system(size: 17))
+                        .foregroundColor(DIM)
+                        .padding(.top, 14)
+                        .padding(.bottom, 4)
+                    if store.hubRows.isEmpty {
+                        Text(store.hubNotice.isEmpty ? "No published sessions yet." : store.hubNotice)
+                            .font(.system(size: 15))
+                            .foregroundColor(DIM)
+                            .padding(.vertical, 7)
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(store.hubRows) { row in
+                                HStack(spacing: 0) {
+                                    Text("☁")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(INK)
+                                        .frame(minWidth: 32)
+                                    Text((row.title ?? row.videoId) + (row.lessonDate.map { "  •  " + $0 } ?? ""))
+                                        .font(.system(size: 15))
+                                        .foregroundColor(INK)
+                                        .lineLimit(1)
+                                        .padding(.horizontal, 8)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text("›")
+                                        .font(.system(size: 20))
+                                        .foregroundColor(DIM)
+                                        .frame(width: 40, height: 36)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 6)
+                                .contentShape(Rectangle())
+                                .onTapGesture { store.openHubSession(row) }
+                                Divider().background(LINE)
+                            }
+                        }
+                    }
+                    if let detail = store.hubDetail {
+                        hubDetailCard(detail)
+                    }
+                }
+
                 Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it above; long-press it to delete it from the device and the cloud.")
                     .font(.system(size: 14))
                     .foregroundColor(DIM)
@@ -252,6 +297,10 @@ struct ContentView: View {
             engine.recordingFinishedHandler = { store.finishRecording(tempURL: $0) }
             engine.requestAccessAndConfigure()
             store.cloudResumePending()
+            store.loadHub()
+        }
+        .onChange(of: showCloudPanel) { _, shown in
+            if !shown { store.loadHub() }
         }
         .onChange(of: engine.isRecording) { _, recording in
             if recording {
@@ -287,6 +336,21 @@ struct ContentView: View {
         } message: {
             Text("Delete '\(pendingDelete ?? "")' from this phone and the cloud?")
         }
+        .alert("Delete hub session?", isPresented: Binding(
+            get: { pendingHubDelete != nil },
+            set: { if !$0 { pendingHubDelete = nil } }
+        )) {
+            Button("Delete", role: .destructive) {
+                if let session = pendingHubDelete {
+                    if playingHubId == session.videoId { stopLocalPlayback() }
+                    store.deleteHubSession(session)
+                }
+                pendingHubDelete = nil
+            }
+            Button("Keep", role: .cancel) { pendingHubDelete = nil }
+        } message: {
+            Text("Delete '\(pendingHubDelete?.title ?? "")' from the cloud and the hub?")
+        }
     }
 
     // ---------- recording ----------
@@ -308,6 +372,18 @@ struct ContentView: View {
 
     // ---------- in-viewfinder playback ----------
 
+    private func startPlayer(url: URL, label: String) {
+        if engine.isRecording { return }
+        stopLocalPlayback()
+        playingName = label
+        let p = AVPlayer(url: url)
+        player = p
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem,
+            queue: .main) { [self] _ in stopLocalPlayback() }
+        p.play()
+    }
+
     /// Tapping a session plays it inside the viewfinder with ▶ / ⏸ / ✕
     /// below it, like Android. Recording stops it.
     private func playInViewfinder(_ name: String) {
@@ -316,14 +392,20 @@ struct ContentView: View {
             return
         }
         if engine.isRecording { return }
-        stopLocalPlayback()
-        playingName = name
-        let p = AVPlayer(url: url)
-        player = p
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime, object: p.currentItem,
-            queue: .main) { [self] _ in stopLocalPlayback() }
-        p.play()
+        playingHubId = nil
+        startPlayer(url: url, label: name)
+    }
+
+    /// Hub sessions stream their Cloud copy through the same overlay.
+    private func playHubSession(_ session: HubSession) {
+        let str = (session.hlsUrl?.isEmpty == false) ? session.hlsUrl : session.mp4Url
+        guard let str, let url = URL(string: str) else {
+            store.status = "No playable stream on this hub session yet."
+            return
+        }
+        if engine.isRecording { return }
+        playingHubId = session.videoId
+        startPlayer(url: url, label: "hub:" + session.videoId)
     }
 
     private func stopLocalPlayback() {
@@ -334,6 +416,7 @@ struct ContentView: View {
         }
         player = nil
         playingName = nil
+        playingHubId = nil
     }
 
     // ---------- sessions ----------
@@ -492,6 +575,68 @@ struct ContentView: View {
     /// shareCloudLinkFor / the web's shareCloudLinkFor.
     private func shareCloudLinkFor(_ name: String) {
         store.shareCloudLinkFor(name)
+    }
+
+    // ---------- hub detail ----------
+
+    private func hubDetailCard(_ detail: HubSession) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Text(detail.title ?? detail.videoId)
+                    .font(.system(size: 17))
+                    .foregroundColor(INK)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("✕") {
+                    if playingHubId == detail.videoId { stopLocalPlayback() }
+                    store.closeHubSession()
+                }
+                .font(.system(size: 15))
+                .foregroundColor(DIM)
+                .frame(width: 36, height: 32)
+            }
+            Text(detail.lessonDate ?? "")
+                .font(.system(size: 14))
+                .foregroundColor(DIM)
+                .padding(.bottom, 6)
+            HStack(spacing: 8) {
+                playerButton("▶ Play") { playHubSession(detail) }
+                playerButton("↗") { store.shareHubSession(detail) }
+                playerButton("🗑") { pendingHubDelete = detail }
+            }
+            .padding(.bottom, 8)
+            if let writeup = detail.writeupMd, !writeup.isEmpty {
+                Text(writeup)
+                    .font(.system(size: 15))
+                    .foregroundColor(INK)
+                    .lineSpacing(3)
+                    .padding(.bottom, 8)
+            }
+            ForEach(Array((detail.corrections ?? []).enumerated()), id: \.offset) { _, c in
+                Text("• \(c.start ?? "")  \(c.quote ?? "")")
+                    .font(.system(size: 15))
+                    .foregroundColor(INK)
+                    .lineSpacing(3)
+                if let fix = c.correcting, !fix.isEmpty {
+                    Text("  → \(fix)")
+                        .font(.system(size: 14))
+                        .foregroundColor(DIM)
+                        .lineSpacing(3)
+                }
+            }
+            .padding(.bottom, 4)
+            ForEach(Array((detail.chapters ?? []).enumerated()), id: \.offset) { _, ch in
+                Text("§ \(ch.start ?? "")  \(ch.label ?? "")")
+                    .font(.system(size: 14))
+                    .foregroundColor(DIM)
+                    .lineSpacing(3)
+            }
+        }
+        .padding(14)
+        .background(PANEL)
+        .cornerRadius(4)
+        .overlay(RoundedRectangle(cornerRadius: 4).stroke(LINE, lineWidth: 1))
+        .padding(.top, 8)
     }
 }
 

@@ -112,6 +112,22 @@ struct CloudUploader {
 
     // ---------- delete + status ----------
 
+    /// Deletes a hub record. 404 counts as gone. Signer only — the
+    /// hub lives on the signer, so direct mode has no hub at all.
+    func deleteHubRecord(_ videoId: String) async throws {
+        guard !useDirect() else { return }
+        let encoded = videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoId
+        var req = URLRequest(url: URL(string: signerUrl + "/hub/sessions/" + encoded)!)
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if status != 200 && status != 204 && status != 404 {
+            throw CloudError.message("Hub delete failed (\(status))")
+        }
+    }
+
     /// Deletes the cloud copy. Throws on failure.
     func deleteVideo(_ videoId: String) async throws {
         let status: Int

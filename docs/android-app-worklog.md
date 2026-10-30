@@ -20,6 +20,16 @@ HEAD was `b4f70b7`.
 - Not rebuilt here (no Android SDK on this machine); covered by
   `test_recorder_streamlined.py` contract tests only.
 
+## Update — 2026-10-29: in-app hub
+
+- A Hub section lists published sessions from the signer store
+  (`HubClient`: list/get/delete), with inline detail (write-up,
+  corrections, chapters), mp4 playback in the viewfinder (browser
+  fallback for embed-only sessions), share, and cloud-first delete
+  (video first, then the hub record).
+- Switch-on checklist lives in the iOS worklog ("Still to do (hub
+  switch-on)"); same backend serves both apps.
+
 ## Update — 2026-10-28: base device is now the Pixel 4
 
 Owner's order, Oct 28: **the base device is the Google Pixel 4; the

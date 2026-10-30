@@ -17,6 +17,8 @@ NAMES = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                      "org", "tinio", "unwritten", "Names.java")
 ENGINE = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                       "org", "tinio", "unwritten", "CameraEngine.java")
+HUB = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
+                   "org", "tinio", "unwritten", "HubClient.java")
 PREFS = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                      "org", "tinio", "unwritten", "Prefs.java")
 
@@ -111,6 +113,16 @@ class AndroidRecorderTests(unittest.TestCase):
         for token in ["switchCamera", "isFront", "preferredFacing"]:
             self.assertIn(token, engine, token)
         self.assertIn("Back camera", self.main)
+
+    def test_hub_lists_detail_plays_and_deletes(self):
+        self.assertIn("class HubClient", read(HUB))
+        for token in ["/hub/sessions", "X-Signer-Token"]:
+            self.assertIn(token, read(HUB), token)
+        for token in ["hubContainer", "hubRows", "hubDetail", "loadHub",
+                      "openHubSession", "hubEmbedUrl", "playHubRemote",
+                      "shareHubSession", "confirmDeleteHub",
+                      "deleteHubSession", "Hub sessions"]:
+            self.assertIn(token, self.main, token)
 
 
 class Pixel4BaselineTests(unittest.TestCase):

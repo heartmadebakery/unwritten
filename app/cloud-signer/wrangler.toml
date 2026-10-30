@@ -12,3 +12,12 @@ CORS_ORIGIN = "*"
 # Secrets — set with wrangler, never commit real values:
 #   npx wrangler secret put CLOUD_API_KEY
 #   paste -sd, tokens.txt | npx wrangler secret put SIGNER_TOKENS
+
+# Hub store (D1, SQLite) behind the in-app hub. Create once, then fill
+# in the real database_id it prints:
+#   npx wrangler d1 create unwritten-hub
+#   npx wrangler d1 execute unwritten-hub --file migrations/0001_sessions.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "unwritten-hub"
+database_id = "00000000-0000-0000-0000-000000000000"

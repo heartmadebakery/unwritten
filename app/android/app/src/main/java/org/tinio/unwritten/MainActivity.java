@@ -31,6 +31,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.widget.SeekBar;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -86,6 +87,9 @@ public class MainActivity extends Activity {
     private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
     private Button cloudToggleButton, exportBtn, camToggle;
     private TextView zoomLabel, micWarn, speechWarn;
+    private LinearLayout hubContainer;
+    private JSONArray hubRows = new JSONArray();
+    private JSONObject hubDetail;
     private SeekBar zoomSeek;
     private long speechQuietSince;
     private File lastLessonFile;
@@ -276,6 +280,15 @@ public class MainActivity extends Activity {
         lessonContainer.setOrientation(LinearLayout.VERTICAL);
         lessonContainer.setBackgroundColor(BG);
         l.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Hub: published lessons, same stories as the web hub. The hub
+        // lives on the signer, so this section only fills when a signer
+        // URL and token are configured and Cloud is on.
+        l.addView(label("Hub sessions", 17, DIM));
+        hubContainer = new LinearLayout(MainActivity.this);
+        hubContainer.setOrientation(LinearLayout.VERTICAL);
+        hubContainer.setBackgroundColor(BG);
+        l.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         ScrollView sv = new ScrollView(MainActivity.this); sv.setBackgroundColor(BG); sv.addView(l);
         setContentView(sv);
@@ -706,6 +719,7 @@ public class MainActivity extends Activity {
         boolean on = cloudEnabledCfg();
         if (exportBtn != null) exportBtn.setVisibility(on ? View.GONE : View.VISIBLE);
         refreshClipList();
+        loadHub();
     }
 
     private void paintCloudToggle() {
@@ -803,6 +817,270 @@ public class MainActivity extends Activity {
         share.putExtra(Intent.EXTRA_SUBJECT, name);
         share.putExtra(Intent.EXTRA_TEXT, url);
         startActivity(Intent.createChooser(share, "Share session link"));
+    }
+
+    // ---------- hub: published lessons, same stories as the web hub ----------
+
+    private boolean hubAvailable() {
+        return cloudEnabledCfg() && HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken());
+    }
+
+    private void loadHub() {
+        if (!hubAvailable()) {
+            hubRows = new JSONArray();
+            hubDetail = null;
+            runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
+            return;
+        }
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                HubClient hub = new HubClient(cloudEffSignerUrl(), cloudEffSignerToken());
+                hubRows = hub.list();
+                if (hubDetail != null) {
+                    boolean stillThere = false;
+                    String cur = hubDetail.optString("videoId", "");
+                    for (int i = 0; i < hubRows.length(); i++) {
+                        if (cur.equals(hubRows.optJSONObject(i).optString("videoId", ""))) { stillThere = true; break; }
+                    }
+                    if (!stillThere) hubDetail = null;
+                }
+                runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
+            } catch (final Exception e) {
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    Toast.makeText(MainActivity.this, "Hub couldn't load — check the connection and Cloud settings.", Toast.LENGTH_LONG).show();
+                } });
+            }
+        } });
+    }
+
+    private void refreshHubRows() {
+        if (hubContainer == null) return;
+        hubContainer.removeAllViews();
+        if (hubDetail != null) hubContainer.addView(hubDetailView(hubDetail));
+        if (hubRows == null || hubRows.length() == 0) {
+            TextView empty = label(hubAvailable() ? "No published sessions yet — run the pipeline's publish step." : "Hub lives on the signer: turn Cloud on to see published lessons.", 15, DIM);
+            empty.setPadding(dp(6), dp(7), dp(6), dp(7));
+            hubContainer.addView(empty);
+            return;
+        }
+        for (int i = 0; i < hubRows.length(); i++) {
+            final JSONObject row = hubRows.optJSONObject(i);
+            if (row == null) continue;
+            LinearLayout r = new LinearLayout(this);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            r.setPadding(dp(6), dp(8), dp(6), dp(8));
+            TextView left = label("☁", 16, INK);
+            left.setMinWidth(dp(32));
+            r.addView(left);
+            String title = row.optString("title", row.optString("videoId", ""));
+            String date = row.optString("lessonDate", "");
+            TextView mid = label(title + (date.isEmpty() ? "" : "  •  " + date), 15, INK);
+            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            mid.setLayoutParams(mp);
+            mid.setPadding(dp(8), 0, dp(8), 0);
+            mid.setSingleLine(true);
+            mid.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            r.addView(mid);
+            TextView go = label("›", 20, DIM);
+            go.setMinWidth(dp(40));
+            go.setGravity(Gravity.CENTER);
+            r.addView(go);
+            r.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { openHubSession(row.optString("videoId", "")); } });
+            hubContainer.addView(r);
+        }
+    }
+
+    private void openHubSession(final String videoId) {
+        if (videoId == null || videoId.isEmpty() || !hubAvailable()) return;
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                HubClient hub = new HubClient(cloudEffSignerUrl(), cloudEffSignerToken());
+                hubDetail = hub.get(videoId);
+                runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
+            } catch (final Exception e) {
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    Toast.makeText(MainActivity.this, "Couldn't open that hub session — check the connection.", Toast.LENGTH_LONG).show();
+                } });
+            }
+        } });
+    }
+
+    private Button smallHubButton(String text) {
+        Button b = button(text);
+        try { b.setTextSize(14); } catch (Throwable ignored) {}
+        b.setTextColor(INK);
+        b.setBackgroundColor(PANEL);
+        try { b.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        return b;
+    }
+
+    private View hubDetailView(final JSONObject obj) {
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackgroundColor(PANEL);
+        card.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        TextView t = label(obj.optString("title", obj.optString("videoId", "")), 17, INK);
+        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        t.setLayoutParams(tp);
+        top.addView(t);
+        Button close = smallHubButton("✕");
+        close.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+            hubDetail = null;
+            if (isViewfinderPlaying) stopLocalPlayback();
+            refreshHubRows();
+        } });
+        top.addView(close);
+        card.addView(top);
+        card.addView(label(obj.optString("lessonDate", ""), 14, DIM));
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        Button play = smallHubButton("▶ Play");
+        play.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { playHubRemote(obj); } });
+        Button share = smallHubButton("↗");
+        share.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareHubSession(obj); } });
+        Button del = smallHubButton("🗑");
+        del.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+            confirmDeleteHub(obj.optString("title", obj.optString("videoId", "")), obj.optString("videoId", ""));
+        } });
+        actions.addView(play);
+        actions.addView(share);
+        actions.addView(del);
+        card.addView(actions);
+        String writeup = obj.optString("writeupMd", "");
+        if (!writeup.isEmpty()) card.addView(label(writeup, 15, INK));
+        JSONArray corrections = obj.optJSONArray("corrections");
+        if (corrections != null) {
+            for (int i = 0; i < corrections.length(); i++) {
+                JSONObject c = corrections.optJSONObject(i);
+                if (c == null) continue;
+                card.addView(label("• " + c.optString("start", "") + "  " + c.optString("quote", ""), 15, INK));
+                if (!c.optString("correcting", "").isEmpty()) {
+                    card.addView(label("  → " + c.optString("correcting", ""), 14, DIM));
+                }
+            }
+        }
+        JSONArray chapters = obj.optJSONArray("chapters");
+        if (chapters != null) {
+            for (int i = 0; i < chapters.length(); i++) {
+                JSONObject c = chapters.optJSONObject(i);
+                if (c == null) continue;
+                card.addView(label("§ " + c.optString("start", "") + "  " + c.optString("label", ""), 14, DIM));
+            }
+        }
+        return card;
+    }
+
+    private String hubEmbedUrl(JSONObject obj) {
+        if (obj == null) return null;
+        String vid = obj.optString("videoId", "");
+        if (vid == null || vid.isEmpty()) return null;
+        String lib = obj.optString("libraryId", "");
+        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
+        if (lib == null || lib.isEmpty()) return null;
+        return "https://player.mediadelivery.net/embed/" + lib + "/" + vid;
+    }
+
+    private void shareHubSession(JSONObject obj) {
+        String url = hubEmbedUrl(obj);
+        if (url == null) {
+            Toast.makeText(this, "No Cloud link yet for this session.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent share = new Intent(Intent.ACTION_SEND);
+        share.setType("text/plain");
+        share.putExtra(Intent.EXTRA_SUBJECT, obj.optString("title", "hub session"));
+        share.putExtra(Intent.EXTRA_TEXT, url);
+        startActivity(Intent.createChooser(share, "Share session link"));
+    }
+
+    private void playHubRemote(final JSONObject obj) {
+        final String mp4 = obj.optString("mp4Url", "");
+        final String embed = hubEmbedUrl(obj);
+        if ((mp4 == null || mp4.isEmpty()) && (embed == null || embed.isEmpty())) {
+            Toast.makeText(this, "No playable stream on this hub session yet.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (engine != null && engine.isRecording()) return;
+        if (localPlayer == null || viewfinderBox == null || preview == null) {
+            openInBrowser(embed);
+            return;
+        }
+        try {
+            if (mp4 != null && !mp4.isEmpty()) {
+                preview.setVisibility(View.INVISIBLE);
+                localPlayer.setVisibility(View.VISIBLE);
+                if (playerControls != null) playerControls.setVisibility(View.VISIBLE);
+                isViewfinderPlaying = true;
+                localPlayer.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                    @Override public void onPrepared(android.media.MediaPlayer mp) { localPlayer.start(); }
+                });
+                localPlayer.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
+                    @Override public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
+                        openInBrowser(embed);
+                        return true;
+                    }
+                });
+                localPlayer.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                    @Override public void onCompletion(android.media.MediaPlayer mp) { stopLocalPlayback(); }
+                });
+                localPlayer.setVideoURI(Uri.parse(mp4));
+                localPlayer.requestFocus();
+            } else {
+                openInBrowser(embed);
+            }
+        } catch (Throwable e) {
+            Toast.makeText(this, "Playback failed (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openInBrowser(String url) {
+        if (url == null || url.isEmpty()) {
+            Toast.makeText(this, "No playable stream on this hub session yet.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Throwable e) {
+            Toast.makeText(this, "No app can open " + url, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void confirmDeleteHub(final String title, final String videoId) {
+        new AlertDialog.Builder(this)
+                .setTitle("Delete hub session?")
+                .setMessage("Delete '" + title + "' from the cloud and the hub?")
+                .setPositiveButton("Delete", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        deleteHubSession(videoId);
+                    }
+                })
+                .setNegativeButton("Keep", null)
+                .show();
+    }
+
+    private void deleteHubSession(final String videoId) {
+        if (videoId == null || videoId.isEmpty()) return;
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                CloudUploader up = cloudUploader();
+                if (up == null) throw new IOException("Cloud settings incomplete.");
+                up.deleteVideo(videoId);
+                new HubClient(cloudEffSignerUrl(), cloudEffSignerToken()).delete(videoId);
+            } catch (final Exception e) {
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    if (status != null) status.setText("☁ Couldn't delete the cloud copy (" + e.getMessage() + ")");
+                    Toast.makeText(MainActivity.this, "Cloud delete failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                } });
+                return;
+            }
+            if (hubDetail != null && videoId.equals(hubDetail.optString("videoId", ""))) hubDetail = null;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                loadHub();
+                Toast.makeText(MainActivity.this, "Session deleted from the hub and the cloud", Toast.LENGTH_SHORT).show();
+            } });
+        } });
     }
 
     private JSONObject cloudLinks() {

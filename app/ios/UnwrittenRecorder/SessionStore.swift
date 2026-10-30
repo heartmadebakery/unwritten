@@ -1,6 +1,37 @@
 import AVFoundation
 import UIKit
 
+/// One published lesson from the hub store (see pipeline/publish.py
+/// and app/cloud-signer). Video bytes stay in Stream; the write-up,
+/// corrections, chapters and playback URLs travel here.
+struct HubCorrection: Decodable {
+    var start: String?
+    var quote: String?
+    var correcting: String?
+    var segment: String?
+}
+
+struct HubChapter: Decodable {
+    var start: String?
+    var label: String?
+}
+
+struct HubSession: Decodable, Identifiable {
+    var videoId: String
+    var libraryId: String?
+    var title: String?
+    var lessonDate: String?
+    var publishedAt: Int64?
+    var hlsUrl: String?
+    var mp4Url: String?
+    var writeupMd: String?
+    var corrections: [HubCorrection]?
+    var chapters: [HubChapter]?
+    var glossary: [String: String]?
+
+    var id: String { videoId }
+}
+
 /// One row in the sessions list. Mirrors the Android session rows and
 /// the web recorder's clipHTML: left status icon, middle date + length,
 /// right share/download action.
@@ -259,6 +290,7 @@ final class SessionStore: ObservableObject {
         cloud.enabled.toggle()
         cloudOn = cloud.cloudEnabledCfg()
         refresh()
+        loadHub()
         status = cloud.cloudEnabledCfg()
             ? "☁️ Cloud on. New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
             : "☁️ Cloud off. Sessions stay on this device only. Export sessions below to move them."
@@ -459,6 +491,123 @@ final class SessionStore: ObservableObject {
             return
         }
         startCloudUpload(name)
+    }
+
+    // ---------- hub ----------
+
+    @Published var hubRows: [HubSession] = []
+    @Published var hubDetail: HubSession?
+    @Published var hubNotice: String = ""
+
+    /// The hub lives on the signer, so it needs a signer URL and token.
+    /// Direct (library-key) mode has no hub at all.
+    func hubAvailable() -> Bool {
+        !cloud.effSignerUrl().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !cloud.effSignerToken().isEmpty
+    }
+
+    private func hubRequest(_ path: String) -> URLRequest? {
+        guard hubAvailable() else { return nil }
+        guard let url = URL(string: cloud.effSignerUrl() + path) else { return nil }
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue(cloud.effSignerToken(), forHTTPHeaderField: "X-Signer-Token")
+        return req
+    }
+
+    /// Published lessons, newest first. Silent when the hub is not
+    /// configured; a notice when it is configured but unreachable.
+    func loadHub() {
+        guard hubAvailable(), let req = hubRequest("/hub/sessions") else {
+            hubRows = []
+            hubDetail = nil
+            hubNotice = ""
+            return
+        }
+        Task { [weak self] in
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw CloudError.message("hub unavailable")
+                }
+                let rows = try JSONDecoder().decode([HubSession].self, from: data)
+                self?.hubRows = rows
+                self?.hubNotice = rows.isEmpty
+                    ? "No published sessions yet — run the pipeline's publish step."
+                    : ""
+                if let detail = self?.hubDetail,
+                   !rows.contains(where: { $0.videoId == detail.videoId }) {
+                    self?.hubDetail = nil
+                }
+            } catch {
+                self?.hubNotice = "Hub couldn't load — check the connection and Cloud settings."
+            }
+        }
+    }
+
+    func openHubSession(_ row: HubSession) {
+        let encoded = row.videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? row.videoId
+        guard let req = hubRequest("/hub/sessions/" + encoded) else { return }
+        Task { [weak self] in
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else {
+                    throw CloudError.message("hub unavailable")
+                }
+                self?.hubDetail = try JSONDecoder().decode(HubSession.self, from: data)
+            } catch {
+                self?.status = "Couldn't open that hub session — check the connection."
+            }
+        }
+    }
+
+    func closeHubSession() {
+        hubDetail = nil
+    }
+
+    func hubEmbedUrl(_ session: HubSession) -> String? {
+        var lib = session.libraryId ?? ""
+        if lib.isEmpty { lib = cloud.libraryId }
+        if lib.isEmpty || session.videoId.isEmpty { return nil }
+        return "https://player.mediadelivery.net/embed/" + lib + "/" + session.videoId
+    }
+
+    /// Per-session hub share: the link is copied, then offered through
+    /// the share sheet — same as device sessions.
+    func shareHubSession(_ session: HubSession) {
+        guard let url = hubEmbedUrl(session) else {
+            status = "No Cloud link yet for this session."
+            return
+        }
+        UIPasteboard.general.string = url
+        presentShare(items: [url])
+    }
+
+    /// Hub delete is cloud-first like device delete: the Stream copy
+    /// goes first, then the hub record; a failure keeps everything.
+    func deleteHubSession(_ session: HubSession) {
+        let videoId = session.videoId
+        guard !videoId.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard let uploader = self.cloud.uploader() else {
+                    throw CloudError.message("Cloud settings incomplete.")
+                }
+                try await uploader.deleteVideo(videoId)
+                try await uploader.deleteHubRecord(videoId)
+            } catch {
+                let message: String
+                if case let CloudError.message(m) = error { message = m } else {
+                    message = error.localizedDescription
+                }
+                self.status = "☁️ Couldn't delete the cloud copy (\(message)) Keeping everything so nothing is lost."
+                return
+            }
+            if self.hubDetail?.videoId == videoId { self.hubDetail = nil }
+            self.loadHub()
+            self.status = "🗑 Session deleted from the hub and the cloud."
+        }
     }
 
     // ---------- share sheet ----------

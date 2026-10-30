@@ -109,6 +109,15 @@ class IOSRecorderTests(unittest.TestCase):
         self.assertIn("UWStartCaptureSession", read(BRIDGE_H))
         self.assertIn("@try", read(BRIDGE_MM))
 
+    def test_hub_lists_detail_plays_and_deletes(self):
+        for token in ["HubSession", "hubAvailable", "loadHub",
+                      "openHubSession", "hubDetail", "deleteHubSession",
+                      "shareHubSession"]:
+            self.assertIn(token, self.store, token)
+        self.assertIn("deleteHubRecord", read(UPLOADER))
+        for token in ["playHubSession", "hubDetailCard", '"Hub"']:
+            self.assertIn(token, self.view, token)
+
     def test_session_committed_before_start_running(self):
         # Real-device bug (Oct 29 shakeout): startRunning threw
         # NSGenericException because it ran between beginConfiguration

@@ -6,6 +6,17 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Still to do (hub switch-on)
+
+1. `npx wrangler d1 create unwritten-hub` → paste the id into
+   `wrangler.toml` → `npx wrangler d1 execute unwritten-hub --file
+   migrations/0001_sessions.sql` → redeploy.
+2. Publish a finished run (`pipeline/publish.py --work <dir>` with
+   Cloud + hub env vars) and confirm the Hub section appears.
+3. On device: streamed playback, share link, cloud-first hub delete,
+   resume after the token-rotation edge (empty template build).
+4. Android: first real build (no SDK on the build machine yet).
+
 ## Update — 2026-10-29: hub nav + quiet-minute mic check
 
 - Hub navigation: the web recorder (shared source) shows a ‹ Hub
@@ -15,6 +26,10 @@ the evidence, and the open items.
   measures capture RMS while recording, and a full quiet minute
   raises the same "Quiet for a while" banner as the web recorder
   (front/back toggle and red video-only banner already matched).
+- In-app hub: a Hub section lists published sessions from the
+  signer store, with detail (write-up, corrections, chapters), HLS
+  playback in the viewfinder overlay, share, and cloud-first delete
+  (video first, then the hub record).
 
 ## Update — 2026-10-29: recording works on a real iPhone
 

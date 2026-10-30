@@ -60,6 +60,14 @@ history (30 commits) and is maintained in the open from then on.
   video-only banner the web and iOS recorders already had. Tests in
   `test_recorder_streamlined.py`, `test_ios_recorder.py`,
   `test_site.py`; iOS device-build verified.
+- **The hub lives inside both apps now.** `pipeline/publish.py`
+  pushes finished runs (write-up, corrections, chapters, playback
+  URLs) to a D1-backed store on the cloud signer (`POST|GET|DELETE
+  /hub/sessions`, `node hub-check.mjs` exercises them against real
+  SQLite); the iOS and Android recorders gained a Hub section with
+  session detail, streamed playback, share, and cloud-first delete.
+  Signer-only — direct library-key mode has no hub. 13 worker
+  checks, 5 publish tests.
 - **iOS recorder commits its config before starting the camera.**
   `configureSession` called `startRunning` inside the
   `beginConfiguration`/`commitConfiguration` block, which throws
