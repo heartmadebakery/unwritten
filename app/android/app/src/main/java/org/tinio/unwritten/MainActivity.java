@@ -871,13 +871,16 @@ public class MainActivity extends Activity {
                 }
                 runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             } catch (final Exception e) {
+                android.util.Log.e("UnwrittenHub", "hub list failed", e);
                 final String msg = String.valueOf(e.getMessage());
                 if (msg.contains("(401)") || msg.contains("(403)")) {
                     hubNotice = "Signer refused the token — check it in Cloud settings.";
                 } else if (msg.contains("(503)")) {
                     hubNotice = "Hub isn't switched on at the server yet.";
                 } else {
-                    hubNotice = "Hub couldn't load — check the connection and Cloud settings.";
+                    // Surface cause for debugging — keep generic prefix
+                    String cause = msg.length() > 180 ? msg.substring(0, 180) : msg;
+                    hubNotice = "Hub couldn't load — check the connection and Cloud settings. (" + cause + ")";
                 }
                 runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             }
