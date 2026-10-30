@@ -9,14 +9,18 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-10-29
 
 ### Added
+- **Session-cleanup skill.** `.agents/skills/cleanup/` reclaims disk
+  by removing regenerable session artifacts (`~/uw-cloud`,
+  `/tmp/uw-*`, orphaned `$TMPDIR` debris, the Whisper model cache)
+  while keeping credentials, `.venv`, and anything of unknown
+  authorship. Validated with `muse skills validate`.
 - **Unwritten website generator.** `pipeline/make_site.py <work_root>
   <site_dir>` builds a static site with two sections: the web
   recorder app (copied in from the built `dist/`) and Sessions —
   every finished pipeline work dir rendered to a page via
   `make_page`, with poster, chapters, corrections, and clips
   carried along. Discovery is fully automatic (any dir with a
-  `writeup.md`, newest first). Its 5 tests in `tests/test_site.py`
-  land with the pending site-navigation change.
+  `writeup.md`, newest first). Its tests live in `tests/test_site.py`.
 - **Native iOS recorder.** `app/ios/` is a third recorder in full
   parity with the Android and web apps: one screen (viewfinder, zoom,
   record, Cloud toggle, export, sessions), same session rows (newest
