@@ -17,3 +17,5 @@ app/cloud-signer/.wrangler/
 app/recorder/dist/
 app/ios/build/
 run_cloud.sh
+.wrangler/
+work/
