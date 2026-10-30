@@ -9,6 +9,14 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-10-29
 
 ### Added
+- **Unwritten website generator.** `pipeline/make_site.py <work_root>
+  <site_dir>` builds a static site with two sections: the web
+  recorder app (copied in from the built `dist/`) and Sessions —
+  every finished pipeline work dir rendered to a page via
+  `make_page`, with poster, chapters, corrections, and clips
+  carried along. Discovery is fully automatic (any dir with a
+  `writeup.md`, newest first). Its 5 tests in `tests/test_site.py`
+  land with the pending site-navigation change.
 - **Native iOS recorder.** `app/ios/` is a third recorder in full
   parity with the Android and web apps: one screen (viewfinder, zoom,
   record, Cloud toggle, export, sessions), same session rows (newest
@@ -32,6 +40,15 @@ history (30 commits) and is maintained in the open from then on.
   environment; it requires the `openai` Python package.
 
 ### Changed
+- **Hub navigation and mic parity across all three recorders.**
+  Session pages link back to the hub list and over to the recorder,
+  and the web recorder shows a Hub link when served inside the site.
+  The quiet-minute mic check now exists everywhere (web analyser,
+  Android `getMaxAmplitude()`, iOS capture RMS with the same banner),
+  and Android gained the front/back camera toggle plus the red
+  video-only banner the web and iOS recorders already had. Tests in
+  `test_recorder_streamlined.py`, `test_ios_recorder.py`,
+  `test_site.py`; iOS device-build verified.
 - **iOS recorder commits its config before starting the camera.**
   `configureSession` called `startRunning` inside the
   `beginConfiguration`/`commitConfiguration` block, which throws
