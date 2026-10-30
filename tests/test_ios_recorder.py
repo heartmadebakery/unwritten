@@ -92,6 +92,13 @@ class IOSRecorderTests(unittest.TestCase):
         self.assertIn("micWarning", engine)
         self.assertIn("No microphone", self.view)
 
+    def test_live_mic_check_warns_after_quiet_minute(self):
+        engine = read(ENGINE)
+        for token in ["speechWarning", "AVCaptureAudioDataOutput",
+                      "captureRms", "60000"]:
+            self.assertIn(token, engine, token)
+        self.assertIn("Quiet for a while", self.view)
+
     def test_session_start_never_throws_on_camera_less_devices(self):
         # startRunning throws an uncatchable ObjC exception with no
         # inputs (simulator, camera-less device): the engine must guard

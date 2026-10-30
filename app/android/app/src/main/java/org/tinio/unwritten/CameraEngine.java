@@ -43,7 +43,12 @@ public final class CameraEngine {
 
     public interface LumaListener { void onLuma(double mean, double[] grid); }
     public interface PhotoListener { void onPhoto(byte[] jpeg); }
-    public interface ErrorListener { void onError(String message); }
+    public interface ErrorListener {
+        void onError(String message);
+        // The take is video-only (mic denied or unavailable) — the UI
+        // must say so out loud, like the web recorder's red banner.
+        void onMicUnavailable();
+    }
 
     private final Context appContext;
     private final ErrorListener errors;
@@ -63,6 +68,7 @@ public final class CameraEngine {
     private CameraCharacteristics characteristics;
     private String cameraId;
     private int lensFacing = CameraCharacteristics.LENS_FACING_BACK;
+    private volatile int preferredFacing = CameraCharacteristics.LENS_FACING_BACK;
     private int sensorOrientation;
     private CameraCaptureSession session;
     private Surface previewSurface;
@@ -111,6 +117,14 @@ public final class CameraEngine {
         ErrorListener l = errors;
         if (l != null) {
             try { l.onError(message); } catch (Throwable ignored) { }
+        }
+    }
+
+    private void reportMicUnavailable(String message) {
+        try { Log.w(TAG, message); } catch (Throwable ignored) { }
+        ErrorListener l = errors;
+        if (l != null) {
+            try { l.onMicUnavailable(); } catch (Throwable ignored) { }
         }
     }
 
@@ -261,6 +275,47 @@ public final class CameraEngine {
         return recording;
     }
 
+    public boolean isFront() {
+        return preferredFacing == CameraCharacteristics.LENS_FACING_FRONT;
+    }
+
+    // Switches front/back between takes, like the web recorder's camera
+    // toggle. Never interrupts a recording.
+    public void switchCamera() {
+        try {
+            if (recording || recorderStartPending || photoInProgress) {
+                reportError("Switch cameras between takes.");
+                return;
+            }
+            final int gen = generation;
+            if (handler() == null) { reportError("switchCamera: camera thread unavailable"); return; }
+            post(gen, new Runnable() {
+                @Override public void run() {
+                    try {
+                        preferredFacing = (preferredFacing == CameraCharacteristics.LENS_FACING_FRONT)
+                            ? CameraCharacteristics.LENS_FACING_BACK
+                            : CameraCharacteristics.LENS_FACING_FRONT;
+                        closeCameraOnly();
+                        openCameraLocked(gen);
+                    } catch (Throwable t) {
+                        reportError("switchCamera failed: " + t.getMessage());
+                    }
+                }
+            });
+        } catch (Throwable t) {
+            reportError("switchCamera failed: " + t.getMessage());
+        }
+    }
+
+    // Live mic level for the quiet-minute check: peak amplitude since
+    // the last call, 0..32767, or 0 when not recording. Never throws.
+    public int getMaxAmplitude() {
+        try {
+            if (recording && recorder != null) return recorder.getMaxAmplitude();
+        } catch (Throwable ignored) { }
+        return 0;
+    }
+
     public float getMaxZoom() { return maxDigitalZoom > 1.0f ? maxDigitalZoom : 1.0f; }
     public float getZoom() { return currentZoom; }
     public void setZoom(final float zoom) {
@@ -400,24 +455,38 @@ public final class CameraEngine {
         } catch (Throwable ignored) { }
         if (manager == null) { reportError("Camera service unavailable"); return; }
         try {
-            String chosen = null;
-            int chosenFacing = CameraCharacteristics.LENS_FACING_BACK;
+            String back = null;
             String front = null;
             String first = null;
-            CameraCharacteristics chosenChars = null, frontChars = null, firstChars = null;
+            CameraCharacteristics backChars = null, frontChars = null, firstChars = null;
             for (String id : manager.getCameraIdList()) {
                 CameraCharacteristics cc = manager.getCameraCharacteristics(id);
                 if (first == null) { first = id; firstChars = cc; }
                 Integer f = cc.get(CameraCharacteristics.LENS_FACING);
-                if (f != null && f == CameraCharacteristics.LENS_FACING_BACK) {
-                    chosen = id; chosenFacing = f; chosenChars = cc; break;
+                if (f != null && f == CameraCharacteristics.LENS_FACING_BACK && back == null) {
+                    back = id; backChars = cc;
                 }
                 if (f != null && f == CameraCharacteristics.LENS_FACING_FRONT && front == null) {
                     front = id; frontChars = cc;
                 }
             }
-            if (chosen == null && front != null) { chosen = front; chosenChars = frontChars; chosenFacing = CameraCharacteristics.LENS_FACING_FRONT; }
-            if (chosen == null) { chosen = first; chosenChars = firstChars; }
+            // The toggle's choice wins; otherwise the back camera, like before.
+            String chosen = null;
+            int chosenFacing = CameraCharacteristics.LENS_FACING_BACK;
+            CameraCharacteristics chosenChars = null;
+            if (preferredFacing == CameraCharacteristics.LENS_FACING_FRONT && front != null) {
+                chosen = front; chosenChars = frontChars; chosenFacing = CameraCharacteristics.LENS_FACING_FRONT;
+            } else if (preferredFacing == CameraCharacteristics.LENS_FACING_BACK && back != null) {
+                chosen = back; chosenChars = backChars; chosenFacing = CameraCharacteristics.LENS_FACING_BACK;
+            } else if (back != null) {
+                chosen = back; chosenChars = backChars; chosenFacing = CameraCharacteristics.LENS_FACING_BACK;
+            } else if (front != null) {
+                chosen = front; chosenChars = frontChars; chosenFacing = CameraCharacteristics.LENS_FACING_FRONT;
+            } else if (first != null) {
+                chosen = first; chosenChars = firstChars;
+                Integer f = firstChars != null ? firstChars.get(CameraCharacteristics.LENS_FACING) : null;
+                if (f != null) chosenFacing = f;
+            }
             if (chosen == null || chosenChars == null) { reportError("No camera found"); return; }
             cameraId = chosen;
             characteristics = chosenChars;
@@ -863,7 +932,7 @@ public final class CameraEngine {
         if (previewSurface == null) { reportError("startVideo: preview not ready"); return; }
 
         boolean audioOn = hasAudioPermission();
-        if (!audioOn) reportError("Audio permission missing; recording video-only");
+        if (!audioOn) reportMicUnavailable("Audio permission missing; recording video-only");
 
         MediaRecorder mr = new MediaRecorder();
         try {
@@ -873,7 +942,7 @@ public final class CameraEngine {
                     mr.setAudioSource(MediaRecorder.AudioSource.MIC);
                 } catch (Throwable t) {
                     audioOn = false;
-                    reportError("Audio source unavailable; recording video-only");
+                    reportMicUnavailable("Audio source unavailable; recording video-only");
                     // Recreate so a half-configured recorder cannot poison the take.
                     try { mr.reset(); } catch (Throwable ignored) { }
                     try { mr.release(); } catch (Throwable ignored) { }

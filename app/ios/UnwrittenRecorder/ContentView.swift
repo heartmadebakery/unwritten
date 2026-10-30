@@ -111,6 +111,19 @@ struct ContentView: View {
                         .background(UWB_RED)
                 }
 
+                // Quiet-minute check, mirroring the web recorder: a full
+                // quiet minute raises this banner; speech clears it.
+                if engine.speechWarning {
+                    Text("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.")
+                        .font(.system(size: 15))
+                        .foregroundColor(INK)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(PANEL)
+                        .cornerRadius(4)
+                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(BRIGHT, lineWidth: 1))
+                }
+
                 // Zoom directly below the viewfinder. Hidden when the
                 // camera reports no zoom range, so it is never dead UI.
                 if engine.maxZoom > 1.01 {

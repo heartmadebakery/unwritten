@@ -6,6 +6,16 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Update — 2026-10-29: hub nav + quiet-minute mic check
+
+- Hub navigation: the web recorder (shared source) shows a ‹ Hub
+  link when served inside the site; session pages link back to the
+  hub and over to the recorder.
+- Parity: this app gained the quiet-minute mic check — an audio tap
+  measures capture RMS while recording, and a full quiet minute
+  raises the same "Quiet for a while" banner as the web recorder
+  (front/back toggle and red video-only banner already matched).
+
 ## Update — 2026-10-29: recording works on a real iPhone
 
 The diagnostic build's console said it plainly:

@@ -101,8 +101,11 @@ video{{max-width:100%;border-radius:10px}} li{{margin:7px 0}}
 img{{max-width:100%;border-radius:10px}}
 blockquote{{border-left:3px solid #e8a13a;margin-left:0;padding-left:14px;
 font-style:italic}}
-footer{{color:#b8a888;margin-top:40px;font-style:italic}}</style></head>
+footer{{color:#b8a888;margin-top:40px;font-style:italic}}
+.nav{{margin:0 0 6px}}.nav a{{color:#b8a888}}</style></head>
 <body>
+<p class="nav"><a href="../../">‹ All sessions</a> ·
+<a href="../../recorder/">Record a lesson ›</a></p>
 <h1>{esc(args.title)}</h1>
 <p><em>Film a lesson. Keep the corrections.</em></p>
 {poster_block}

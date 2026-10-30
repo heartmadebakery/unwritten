@@ -15,6 +15,8 @@ MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                     "org", "tinio", "unwritten", "MainActivity.java")
 NAMES = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                      "org", "tinio", "unwritten", "Names.java")
+ENGINE = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
+                      "org", "tinio", "unwritten", "CameraEngine.java")
 PREFS = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                      "org", "tinio", "unwritten", "Prefs.java")
 
@@ -55,6 +57,14 @@ class WebRecorderTests(unittest.TestCase):
         self.assertNotIn("Apprentice", manifest)
         self.assertIn("Recorder", manifest)
 
+    def test_hub_link_back_to_site(self):
+        # The recorder doubles as the site's recorder page: a Hub link
+        # appears only when the hub answers next door, so standalone
+        # serving never shows a dead link.
+        for token in ['id="hubnav"', 'href="../"', '"../index.html"',
+                      "HEAD"]:
+            self.assertIn(token, self.html, token)
+
 
 class AndroidRecorderTests(unittest.TestCase):
     @classmethod
@@ -83,6 +93,24 @@ class AndroidRecorderTests(unittest.TestCase):
     def test_prefs_class_is_gone(self):
         self.assertFalse(os.path.exists(PREFS),
                          "Prefs only stored role/code/step/apprentice line")
+
+    def test_live_mic_check_warns_after_quiet_minute(self):
+        self.assertIn("getMaxAmplitude", read(ENGINE))
+        for token in ["speechRunnable", "speechQuietSince", "speechWarn",
+                      "60000", "Quiet for a while"]:
+            self.assertIn(token, self.main, token)
+
+    def test_mic_denied_warns_out_loud(self):
+        # Video-only takes must never be silent about being silent.
+        self.assertIn("onMicUnavailable", read(ENGINE))
+        for token in ["onMicUnavailable", "micWarn", "No microphone"]:
+            self.assertIn(token, self.main, token)
+
+    def test_camera_toggle_between_takes(self):
+        engine = read(ENGINE)
+        for token in ["switchCamera", "isFront", "preferredFacing"]:
+            self.assertIn(token, engine, token)
+        self.assertIn("Back camera", self.main)
 
 
 class Pixel4BaselineTests(unittest.TestCase):

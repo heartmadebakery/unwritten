@@ -84,9 +84,10 @@ public class MainActivity extends Activity {
     // Cloud streaming (on by default, prefilled at build time): per-lesson link state.
     private static final String CLOUD_PREFS = "unwritten_cloud";
     private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
-    private Button cloudToggleButton, exportBtn;
-    private TextView zoomLabel;
+    private Button cloudToggleButton, exportBtn, camToggle;
+    private TextView zoomLabel, micWarn, speechWarn;
     private SeekBar zoomSeek;
+    private long speechQuietSince;
     private File lastLessonFile;
     private final ExecutorService cloudExec = Executors.newCachedThreadPool();
     private final Set<String> cloudInFlight = new HashSet<String>();
@@ -198,6 +199,16 @@ public class MainActivity extends Activity {
         viewfinderBox.addView(playerControls, ctrlLp);
         l.addView(viewfinderBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // Warning banners directly below the stage, like the web recorder.
+        micWarn = label("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings to re-enable it.", 15, 0xFFFFFFFF);
+        micWarn.setBackgroundColor(RED);
+        micWarn.setVisibility(View.GONE);
+        l.addView(micWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        speechWarn = label("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, INK);
+        speechWarn.setBackgroundColor(PANEL);
+        speechWarn.setVisibility(View.GONE);
+        l.addView(speechWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         // Zoom directly below viewfinder
         LinearLayout zoomRow = new LinearLayout(this);
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -249,6 +260,16 @@ public class MainActivity extends Activity {
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         l.addView(exportBtn);
 
+        camToggle = button(engine != null && engine.isFront() ? "🤳 Front camera" : "📷 Back camera");
+        try { camToggle.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        camToggle.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+            if (engine == null || engine.isRecording()) return;
+            engine.switchCamera();
+            handler.postDelayed(new Runnable() { @Override public void run() { paintCamToggle(); refreshZoomUi(); } }, 1200);
+            handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); } }, 2500);
+        } });
+        l.addView(camToggle);
+
         // Sessions at bottom: left icon (☁/device), middle date+duration, right share/download
         l.addView(label("Sessions", 17, DIM));
         lessonContainer = new LinearLayout(MainActivity.this);
@@ -285,12 +306,41 @@ public class MainActivity extends Activity {
                 @Override public void onError(final String message) {
                     runOnUiThread(new Runnable() { @Override public void run() { if (status != null) status.setText("Camera error: " + message); } });
                 }
+                @Override public void onMicUnavailable() {
+                    // Video-only take: say so out loud, like the web
+                    // recorder's red banner — never silent about silence.
+                    runOnUiThread(new Runnable() { @Override public void run() { showMicWarn(); } });
+                }
             });
             engine.openPreview(preview);
             handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 1200);
             handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); }}, 2500);
         } catch (Throwable e) { if (status != null) status.setText("Camera error: " + e.getMessage()); }
     }
+
+    private void showMicWarn() { if (micWarn != null) micWarn.setVisibility(View.VISIBLE); }
+    private void hideMicWarn() { if (micWarn != null) micWarn.setVisibility(View.GONE); }
+    private void showSpeechWarn() { if (speechWarn != null) speechWarn.setVisibility(View.VISIBLE); }
+    private void hideSpeechWarn() { if (speechWarn != null) speechWarn.setVisibility(View.GONE); }
+    private void paintCamToggle() { if (camToggle != null) camToggle.setText(engine != null && engine.isFront() ? "🤳 Front camera" : "📷 Back camera"); }
+
+    // Quiet-minute check, mirroring the web recorder: MediaRecorder's
+    // peak amplitude is polled while recording, and a full quiet minute
+    // raises the speech banner. Never touches the take itself.
+    private final Runnable speechRunnable = new Runnable() {
+        @Override public void run() {
+            if (engine == null || !engine.isRecording()) { hideSpeechWarn(); return; }
+            int amp = 0;
+            try { amp = engine.getMaxAmplitude(); } catch (Throwable ignored) { }
+            if (amp > 400) {
+                speechQuietSince = SystemClock.elapsedRealtime();
+                hideSpeechWarn();
+            } else if (SystemClock.elapsedRealtime() - speechQuietSince > 60000) {
+                showSpeechWarn();
+            }
+            handler.postDelayed(this, 2000);
+        }
+    };
 
     private void toggleRecord() {
         if (!hasPermissions()) {
@@ -309,6 +359,11 @@ public class MainActivity extends Activity {
                 recordStartMs = SystemClock.elapsedRealtime();
                 recordButton.setText("■ Stop  0:00");
                 handler.post(timerRunnable);
+                // Fresh mic state, then watch the level.
+                hideMicWarn();
+                speechQuietSince = SystemClock.elapsedRealtime();
+                hideSpeechWarn();
+                handler.postDelayed(speechRunnable, 2000);
             } else if (status != null) status.setText("Could not start recording.");
         } catch (Throwable e) { if (status != null) status.setText("Record failed: " + e.getMessage()); }
     }
@@ -318,6 +373,8 @@ public class MainActivity extends Activity {
             if (engine != null) engine.stopVideo();
         } catch (Throwable e) { if (status != null) status.setText("Stop failed: " + e.getMessage()); return; }
         handler.removeCallbacks(timerRunnable);
+        handler.removeCallbacks(speechRunnable);
+        hideSpeechWarn();
         recordButton.setText("● Record");
         refreshClipList();
         if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);

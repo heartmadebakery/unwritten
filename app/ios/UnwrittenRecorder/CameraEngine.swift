@@ -13,6 +13,7 @@ import UIKit
 final class CameraEngine: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var micWarning = false
+    @Published var speechWarning = false
     @Published var cameraDenied = false
     @Published var maxZoom: Float = 1.0
     @Published var zoom: Float = 1.0
@@ -29,8 +30,12 @@ final class CameraEngine: NSObject, ObservableObject {
     private let session = AVCaptureSession()
     private let sessionQueue = DispatchQueue(label: "org.tinio.unwritten.cam")
     private let lumaQueue = DispatchQueue(label: "org.tinio.unwritten.luma")
+    private let audioQueue = DispatchQueue(label: "org.tinio.unwritten.audio")
     private let movieOutput = AVCaptureMovieFileOutput()
     private var videoDataOutput: AVCaptureVideoDataOutput?
+    private var audioDataOutput: AVCaptureAudioDataOutput?
+    private var lastSpeechMs: Int64 = 0
+    private var lastSpeechCheckMs: Int64 = 0
     private var videoDevice: AVCaptureDevice?
     private var lumaListener: ((Double, [Double]) -> Void)?
     private var lastLumaMs: Int64 = 0
@@ -127,6 +132,17 @@ final class CameraEngine: NSObject, ObservableObject {
                     self.session.addOutput(self.movieOutput)
                 } else {
                     outputFailed = true
+                }
+            }
+            // Audio tap for the quiet-minute check: observing levels never
+            // alters the recorded take. Absent when unsupported — then the
+            // banner simply never appears.
+            if self.audioDataOutput == nil {
+                let audioOut = AVCaptureAudioDataOutput()
+                audioOut.setSampleBufferDelegate(self, queue: self.audioQueue)
+                if self.session.canAddOutput(audioOut) {
+                    self.session.addOutput(audioOut)
+                    self.audioDataOutput = audioOut
                 }
             }
             // startRunning may NOT be called between beginConfiguration
@@ -309,6 +325,9 @@ extension CameraEngine: AVCaptureFileOutputRecordingDelegate {
                     from connections: [AVCaptureConnection]) {
         onMain { [weak self] in
             self?.isRecording = true
+            self?.speechWarning = false
+            self?.lastSpeechMs = Int64(Date().timeIntervalSince1970 * 1000)
+            self?.lastSpeechCheckMs = 0
             UIApplication.shared.isIdleTimerDisabled = true
         }
     }
@@ -318,6 +337,7 @@ extension CameraEngine: AVCaptureFileOutputRecordingDelegate {
         onMain { [weak self] in
             guard let self else { return }
             self.isRecording = false
+            self.speechWarning = false
             UIApplication.shared.isIdleTimerDisabled = false
             if let error {
                 let ns = error as NSError
@@ -337,11 +357,12 @@ extension CameraEngine: AVCaptureFileOutputRecordingDelegate {
     }
 }
 
-// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+// MARK: - sample-buffer delegates (luma + mic level)
 
-extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate {
+extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
+        if output === audioDataOutput { handleAudio(sampleBuffer); return }
         guard let listener = lumaListener,
               let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
@@ -360,5 +381,62 @@ extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
         let gridCopy = grid
         onMain { listener(mean, gridCopy) }
+    }
+
+    // Quiet-minute check, mirroring the web recorder: capture RMS is
+    // evaluated while recording, and a full quiet minute raises the
+    // speech banner. The tap only observes — never touches the take.
+    private func handleAudio(_ sampleBuffer: CMSampleBuffer) {
+        guard movieOutput.isRecording else { return }
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        if nowMs - lastSpeechCheckMs < 2000 { return } // poll like the web
+        lastSpeechCheckMs = nowMs
+        let rms = Self.captureRms(of: sampleBuffer)
+        if rms < 0 { return } // unknown format; stay silent, not wrong
+        if rms > 0.008 {
+            lastSpeechMs = nowMs
+            onMain { [weak self] in self?.speechWarning = false }
+        } else if nowMs - lastSpeechMs > 60000 {
+            onMain { [weak self] in self?.speechWarning = true }
+        }
+    }
+
+    /// RMS level (0..1) of the buffer's first channel, or -1 for formats
+    /// this tap does not understand. Linear PCM int16/float only.
+    static func captureRms(of sampleBuffer: CMSampleBuffer) -> Double {
+        guard let block = CMSampleBufferGetDataBuffer(sampleBuffer),
+              let fmt = CMSampleBufferGetFormatDescription(sampleBuffer),
+              let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(fmt)?.pointee,
+              asbd.mFormatID == kAudioFormatLinearPCM,
+              asbd.mChannelsPerFrame > 0,
+              (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0 else { return -1 }
+        var length = 0
+        var data: UnsafeMutablePointer<Int8>?
+        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil,
+                                          totalLengthOut: &length, dataPointerOut: &data) == noErr,
+              let bytes = data, length > 0 else { return -1 }
+        let channels = Int(asbd.mChannelsPerFrame)
+        let raw = UnsafeRawPointer(bytes)
+        let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        let bigEndian = (asbd.mFormatFlags & kAudioFormatFlagIsBigEndian) != 0
+        let bytesPerSample: Int
+        if isFloat && asbd.mBitsPerChannel == 32 { bytesPerSample = 4 }
+        else if !isFloat && asbd.mBitsPerChannel == 16 { bytesPerSample = 2 }
+        else { return -1 }
+        let frames = length / (bytesPerSample * channels)
+        guard frames > 0 else { return -1 }
+        var sum = 0.0
+        for i in 0 ..< frames {
+            let v: Double
+            if isFloat {
+                v = Double(raw.load(fromByteOffset: i * channels * 4, as: Float32.self))
+            } else {
+                var s: Int16 = raw.load(fromByteOffset: i * channels * 2, as: Int16.self)
+                if bigEndian { s = Int16(bigEndian: s) }
+                v = Double(s) / 32768.0
+            }
+            sum += v * v
+        }
+        return (sum / Double(frames)).squareRoot()
     }
 }

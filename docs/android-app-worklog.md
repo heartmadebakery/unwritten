@@ -10,6 +10,16 @@ history, the evidence, and the open items.
 State at this log: app committed in `0c0ed9d` (19 files). Prior repo
 HEAD was `b4f70b7`.
 
+## Update — 2026-10-29: quiet-minute check, camera toggle, mic banner
+
+- Parity with the web recorder: a `MediaRecorder.getMaxAmplitude()`
+  poll raises the same "Quiet for a while" banner after a full
+  quiet minute; a front/back toggle switches lenses between takes;
+  a denied/broken mic raises the red video-only banner (previously
+  invisible — errors went to a hidden status line).
+- Not rebuilt here (no Android SDK on this machine); covered by
+  `test_recorder_streamlined.py` contract tests only.
+
 ## Update — 2026-10-28: base device is now the Pixel 4
 
 Owner's order, Oct 28: **the base device is the Google Pixel 4; the
