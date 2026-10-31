@@ -8,6 +8,17 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-30
 
+### Docs
+- **Fresh-machine setup + agent entry.** New `docs/SETUP.md` (clone to
+  running: secrets map, token pool, worker reuse/deploy, builds, cron)
+  and root `AGENTS.md` (layout, gates, conventions — incl. leaving the
+  repo in sync on every change); `setup.sh` now serves the stamped
+  `dist/` and points at SETUP.
+- **Stale sweep.** `docs/DEVICES.md` rewritten for the single app;
+  PIPELINE/signer/native READMEs, worker header, code comments, and
+  test docstrings updated from recorder-as-product to app framings;
+  pipeline docs now cover the `ignored` video state.
+
 ### Changed
 - **One app: Unwritten Craft.** Recording is a screen, not a separate
   app, on all three platforms. Web (`app/recorder/index.html`), Android

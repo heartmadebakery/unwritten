@@ -36,7 +36,7 @@ stale outputs from a previous run are deleted up front.
 
 ## Cloud lessons
 
-When the recorders upload with Cloud on, finished lessons can be
+When the apps upload with Cloud on, finished lessons can be
 processed without copying files off the phone first:
 
 ```
@@ -48,12 +48,14 @@ pipeline/run_pipeline.py --cloud work/cloud [--max N] [--retry-failed]
 (status 4) into `cloud_downloads/`, and runs the full pipeline on
 each into its own `work/cloud/<title>__<videoid>/` dir. Seen videos
 are remembered in `cloud_state.json`, so reruns only pick up new
-lessons; failed ones stay failed unless `--retry-failed` is given.
-`CLOUD_LIBRARY_KEY` is the library AccessKey and `CLOUD_CDN_HOSTNAME`
-the pull-zone hostname — both on the Stream dashboard's library API
-page — and both stay on this machine only (same trust as the
-recorders' direct mode). Without `--cloud` the pipeline never touches
-the network: same single-lesson flow as before.
+lessons; failed ones stay failed unless `--retry-failed` is given,
+and ones marked `ignored` (an operator decision that the video is not
+a lesson) are set aside for good — never re-downloaded, not even on
+retry. `CLOUD_LIBRARY_KEY` is the library AccessKey and
+`CLOUD_CDN_HOSTNAME` the pull-zone hostname — both on the Stream
+dashboard's library API page — and both stay on this machine only
+(same trust as the apps' direct mode). Without `--cloud` the pipeline
+never touches the network: same single-lesson flow as before.
 
 Python deps live in `.venv` (faster-whisper); the runner re-invokes
 the transcription stage under it when present. Everything else is
@@ -145,6 +147,7 @@ stdlib + ffmpeg + Muse calls.
   `pipeline/sam_overlay.py`, `pipeline/frames.py`,
   `prompts/apprentice*`. Cut Oct 27, 2026; kept in the tree as retired
   experiments, invoked by nothing here.
-- **The recorder apps** (`app/`) — a single-mode recorder (record one
-  lesson, stop, keep the file). An ordinary phone camera produces the
-  same lesson file and works just as well.
+- **The apps** (`app/`) — Unwritten Craft on web, Android, and iOS:
+  home opens on the hub sessions with Record and Upload above them.
+  An ordinary phone camera produces the same lesson file and works
+  just as well.

@@ -19,7 +19,7 @@ starting the session, proven by a test take on an iPhone 14 Pro.
 
 ## Why native, and what's in C++
 
-The web recorder is the baseline fallback (it works anywhere a browser
+The web app is the baseline fallback (it works anywhere a browser
 does). Native iOS wins where the web cannot:
 
 - **Hardware encoding** — video goes through AVCaptureSession +

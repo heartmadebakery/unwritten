@@ -22,7 +22,7 @@ The prebuilt APK is `unwritten-craft.apk` in this directory.
 
 ## Why native, and what's in C++
 
-The web recorder is the baseline fallback (it works anywhere a browser
+The web app is the baseline fallback (it works anywhere a browser
 does, including iPhones). Native Android wins where the web cannot:
 
 - **Hardware encoding** — video goes through Camera2 + MediaRecorder
@@ -35,8 +35,10 @@ does, including iPhones). Native Android wins where the web cannot:
   mode and are no longer driven by the UI.
 
 Managed Java handles what it is good at: the Camera2 state machine and
-the single-screen UI (built programmatically — no layout XML): preview,
-one Record/Stop button, the lessons list, and export to Downloads.
+the two-screen UI (built programmatically — no layout XML): home
+(record and upload actions over the hub, then cloud and device
+sessions) and record (preview, zoom, one Record/Stop button,
+in-viewfinder playback).
 
 ## Layout
 
@@ -47,7 +49,7 @@ app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
 app/src/main/java/org/tinio/unwritten/
-    MainActivity.java    single screen: preview, record, lessons, export, cloud settings
+    MainActivity.java    home + record screens, upload picker, cloud, hub
     TinyFileProvider.java read-only content:// clips for external players
     CameraEngine.java    Camera2 + MediaRecorder + YUV/still readers
     NativeCore.java      JNI bridge to libuwcore
