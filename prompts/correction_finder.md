@@ -19,8 +19,9 @@ Do NOT report:
   or said they would do.
 
 For each correction, output one object:
-- "start": the timestamp, exactly as it appears in the transcript, of the
-  segment where the correction begins.
+- "start": the bare timestamp of the segment where the correction
+  begins, as mm:ss WITHOUT brackets — e.g. 02:08, not [02:08].
+  Copy the digits exactly; never invent a timestamp.
 - "quote": the mentor's exact words of correction, copied from the
   transcript (the key sentence or two, not the whole segment).
 - "correcting": one short phrase naming what they were doing or believing

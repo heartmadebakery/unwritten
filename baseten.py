@@ -1,6 +1,11 @@
 import os
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except ImportError:
+    raise SystemExit(
+        "baseten.py needs the optional 'openai' package "
+        "(pip install openai) — it is not a pipeline dependency.")
 
 api_key = os.environ.get("BASETEN_API_KEY")
 if not api_key:

@@ -83,13 +83,29 @@ def run(cmd, stage, fatal=True):
 
 
 def parse_ts(ts):
-    """'02:08' (or '1:02:08') -> seconds. Raises ValueError."""
-    parts = str(ts).strip().split(":")
-    if len(parts) == 2:
-        return int(parts[0]) * 60 + int(parts[1])
-    if len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    raise ValueError(f"bad timestamp: {ts!r}")
+    """'02:08' (or '1:02:08') -> seconds. Raises ValueError.
+
+    Brackets and fractional seconds are tolerated (the transcript
+    shows [02:08], and a literal finder echoes them); out-of-range
+    fields are rejected instead of silently wrapping."""
+    text = str(ts).strip().strip("[]").strip()
+    parts = text.split(":")
+    try:
+        nums = [float(p) for p in parts]
+    except ValueError:
+        raise ValueError(f"bad timestamp: {ts!r}")
+    if len(nums) == 2:
+        minutes, seconds = nums
+        hours = 0
+    elif len(nums) == 3:
+        hours, minutes, seconds = nums
+    else:
+        raise ValueError(f"bad timestamp: {ts!r}")
+    if hours < 0 or minutes < 0 or seconds < 0:
+        raise ValueError(f"bad timestamp: {ts!r}")
+    if seconds >= 60 or (hours and minutes >= 60):
+        raise ValueError(f"bad timestamp: {ts!r}")
+    return int(hours) * 3600 + int(minutes) * 60 + int(seconds)
 
 
 def fmt_ts(seconds):
@@ -109,15 +125,63 @@ def segment_ends(timestamped_text):
                 starts.append(parse_ts(m.group(1)))
             except ValueError:
                 pass
+    uniq = sorted(set(starts))
     ends = {}
-    for i, s in enumerate(starts):
-        ends[s] = starts[i + 1] if i + 1 < len(starts) else s + 20
+    for i, s in enumerate(uniq):
+        ends[s] = uniq[i + 1] if i + 1 < len(uniq) else s + 20
     return ends
+
+
+def correction_end(start_s, ends):
+    """Where a correction beat ends: its segment's end on an exact
+    hit, else the next segment start after it, else a nominal 20 s.
+    A finder timestamp that lands mid-segment still cuts a tight
+    clip instead of falling back to the blind default."""
+    if start_s in ends:
+        return ends[start_s]
+    later = [s for s in ends if s > start_s]
+    if later:
+        return min(later)
+    return start_s + 20
 
 
 def clip_window(start_s, end_s):
     """Pad the correction beat a little on both sides."""
     return max(0, start_s - 2), (end_s + 2 if end_s else start_s + 20)
+
+
+def check_transcript_file(path):
+    """Read a --transcript bypass file, refusing the two inputs the
+    pipeline cannot work from: blank files (the model would invent a
+    lesson from nothing) and files without a single timestamped
+    '[mm:ss]' line (clip anchors would mistarget). Returns the text."""
+    try:
+        with open(path) as fh:
+            text = fh.read()
+    except OSError as exc:
+        sys.exit(f"[transcribe] cannot read --transcript {path}: {exc}")
+    if not text.strip():
+        sys.exit("[transcribe] --transcript is blank — refusing to "
+                 "draft a lesson from nothing.")
+    if not re.search(r"^\[\d+:\d{2}(?::\d{2})?\]", text, re.MULTILINE):
+        sys.exit("[transcribe] --transcript has no timestamped '[mm:ss]' "
+                 "lines — nothing to anchor clips to.")
+    return text
+
+
+def load_hits(path):
+    """corrections.json into a hit list. A corrupt file exits with a
+    stage message instead of a raw traceback mid-run."""
+    try:
+        with open(path) as fh:
+            hits = json.load(fh)
+    except (OSError, ValueError) as exc:
+        sys.exit(f"[corrections] corrections.json unreadable ({exc}) — "
+                 "pipeline stops here.")
+    if not isinstance(hits, list):
+        sys.exit("[corrections] corrections.json is not a list — "
+                 "pipeline stops here.")
+    return hits
 
 
 def render_corrections_md(hits, clips, highlights=None, redacted=None):
@@ -163,8 +227,18 @@ def cut_clip(lesson, start_s, end_s, out_path):
     else:
         cmd += ["-vn", "-c:a", "aac"]
     cmd.append(out_path)
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    return proc.returncode == 0 and os.path.exists(out_path)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=300)
+    except subprocess.SubprocessError as exc:
+        print(f"  [clips] ffmpeg cut timed out ({exc})")
+        return False
+    if proc.returncode != 0 or not os.path.exists(out_path):
+        tail = (proc.stderr or "").strip().splitlines()
+        if tail:
+            print(f"  [clips] ffmpeg cut: {tail[-1][:200]}")
+        return False
+    return True
 
 
 def _validate_masks_advisory(parsed_frames):
@@ -512,6 +586,7 @@ def main():
     #    local whisper; see pipeline/transcribe.py for the routing)
     timestamped_path = work("transcript_timestamped.txt")
     if args.transcript:
+        check_transcript_file(args.transcript)
         shutil.copy(args.transcript, timestamped_path)
         print(f"[transcribe] skipped — using {os.path.basename(args.transcript)}")
     elif lesson:
@@ -546,8 +621,7 @@ def main():
            "corrections") is not None \
             and os.path.exists(work("corrections.json")):
         produced.add("corrections.json")
-        with open(work("corrections.json")) as fh:
-            hits = json.load(fh)
+        hits = load_hits(work("corrections.json"))
     # 3.5 poster + chapters — representative frame and timeline,
     #    never block the run
     poster = try_poster(work, lesson) if lesson else ""
@@ -572,7 +646,7 @@ def main():
                 print(f"  [clips] correction {i}: bad timestamp "
                       f"{hit.get('start')!r} — anchor kept, no clip cut")
                 continue
-            lo, hi = clip_window(start_s, ends.get(start_s))
+            lo, hi = clip_window(start_s, correction_end(start_s, ends))
             name = f"correction-{i:02d}{ext}"
             if cut_clip(lesson, lo, hi, work("clips", name)):
                 clips[i] = name

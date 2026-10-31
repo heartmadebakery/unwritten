@@ -23,21 +23,42 @@ import re
 
 
 def parse_writeup(md_text):
-    """Split a write-up into (steps, wisdom bullets). Steps are numbered
-    lines before the first '## ' heading — the wisdom section's bullets
-    are NOT steps."""
-    steps, wisdom, in_wisdom = [], [], False
+    """Split a write-up into (intro, needs, steps, wisdom). Intro is
+    the first paragraph after the title; needs are the bullets under
+    a 'need' heading; steps are numbered lines outside the wisdom
+    section; wisdom bullets live under a 'know' heading."""
+    intro, needs, steps, wisdom = "", [], [], []
+    section, seen_title = "", False
     for line in md_text.splitlines():
         s = line.strip()
-        if s.startswith("## "):
-            in_wisdom = "know" in s.lower()
+        if s.startswith("# ") and not seen_title:
+            seen_title = True
             continue
-        if in_wisdom:
+        if s.startswith("## "):
+            low = s.lower()
+            if "need" in low:
+                section = "needs"
+            elif "know" in low:
+                section = "wisdom"
+            else:
+                section = ""
+            continue
+        if not s:
+            continue
+        if not seen_title:
+            continue
+        if not intro and not s.startswith(("#", "-", "*")) \
+                and not re.match(r"^\d+[.)]\s+", s):
+            intro = s
+        if section == "wisdom":
             if s.startswith("- "):
                 wisdom.append(s[2:].strip())
+        elif section == "needs":
+            if s.startswith("- "):
+                needs.append(s[2:].strip())
         elif re.match(r"^\d+[.)]\s+", s):
             steps.append(re.sub(r"^\d+[.)]\s+", "", s))
-    return steps, wisdom
+    return intro, needs, steps, wisdom
 
 
 def main():
@@ -48,16 +69,24 @@ def main():
     work = args.work
 
     with open(os.path.join(work, "writeup.md")) as fh:
-        steps, wisdom = parse_writeup(fh.read())
+        intro, needs, steps, wisdom = parse_writeup(fh.read())
     hits = []
     corrections_path = os.path.join(work, "corrections.json")
     if os.path.exists(corrections_path):
-        with open(corrections_path) as fh:
-            hits = json.load(fh)
+        try:
+            with open(corrections_path) as fh:
+                loaded = json.load(fh)
+            hits = loaded if isinstance(loaded, list) else []
+        except (OSError, ValueError):
+            hits = []
 
     def esc(s):
         return html.escape(str(s), quote=True)
 
+    intro_html = f"<p>{esc(intro)}</p>" if intro else ""
+    needs_html = "".join(f"<li>{esc(n)}</li>" for n in needs)
+    needs_block = (f"<h2>What you need</h2><ul>{needs_html}</ul>"
+                   if needs else "")
     steps_html = "".join(f"<li>{esc(s)}</li>" for s in steps)
     wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
     wisdom_block = (f"<h2>What the mentor knows</h2><ul>{wisdom_html}</ul>"
@@ -80,10 +109,14 @@ def main():
 
     technique_blocks = []
     for i, hit in enumerate(hits, 1):
-        clip_name = f"correction-{i:02d}.mp4"
-        clip = (f'<p><video controls src="clips/{clip_name}"></video></p>'
-                if os.path.exists(os.path.join(work, "clips", clip_name))
-                else "")
+        # Video lessons cut .mp4; audio-only lessons cut .m4a.
+        clip = ""
+        for ext, tag in ((".mp4", "video"), (".m4a", "audio")):
+            clip_name = f"correction-{i:02d}{ext}"
+            if os.path.exists(os.path.join(work, "clips", clip_name)):
+                clip = (f'<p><{tag} controls src="clips/{clip_name}">'
+                        f"</{tag}></p>")
+                break
         technique_blocks.append(
             f"<h3>{esc(hit.get('start', ''))} — {esc(hit.get('correcting', ''))}</h3>"
             f"<blockquote>{esc(hit.get('quote', ''))}</blockquote>{clip}")
@@ -105,11 +138,13 @@ footer{{color:#b8a888;margin-top:40px;font-style:italic}}
 .nav{{margin:0 0 6px}}.nav a{{color:#b8a888}}</style></head>
 <body>
 <p class="nav"><a href="../../">‹ All sessions</a> ·
-<a href="../../recorder/">Record a lesson ›</a></p>
+<a href="../../recorder/">Open the app ›</a></p>
 <h1>{esc(args.title)}</h1>
 <p><em>Film a lesson. Keep the corrections.</em></p>
 {poster_block}
 {chapters_block}
+{intro_html}
+{needs_block}
 <h2>The write-up</h2><ol>{steps_html}</ol>
 {wisdom_block}
 <h2>The Knack — the corrections</h2>{knacks_html}

@@ -42,8 +42,13 @@ def load_predictor():
     if not os.path.exists(CHECKPOINT):
         sys.exit("SAM checkpoint missing: " + CHECKPOINT +
                  "\nDownload it per docs/PIPELINE.md (375 MB, not in git).")
-    import torch
-    from segment_anything import SamPredictor, sam_model_registry
+    try:
+        import torch  # noqa: F401  (backend for segment-anything)
+        from segment_anything import SamPredictor, sam_model_registry
+    except ImportError:
+        sys.exit("sam_overlay needs the retired requirements "
+                 "(torch + segment-anything, ~2 GB):\n"
+                 "  uv pip install -r requirements-retired.txt")
     sam = sam_model_registry["vit_b"](checkpoint=CHECKPOINT)
     sam.to(device="cpu")
     return SamPredictor(sam)

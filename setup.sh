@@ -9,8 +9,8 @@ export PATH="$HOME/.local/bin:$PATH"
 # uv manages the project venv (system python3-venv/ensurepip is absent here)
 command -v uv >/dev/null || curl -fsSL https://astral.sh/uv/install.sh | sh
 [ -d .venv ] || uv venv .venv --python 3.12
-uv pip install --python .venv/bin/python --index-url https://download.pytorch.org/whl/cpu torch torchvision
-uv pip install --python .venv/bin/python faster-whisper segment-anything Pillow numpy
+uv pip install --python .venv/bin/python -r requirements.txt
+uv pip install --python .venv/bin/python -r requirements-retired.txt
 
 # ffmpeg/ffprobe as static binaries (no apt/sudo)
 if ! command -v ffmpeg >/dev/null; then

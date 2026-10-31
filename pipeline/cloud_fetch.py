@@ -16,6 +16,7 @@ only pick up new lessons. Downloads prefer the highest MP4 rendition
 and fall back to remuxing the HLS playlist with ffmpeg (already a
 pipeline dependency). Stdlib only, except ffmpeg for the fallback.
 """
+import http.client
 import json
 import os
 import re
@@ -79,6 +80,9 @@ def http_get_json(url, headers):
     except urllib.error.URLError as exc:
         raise RuntimeError("Cloud library request failed for %s: %s"
                            % (url, exc.reason))
+    except (OSError, http.client.HTTPException) as exc:
+        raise RuntimeError("Cloud library request failed for %s: %s"
+                           % (url, exc))
 
 
 def http_download(url, dest, referer=""):
@@ -156,14 +160,18 @@ def list_videos(cfg):
 def select_ready(videos, state, retry_failed=False):
     """Finished videos this machine has not handled yet. Entries marked
     failed are skipped unless retry_failed is set; done entries never
-    come back."""
+    come back, and neither do ignored ones — 'ignored' is an operator
+    decision that the video is not a lesson, so even --retry-failed
+    leaves it set aside. 'downloaded' means fetched but
+    pipeline-never-finished, so it reprocesses: run_cloud_mode skips
+    the re-download (the lesson is on disk) and runs the pipeline."""
     ready = []
     for vid in videos:
         guid = vid.get("guid", "")
         if not guid or vid.get("status") != FINISHED:
             continue
         entry = state.get(guid, {})
-        if entry.get("result") == "done":
+        if entry.get("result") in ("done", "ignored"):
             continue
         if entry.get("result") == "failed" and not retry_failed:
             continue
@@ -204,7 +212,11 @@ def remux_hls(url, dest, referer=""):
     if referer:
         cmd += ["-headers", "Referer: %s" % referer]
     cmd += ["-i", url, "-c", "copy", dest]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=900)
+    except subprocess.SubprocessError as exc:
+        raise RuntimeError("ffmpeg remux timed out for %s: %s" % (url, exc))
     if proc.returncode != 0 or not os.path.exists(dest):
         tail = (proc.stderr or "").strip().splitlines()
         raise RuntimeError("ffmpeg remux failed for %s: %s"
@@ -212,31 +224,50 @@ def remux_hls(url, dest, referer=""):
     return dest
 
 
+def _drop(path):
+    """Best-effort removal of a partial download sidecar."""
+    try:
+        if os.path.exists(path):
+            os.unlink(path)
+    except OSError:
+        pass
+
+
 def download_video(cfg, vid, dest_dir):
     """Download one finished video; returns the local path. Reuses an
-    existing non-empty file so interrupted runs resume cheaply."""
+    existing non-empty file so interrupted runs resume cheaply. Bytes
+    land in a .part sidecar first — only a complete download is ever
+    renamed into place, so a truncated file can never pass as a lesson
+    and satisfy the resume check on the next run."""
     guid = vid.get("guid", "")
     dest = os.path.join(dest_dir,
                         "%s__%s.mp4" % (sanitize(vid.get("title")), guid[:8]))
     if os.path.exists(dest) and os.path.getsize(dest) > 0:
         return dest
+    part = dest + ".part"
     referer = ("https://player.mediadelivery.net/embed/%s/%s"
                % (cfg["library_id"], guid))
     for url in mp4_candidates(cfg["cdn"], guid, vid.get("availableResolutions")):
         try:
-            return http_download(url, dest, referer)
+            http_download(url, part, referer)
         except DownloadError as exc:
+            _drop(part)
             if exc.status == 404:
                 continue  # rendition listed but not served; try the next
             raise
+        os.replace(part, dest)
+        return dest
     # No MP4 rendition served (or none listed): remux the HLS playlist.
     try:
-        return remux_hls(playlist_url(cfg["cdn"], guid), dest, referer)
+        remux_hls(playlist_url(cfg["cdn"], guid), part, referer)
     except RuntimeError as exc:
+        _drop(part)
         raise RuntimeError(
             "%s (token-authenticated libraries block direct "
             "downloads — check Stream -> Security in the library dashboard)"
             % exc)
+    os.replace(part, dest)
+    return dest
 
 
 def load_state(path):
@@ -287,14 +318,26 @@ def main():
     if not ready:
         print("[cloud] no new finished videos.")
         return 0
+    failures = 0
     for vid in ready:
-        dest = download_video(cfg, vid, ap_dest)
+        try:
+            dest = download_video(cfg, vid, ap_dest)
+        except Exception as exc:
+            failures += 1
+            print("[cloud] fetch failed for %r: %s"
+                  % (vid.get("title"), exc))
+            state[vid["guid"]] = {"title": vid.get("title", ""),
+                                  "result": "failed",
+                                  "error": str(exc)}
+            save_state(state_path, state)
+            continue
         state[vid["guid"]] = {"title": vid.get("title", ""),
                               "lesson": dest, "result": "downloaded"}
         save_state(state_path, state)
         print("[cloud] fetched %s -> %s" % (vid.get("title"), dest))
-    print("[cloud] %d video(s) fetched." % len(ready))
-    return 0
+    print("[cloud] %d video(s) fetched, %d failed."
+          % (len(ready) - failures, failures))
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

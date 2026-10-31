@@ -28,6 +28,18 @@ MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
             or os.path.expanduser("~/.local/bin/muse"))
 SCHEMA_PATH = os.path.join(ROOT, "prompts", "writeup_schema.json")
 
+
+def muse_bin():
+    """The muse runner, verified present: the keyless drafting path
+    shells out to it, and a missing binary must fail with a pointer,
+    not a raw traceback."""
+    if MUSE_BIN and (os.path.isfile(MUSE_BIN)
+                     or shutil.which(MUSE_BIN)):
+        return MUSE_BIN
+    sys.exit("muse CLI not found (looked for %r and on PATH) — the "
+             "keyless write-up path needs it; see docs/PIPELINE.md."
+             % (MUSE_BIN,))
+
 MAX_FRAMES = 16
 FRAME_EVERY = 30  # aim for about one frame per 30 seconds of lesson
 FRAME_WIDTH = 640
@@ -196,7 +208,7 @@ def draft_frames(transcript, media, rules, tmpdir):
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(prompt)
-        cmd = [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
+        cmd = [muse_bin(), "exec", "--contributor-mode", "on", "--model",
                "muse-spark-1.3", "--output-schema", SCHEMA_PATH,
                "--prompt-file", prompt_path]
         for path in images:

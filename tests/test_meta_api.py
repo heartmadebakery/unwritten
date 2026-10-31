@@ -113,25 +113,63 @@ class TestMaskDecodeHandoff(unittest.TestCase):
         self.assertTrue(set(raster) <= {0, 1})
 
 
+class FakeHttpResp:
+    def __init__(self, status, payload):
+        self.status = status
+        self.payload = payload
+
+    def read(self):
+        return self.payload
+
+
+def stub_conn(captured, status, payload):
+    class Conn:
+        def __init__(self, host, port=None, timeout=None):
+            captured["host"] = host
+
+        def putrequest(self, method, path):
+            captured["req"] = (method, path)
+
+        def putheader(self, key, value):
+            captured.setdefault("headers", {})[key] = value
+
+        def endheaders(self):
+            pass
+
+        def send(self, data):
+            captured.setdefault("body", []).append(bytes(data))
+
+        def getresponse(self):
+            return FakeHttpResp(status, payload)
+
+        def close(self):
+            pass
+
+    return Conn
+
+
 class TestClientShapes(unittest.TestCase):
-    def test_upload_posts_multipart_with_purpose(self):
-        captured = []
+    def test_upload_streams_multipart_with_purpose(self):
+        captured = {}
         payload = json.dumps({"id": "file-abc123"}).encode()
         with tempfile.NamedTemporaryFile(suffix=".mp4") as fh:
             fh.write(b"fakevideo")
             fh.flush()
             with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k"}), \
-                    mock.patch("urllib.request.urlopen",
-                               stub_urlopen(captured, payload)):
+                    mock.patch("http.client.HTTPSConnection",
+                               stub_conn(captured, 200, payload)):
                 file_id = meta_api.upload_file(fh.name)
         self.assertEqual(file_id, "file-abc123")
-        req = captured[0]
-        self.assertTrue(req.full_url.endswith("/v1/files"))
-        body = req.data.decode("ascii", "replace")
-        self.assertIn('name="purpose"', body)
-        self.assertIn("user_data", body)
-        self.assertIn(".mp4", body)
-        self.assertIn(b"fakevideo", req.data)
+        self.assertEqual(captured["req"], ("POST", "/v1/files"))
+        headers = captured["headers"]
+        self.assertEqual(headers["Authorization"], "Bearer k")
+        self.assertIn("multipart/form-data", headers["Content-Type"])
+        body = b"".join(captured["body"])
+        self.assertEqual(int(headers["Content-Length"]), len(body))
+        self.assertIn(b'name="purpose"', body)
+        self.assertIn(b"user_data", body)
+        self.assertIn(b".mp4", body)
+        self.assertIn(b"fakevideo", body)
 
     def test_upload_rejects_bad_id(self):
         payload = json.dumps({"id": "nope"}).encode()
@@ -139,10 +177,21 @@ class TestClientShapes(unittest.TestCase):
             fh.write(b"x")
             fh.flush()
             with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k"}), \
-                    mock.patch("urllib.request.urlopen",
-                               stub_urlopen([], payload)):
+                    mock.patch("http.client.HTTPSConnection",
+                               stub_conn({}, 200, payload)):
                 with self.assertRaises(MetaApiError):
                     meta_api.upload_file(fh.name)
+
+    def test_upload_rejects_http_error_status(self):
+        with tempfile.NamedTemporaryFile(suffix=".mp4") as fh:
+            fh.write(b"x")
+            fh.flush()
+            with mock.patch.dict(os.environ, {"MODEL_API_KEY": "k"}), \
+                    mock.patch("http.client.HTTPSConnection",
+                               stub_conn({}, 401, b"no")):
+                with self.assertRaises(MetaApiError) as ctx:
+                    meta_api.upload_file(fh.name)
+        self.assertEqual(ctx.exception.status, 401)
 
     def test_responses_body_shape(self):
         captured = []
@@ -158,6 +207,52 @@ class TestClientShapes(unittest.TestCase):
         content = sent["input"][0]["content"]
         self.assertEqual(content[1],
                          {"type": "input_video", "file_id": "file-9"})
+
+    def test_responses_retries_429_then_success(self):
+        import urllib.error
+        good = json.dumps({"output": []}).encode()
+        calls = []
+
+        def flaky(req, timeout=None):
+            calls.append(req)
+            if len(calls) < 3:
+                raise urllib.error.HTTPError(
+                    req.full_url, 429, "slow", {}, io.BytesIO(b"{}"))
+            return FakeResponse(good)
+
+        with mock.patch("urllib.request.urlopen", flaky), \
+                mock.patch("time.sleep") as sl:
+            resp = meta_api.responses_create(
+                "m", [{"type": "input_text", "text": "hi"}], "k")
+        self.assertEqual(resp, {"output": []})
+        self.assertEqual(len(calls), 3)
+        sl.assert_called()
+
+    def test_responses_persistent_500_raises(self):
+        import urllib.error
+        calls = []
+
+        def failing(req, timeout=None):
+            calls.append(req)
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "bad", {}, io.BytesIO(b"{}"))
+
+        with mock.patch("urllib.request.urlopen", failing), \
+                mock.patch("time.sleep"):
+            with self.assertRaises(MetaApiError):
+                meta_api.responses_create("m", [], "k")
+        self.assertEqual(len(calls), 2)  # once, plus the one retry
+
+    def test_tls_and_http_errors_wrapped(self):
+        import http.client
+        import ssl
+        errors = [ssl.SSLError("tls boom"),
+                  http.client.RemoteDisconnected("gone"),
+                  ConnectionResetError("rst")]
+        for err in errors:
+            with mock.patch("urllib.request.urlopen", side_effect=err):
+                with self.assertRaises(MetaApiError):
+                    meta_api.responses_create("m", [], "k")
 
     def test_output_text_walker(self):
         resp = {"output": [
@@ -251,6 +346,45 @@ class TestHighlightRender(unittest.TestCase):
         boxes = hl.boxes_for_frame(parsed, 7)  # past the only line
         self.assertEqual(len(boxes), 2)
         self.assertEqual(hl.boxes_for_frame([], 0), [])
+
+    def test_boxes_hold_before_first_track(self):
+        # A share-safe redaction must never render a bare face for
+        # want of an earlier box: frames before the first tracked
+        # frame hold that frame's boxes.
+        parsed = [{"frame": 5, "records": [
+            {"id": 0, "box": {"x1": 1, "y1": 2, "x2": 3, "y2": 4}}]}]
+        self.assertEqual(hl.boxes_for_frame(parsed, 0), [(1, 2, 3, 4)])
+        self.assertEqual(hl.boxes_for_frame(parsed, 7), [(1, 2, 3, 4)])
+
+    def test_mux_uses_compatible_pix_fmt_and_cleans_partial(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = os.path.join(td, "h.mp4")
+            with open(out, "wb") as fh:
+                fh.write(b"partial")
+            with mock.patch("subprocess.run") as run:
+                run.return_value = mock.Mock(returncode=1, stderr="boom")
+                self.assertFalse(
+                    hl.mux_highlight("c.mp4", "ov_%05d.png", 30.0, out))
+            cmd = run.call_args[0][0]
+            self.assertIn("yuv420p", cmd)
+            self.assertFalse(os.path.exists(out))
+
+    def test_probe_falls_back_to_frame_count(self):
+        out = ("width=640\nheight=480\navg_frame_rate=0/0\n"
+               "r_frame_rate=30/1\nduration=N/A\nnb_frames=90\n")
+        with mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(stdout=out)
+            self.assertEqual(hl.probe_clip("x.mp4"), (640, 480, 30.0, 90))
+        run.assert_called_once()  # no decode pass needed
+
+    def test_probe_decode_counts_when_nothing_listed(self):
+        out1 = "width=640\nheight=480\navg_frame_rate=0/0\n"
+        with mock.patch("subprocess.run") as run:
+            run.side_effect = [mock.Mock(stdout=out1),
+                               mock.Mock(stdout="45\n")]
+            self.assertEqual(hl.probe_clip("x.mp4"), (640, 480, 30.0, 45))
+        cmd = run.call_args_list[1][0][0]
+        self.assertIn("-count_frames", cmd)
 
     def test_png_round_trip(self):
         pixels = bytes(range(4 * 3 * 4))

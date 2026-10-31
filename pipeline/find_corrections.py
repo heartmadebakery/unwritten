@@ -24,6 +24,18 @@ MUSE_BIN = (os.environ.get("MUSE_BIN") or shutil.which("muse")
 SCHEMA_PATH = os.path.join(ROOT, "prompts", "correction_schema.json")
 
 
+def muse_bin():
+    """The muse runner, verified present: the finder shells out to
+    it, and a missing binary must fail with a pointer, not a raw
+    traceback."""
+    if MUSE_BIN and (os.path.isfile(MUSE_BIN)
+                     or shutil.which(MUSE_BIN)):
+        return MUSE_BIN
+    sys.exit("muse CLI not found (looked for %r and on PATH) — the "
+             "correction finder needs it; see docs/PIPELINE.md."
+             % (MUSE_BIN,))
+
+
 def find(transcript):
     with open(os.path.join(ROOT, "prompts", "correction_finder.md")) as fh:
         rules = fh.read()
@@ -34,7 +46,7 @@ def find(transcript):
         with os.fdopen(fd, "w") as fh:
             fh.write(prompt)
         proc = subprocess.run(
-            [MUSE_BIN, "exec", "--contributor-mode", "on", "--model",
+            [muse_bin(), "exec", "--contributor-mode", "on", "--model",
              "muse-spark-1.3", "--output-schema", SCHEMA_PATH,
              "--prompt-file", prompt_path],
             capture_output=True, text=True, timeout=600)

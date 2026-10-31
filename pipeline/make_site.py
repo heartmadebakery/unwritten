@@ -1,6 +1,6 @@
 """Build the Unwritten website: one hub, two sections.
 
-- Recorder: the web recorder app, copied in so it opens from the hub.
+- App: the Unwritten Craft web app, copied in so it opens from the hub.
 - Sessions: every pipeline work dir under a root becomes an entry —
   its write-up rendered to a page (via make_page), with poster,
   chapters, corrections, and clips carried along.
@@ -127,9 +127,9 @@ def render_hub(sessions):
     <h1>Unwritten Craft</h1>
     <p class="sub">Film a lesson. Keep the corrections.</p>
   </header>
-  <h2>Recorder</h2>
-  <a class="card" href="recorder/"><div><h3>Record a lesson</h3>
-  <p>Film the mentor session on this device. Sessions save locally
+  <h2>App</h2>
+  <a class="card" href="recorder/"><div><h3>Open Unwritten Craft</h3>
+  <p>Record or upload a lesson on this device. Sessions save locally
   first, then upload to Cloud when it is on.</p></div></a>
   <h2>Sessions</h2>
   {grid}

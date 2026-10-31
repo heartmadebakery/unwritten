@@ -59,7 +59,7 @@ def extract_audio(media, wav, rate=LOCAL_RATE, start=0, length=0):
         cmd += ["-t", str(length)]
     cmd += ["-vn", "-ac", "1", "-ar", str(rate), "-c:a", "pcm_s16le",
             "-map_metadata", "-1", wav]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, timeout=600)
 
 
 def wav_duration(wav):

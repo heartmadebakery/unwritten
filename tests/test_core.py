@@ -49,9 +49,40 @@ class TestTimestamps(unittest.TestCase):
         with self.assertRaises(ValueError):
             rp.parse_ts("soon")
 
+    def test_parse_tolerates_brackets_and_fractions(self):
+        # The transcript shows [02:08]; a literal finder echoes the
+        # brackets. Both that and fractional seconds parse.
+        self.assertEqual(rp.parse_ts("[02:08]"), 128)
+        self.assertEqual(rp.parse_ts(" 02:08.5 "), 128)
+        self.assertEqual(rp.parse_ts("[1:02:08]"), 3728)
+
+    def test_parse_rejects_out_of_range(self):
+        # "02:99" silently meant 03:39 before; negatives wrapped the
+        # clip to the wrong end of the lesson.
+        for bad in ["02:99", "1:99:08", "02:-3", "-1:30", ""]:
+            with self.assertRaises(ValueError, msg=bad):
+                rp.parse_ts(bad)
+        # Long lessons still parse: minutes are unbounded in mm:ss.
+        self.assertEqual(rp.parse_ts("75:10"), 4510)
+
     def test_segment_ends(self):
         text = "[00:04] a\n[02:08] b\n[03:41] c\n"
         self.assertEqual(rp.segment_ends(text), {4: 128, 128: 221, 221: 241})
+
+    def test_segment_ends_dedupes_and_sorts(self):
+        # Same-second ASR turns and out-of-order input must not yield
+        # zero or negative clip windows.
+        text = "[02:08] b\n[00:04] a\n[02:08] b2\n[03:41] c\n"
+        self.assertEqual(rp.segment_ends(text), {4: 128, 128: 221, 221: 241})
+
+    def test_correction_end_bisects(self):
+        # A finder timestamp that lands mid-segment ends at the next
+        # segment start — not at a blind 20-second default.
+        ends = {4: 128, 128: 221, 221: 241}
+        self.assertEqual(rp.correction_end(128, ends), 221)
+        self.assertEqual(rp.correction_end(130, ends), 221)
+        self.assertEqual(rp.correction_end(0, ends), 4)
+        self.assertEqual(rp.correction_end(999, ends), 1019)
 
     def test_clip_window_pads_and_clamps(self):
         self.assertEqual(rp.clip_window(128, 140), (126, 142))
@@ -70,6 +101,47 @@ class TestRenderCorrections(unittest.TestCase):
 
     def test_render_empty(self):
         self.assertIn("No corrections found", rp.render_corrections_md([], {}))
+
+    def test_every_planted_correction_cuts_a_window(self):
+        # The finder's downstream contract, without the LLM: each
+        # ground-truth anchor from docs/core-test-2026-10-27.md must
+        # parse and resolve to a positive clip window against the
+        # real fixture transcript.
+        fixture = os.path.join(ROOT, "samples",
+                               "lesson_transcript_fixture.md")
+        text = open(fixture).read()
+        ends = rp.segment_ends(text)
+        self.assertGreater(len(ends), 50)
+        for stamp in ["02:08", "03:41", "05:38", "07:04", "08:28",
+                      "10:12"]:
+            start = rp.parse_ts(stamp)
+            lo, hi = rp.clip_window(start, rp.correction_end(start, ends))
+            self.assertLess(lo, hi, stamp)
+            self.assertGreaterEqual(lo, 0, stamp)
+
+    def test_every_fixture_line_parses(self):
+        fixture = os.path.join(ROOT, "samples",
+                               "lesson_transcript_fixture.md")
+        stamped = [ln for ln in open(fixture).read().splitlines()
+                   if ln.startswith("[")]
+        self.assertGreater(len(stamped), 50)
+        for line in stamped:
+            rp.parse_ts(line.split("]")[0].strip("["))
+
+    def test_load_hits_rejects_corrupt_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            bad = os.path.join(td, "corrections.json")
+            with open(bad, "w") as fh:
+                fh.write("{nope")
+            with self.assertRaises(SystemExit):
+                rp.load_hits(bad)
+            with open(bad, "w") as fh:
+                fh.write('{"start": "00:04"}')
+            with self.assertRaises(SystemExit):
+                rp.load_hits(bad)
+            with open(bad, "w") as fh:
+                fh.write('[{"start": "00:04"}]')
+            self.assertEqual(rp.load_hits(bad), [{"start": "00:04"}])
 
 
 class TestParseFinderHits(unittest.TestCase):
@@ -93,6 +165,60 @@ class TestParseFinderHits(unittest.TestCase):
     def test_rejects_garbage(self):
         with self.assertRaises(SystemExit):
             fc.parse_hits('no corrections here, just prose')
+
+
+class TestTranscriptGate(unittest.TestCase):
+    def _write(self, td, name, content):
+        path = os.path.join(td, name)
+        with open(path, "w") as fh:
+            fh.write(content)
+        return path
+
+    def test_blank_transcript_refused(self):
+        # A blank --transcript would let the model invent a lesson
+        # from nothing; the transcribers already refuse emptiness,
+        # and the bypass must too.
+        with tempfile.TemporaryDirectory() as td:
+            path = self._write(td, "t.txt", "  \n")
+            with self.assertRaises(SystemExit):
+                rp.check_transcript_file(path)
+
+    def test_untimestamped_transcript_refused(self):
+        # Without [mm:ss] lines there is nothing to anchor clips to.
+        with tempfile.TemporaryDirectory() as td:
+            path = self._write(td, "t.txt", "just prose, no stamps\n")
+            with self.assertRaises(SystemExit):
+                rp.check_transcript_file(path)
+
+    def test_missing_transcript_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(SystemExit):
+                rp.check_transcript_file(os.path.join(td, "nope.txt"))
+
+    def test_timestamped_transcript_passes(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = self._write(td, "t.txt", "[00:04] hello\n[02:08] fold\n")
+            self.assertEqual(rp.check_transcript_file(path),
+                             "[00:04] hello\n[02:08] fold\n")
+
+    def test_muse_preflight_names_the_missing_cli(self):
+        # The default keyless path shells out to `muse`; a missing
+        # binary must fail with a pointer, not a raw traceback.
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            exe = os.path.join(td, "muse")
+            with open(exe, "w") as fh:
+                fh.write("#!/bin/sh\n")
+            with mock.patch.object(dw, "MUSE_BIN", exe):
+                self.assertEqual(dw.muse_bin(), exe)
+            with mock.patch.object(fc, "MUSE_BIN", exe):
+                self.assertEqual(fc.muse_bin(), exe)
+        with mock.patch.object(dw, "MUSE_BIN", "/nonexistent/muse"):
+            with self.assertRaises(SystemExit):
+                dw.muse_bin()
+        with mock.patch.object(fc, "MUSE_BIN", "/nonexistent/muse"):
+            with self.assertRaises(SystemExit):
+                fc.muse_bin()
 
 
 class TestDraftWriteup(unittest.TestCase):
@@ -123,7 +249,9 @@ class TestDraftWriteup(unittest.TestCase):
             self.assertEqual(dw.extract_frames("", td), [])
 
     def test_page_parser_reads_new_format(self):
-        steps, wisdom = make_page.parse_writeup(self.NEW_FORMAT)
+        intro, needs, steps, wisdom = make_page.parse_writeup(self.NEW_FORMAT)
+        self.assertEqual(intro, "A sour pork soup, built in one pot in under an hour.")
+        self.assertEqual(needs, ["pork belly", "tomatoes"])
         self.assertEqual(steps, ["Cut the pork.", "Simmer until tender."])
         self.assertEqual(wisdom, ["Taste before serving."])
 
@@ -133,10 +261,45 @@ class TestParseWriteup(unittest.TestCase):
         md = ("# Mother's Bread — the write-up\n\n"
               "1. Mix the flour.\n2. Knead until it stops fighting you.\n\n"
               "## What Mother knows\n\n- Warm water, like bath water.\n")
-        steps, wisdom = make_page.parse_writeup(md)
+        intro, needs, steps, wisdom = make_page.parse_writeup(md)
+        self.assertEqual(intro, "")
+        self.assertEqual(needs, [])
         self.assertEqual(steps, ["Mix the flour.",
                                  "Knead until it stops fighting you."])
         self.assertEqual(wisdom, ["Warm water, like bath water."])
+
+    def test_page_renders_audio_clips_and_survives_corrupt_json(self):
+        # Audio-only lessons cut correction-NN.m4a; a corrupt
+        # corrections.json must not kill the whole page.
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, "clips"))
+            with open(os.path.join(td, "writeup.md"), "w") as fh:
+                fh.write("# T — the write-up\n\nIntro line.\n\n"
+                         "## Steps\n\n1. Do it.\n")
+            with open(os.path.join(td, "corrections.json"), "w") as fh:
+                fh.write('[{"start": "00:04", "quote": "q", '
+                         '"correcting": "c"}]')
+            with open(os.path.join(td, "clips",
+                                   "correction-01.m4a"), "wb") as fh:
+                fh.write(b"x")
+            argv = ["make_page.py", "--work", td, "--title", "T"]
+            with mock.patch.object(sys, "argv", argv):
+                make_page.main()
+            with open(os.path.join(td, "page.html")) as fh:
+                page = fh.read()
+            self.assertIn("<audio controls", page)
+            self.assertIn("correction-01.m4a", page)
+            self.assertIn("Intro line.", page)
+            # Now corrupt the JSON: the page still renders.
+            with open(os.path.join(td, "corrections.json"), "w") as fh:
+                fh.write("{nope")
+            with mock.patch.object(sys, "argv", argv):
+                make_page.main()
+            with open(os.path.join(td, "page.html")) as fh:
+                page = fh.read()
+            self.assertIn("No corrections captured", page)
 
 
 if __name__ == "__main__":

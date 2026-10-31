@@ -1,0 +1,11 @@
+# Retired requirements: local-SAM overlay only (pipeline/sam_overlay.py,
+# the pre-API apprentice design). Nothing in the live pipeline imports
+# these. Install only to run the retired overlay:
+#   uv pip install --python .venv/bin/python -r requirements-retired.txt
+# The +cpu builds exist only on the PyTorch CPU index (plain PyPI 404s
+# them); that index hosts torch-family packages only, so everything
+# else here still resolves from PyPI.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu
+torchvision==0.29.1+cpu
+segment-anything==1.0

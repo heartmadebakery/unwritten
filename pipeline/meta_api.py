@@ -11,12 +11,14 @@ Both need MODEL_API_KEY. Every caller must degrade gracefully without
 it — the pipeline never requires the key. Uploaded files are deleted
 after use; team Files storage only grows until removed.
 """
+import http.client
 import json
 import mimetypes
 import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE_URL = "https://api.meta.ai/v1"
@@ -70,7 +72,11 @@ def _post_multipart(url, fields, files, key, timeout):
         detail = exc.read().decode("utf-8", "replace")[:300]
         raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail),
                            status=exc.code)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except (OSError, http.client.HTTPException,
+            json.JSONDecodeError) as exc:
+        # OSError covers URLError, timeouts, and TLS failures; without
+        # the broad net a transient blip crashes past every caller's
+        # graceful degradation.
         raise MetaApiError("POST %s failed: %s" % (url, exc))
 
 
@@ -87,23 +93,87 @@ def _post_json(url, payload, key, timeout):
         detail = exc.read().decode("utf-8", "replace")[:300]
         raise MetaApiError("POST %s -> HTTP %s: %s" % (url, exc.code, detail),
                            status=exc.code)
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except (OSError, http.client.HTTPException,
+            json.JSONDecodeError) as exc:
         raise MetaApiError("POST %s failed: %s" % (url, exc))
+
+
+def _with_retry(call, attempts=4):
+    """One POST with the documented retries: backoff on 429, once on
+    500. Shared by the Responses and ASR paths so --cloud batches
+    survive a rate limit instead of dying on the first one."""
+    for attempt in range(attempts):
+        try:
+            return call()
+        except MetaApiError as exc:
+            if exc.status == 429 and attempt < attempts - 1:
+                time.sleep(min(2 ** attempt, 30))
+                continue
+            if exc.status == 500 and attempt == 0:
+                time.sleep(2)
+                continue
+            raise
 
 
 def upload_file(path, purpose="user_data", timeout=600):
     """Upload once to the Files API; returns the file- ID. The caller
-    owns cleanup via delete_file."""
+    owns cleanup via delete_file. The file streams from disk in
+    chunks — an hour-long lesson never sits whole in RAM."""
     key = api_key()
     if not key:
         raise MetaApiError("MODEL_API_KEY is not set")
-    with open(path, "rb") as fh:
-        data = fh.read()
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        raise MetaApiError("cannot read %s: %s" % (path, exc))
     mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
-    resp = _post_multipart(BASE_URL + "/files", {"purpose": purpose},
-                           [("file", os.path.basename(path), mime, data)],
-                           key, timeout)
-    file_id = resp.get("id", "")
+    boundary = "----unwritten-%d" % os.getpid()
+    pre = (("--%s\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\n"
+            "%s\r\n--%s\r\nContent-Disposition: form-data; name=\"file\"; "
+            "filename=\"%s\"\r\nContent-Type: %s\r\n\r\n")
+           % (boundary, purpose, boundary, os.path.basename(path),
+              mime)).encode()
+    post = ("\r\n--%s--\r\n" % boundary).encode()
+    parts = urllib.parse.urlsplit(BASE_URL)
+    conn_cls = http.client.HTTPSConnection \
+        if parts.scheme == "https" else http.client.HTTPConnection
+    try:
+        conn = conn_cls(parts.hostname, parts.port or None, timeout=timeout)
+        conn.putrequest("POST", parts.path + "/files")
+        conn.putheader("Authorization", "Bearer " + key)
+        conn.putheader("Content-Type",
+                       "multipart/form-data; boundary=" + boundary)
+        conn.putheader("Content-Length", str(len(pre) + size + len(post)))
+        conn.endheaders()
+        conn.send(pre)
+        remaining = size
+        with open(path, "rb") as fh:
+            while remaining > 0:
+                chunk = fh.read(min(1024 * 256, remaining))
+                if not chunk:
+                    break  # shrank mid-upload; refused below
+                conn.send(chunk)
+                remaining -= len(chunk)
+        if remaining:
+            raise MetaApiError(
+                "upload of %s failed: file changed during upload"
+                % os.path.basename(path))
+        conn.send(post)
+        resp = conn.getresponse()
+        status, body = resp.status, resp.read().decode("utf-8", "replace")
+        conn.close()
+    except MetaApiError:
+        raise
+    except (OSError, http.client.HTTPException) as exc:
+        raise MetaApiError("POST %s/files failed: %s" % (BASE_URL, exc))
+    if status is None or status < 200 or status >= 300:
+        raise MetaApiError(
+            "POST %s/files -> HTTP %s: %s" % (BASE_URL, status, body[:300]),
+            status=status)
+    try:
+        file_id = json.loads(body).get("id", "")
+    except json.JSONDecodeError:
+        raise MetaApiError("Files API returned invalid JSON")
     if not isinstance(file_id, str) or not file_id.startswith("file-"):
         raise MetaApiError("Files API returned no file ID")
     return file_id
@@ -149,7 +219,8 @@ def responses_create(model, content, key, timeout=900, extra=None,
         payload["prompt_cache_key"] = cache_key
     if extra:
         payload.update(extra)
-    resp = _post_json(BASE_URL + "/responses", payload, key, timeout)
+    resp = _with_retry(
+        lambda: _post_json(BASE_URL + "/responses", payload, key, timeout))
     hit, total = cached_tokens(resp)
     if total:
         print(f"  [cache] {hit}/{total} input tokens from cache"
@@ -216,23 +287,12 @@ def asr_transcribe(wav_path, key, mode="DIARIZATION", timeout=900,
     if languages:
         config["languageBias"] = list(languages)
     settings = json.dumps(config)
-    resp = None
-    for attempt in range(4):
-        try:
-            resp = _post_multipart(
-                BASE_URL + "/asr/transcribe",
-                {"request": (settings, "application/json")},
-                [("audio", os.path.basename(wav_path), "audio/wav", data)],
-                key, timeout)
-            break
-        except MetaApiError as exc:
-            if exc.status == 429 and attempt < 3:
-                time.sleep(min(2 ** attempt, 30))
-                continue
-            if exc.status == 500 and attempt == 0:
-                time.sleep(2)
-                continue
-            raise
+    resp = _with_retry(
+        lambda: _post_multipart(
+            BASE_URL + "/asr/transcribe",
+            {"request": (settings, "application/json")},
+            [("audio", os.path.basename(wav_path), "audio/wav", data)],
+            key, timeout))
     segs = []
     for turn in resp.get("turns", []) or []:
         text = (turn.get("transcript") or "").strip()
