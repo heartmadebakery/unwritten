@@ -1,9 +1,10 @@
-# Unwritten Recorder — native Android app
+# Unwritten Craft — native Android app
 
-The native port of the [web recorder](../recorder/). Same single job —
-record one lesson, stop, keep the file — and the same filename contract
-(`unwritten_lesson_<timestamp>.mp4`), so lessons from this app drop
-straight into the existing pipeline (`pipeline/ingest.py`) unchanged.
+Unwritten Craft for Android: home lands on the hub sessions with
+Record and Upload above them, and recording is one screen of the app.
+Same filename contract (`unwritten_lesson_<timestamp>.mp4`), so
+lessons from this app drop straight into the existing pipeline
+(`pipeline/ingest.py`) unchanged.
 Base device: **Google Pixel 4**. **minSdk 29** (Android 10 — the
 OS the Pixel 4 shipped with in 2019); the app is arm64-v8a only,
 matching the Pixel 4. No AndroidX, no Kotlin, no third-party
@@ -17,7 +18,7 @@ build-verified by the project maintainer agent.
 [`docs/android-app-worklog.md`](../../docs/android-app-worklog.md)
 first — full history, build-route diagnosis, verification evidence,
 and the open items (on-device shakeout, app icon, release signing).
-The prebuilt APK is `unwritten-recorder.apk` in this directory.
+The prebuilt APK is `unwritten-craft.apk` in this directory.
 
 ## Why native, and what's in C++
 
@@ -46,11 +47,12 @@ app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
 app/src/main/java/org/tinio/unwritten/
-    MainActivity.java    single screen: preview, record, lessons, export
+    MainActivity.java    single screen: preview, record, lessons, export, cloud settings
+    TinyFileProvider.java read-only content:// clips for external players
     CameraEngine.java    Camera2 + MediaRecorder + YUV/still readers
     NativeCore.java      JNI bridge to libuwcore
     Names.java           the filename contract (single source of truth)
-unwritten-recorder.apk   prebuilt debug-signed APK (sideload-ready)
+unwritten-craft.apk      prebuilt debug-signed APK (sideload-ready)
 ```
 
 ## Building
@@ -63,7 +65,7 @@ unwritten-recorder.apk   prebuilt debug-signed APK (sideload-ready)
 
 `build.sh` runs CMake per ABI, then aapt2, javac, d8, zipalign, and
 apksigner — no Gradle, no network. It generates a local `debug.keystore` on
-first run (git-ignored) and writes `unwritten-recorder.apk`.
+first run (git-ignored) and writes `unwritten-craft.apk`.
 
 **Gradle route (normal dev machine):** open this directory in Android
 Studio, or run `gradle assembleDebug` with the same SDK/NDK installed.

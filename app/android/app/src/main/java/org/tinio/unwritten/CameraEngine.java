@@ -20,6 +20,7 @@ import android.media.ImageReader;
 import android.media.MediaRecorder;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Looper;
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.Size;
@@ -259,15 +260,37 @@ public final class CameraEngine {
         }
     }
 
-    public void stopVideo() {
+    public void stopVideo() { stopVideo(null); }
+
+    /**
+     * Stops the take on the camera thread, then runs onStopped on the
+     * main thread. Callers must wait for the callback before listing
+     * or uploading the file — MediaRecorder.stop() finalizes it, and
+     * anything earlier catches a partial file.
+     */
+    public void stopVideo(final Runnable onStopped) {
         try {
             final int gen = generation;
-            if (handler() == null) return;
-            post(gen, new Runnable() {
-                @Override public void run() { stopVideoInternal(); }
+            if (handler() == null) { runOnMain(onStopped); return; }
+            boolean posted = post(gen, new Runnable() {
+                @Override public void run() {
+                    stopVideoInternal();
+                    runOnMain(onStopped);
+                }
             });
+            if (!posted) runOnMain(onStopped);
         } catch (Throwable t) {
             reportError("stopVideo failed: " + t.getMessage());
+            runOnMain(onStopped);
+        }
+    }
+
+    private void runOnMain(final Runnable r) {
+        if (r == null) return;
+        try {
+            new Handler(Looper.getMainLooper()).post(r);
+        } catch (Throwable ignored) {
+            try { r.run(); } catch (Throwable ignored2) { }
         }
     }
 

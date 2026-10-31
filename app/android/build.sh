@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Unwritten Recorder APK without Gradle — plain SDK tools.
+# Build the Unwritten Craft APK without Gradle — plain SDK tools.
 #
 # Why: the app has zero dependencies, so the whole build is javac +
 # aapt2 + d8 + CMake/NDK + apksigner. This script works fully offline
@@ -90,10 +90,10 @@ echo "== dex (d8) =="
   $(cd "$OUT/classes" && find . -name '*.class' | sed 's|^|'"$OUT/classes"'/|')
 
 echo "== package + sign =="
-cp "$OUT/base.apk" "$OUT/unwritten-recorder.apk"
-(cd "$OUT" && zip -q -j unwritten-recorder.apk dex/classes.dex)
-(cd "$OUT" && zip -q -r unwritten-recorder.apk lib)
-"$BT/zipalign" -f -p 4 "$OUT/unwritten-recorder.apk" "$OUT/unwritten-recorder-aligned.apk"
+cp "$OUT/base.apk" "$OUT/unwritten-craft.apk"
+(cd "$OUT" && zip -q -j unwritten-craft.apk dex/classes.dex)
+(cd "$OUT" && zip -q -r unwritten-craft.apk lib)
+"$BT/zipalign" -f -p 4 "$OUT/unwritten-craft.apk" "$OUT/unwritten-craft-aligned.apk"
 KS="$HERE/debug.keystore"
 if [ ! -f "$KS" ]; then
   keytool -genkeypair -keystore "$KS" -storepass android -keypass android \
@@ -102,8 +102,8 @@ if [ ! -f "$KS" ]; then
 fi
 "$BT/apksigner" sign --ks "$KS" --ks-pass pass:android --key-pass pass:android \
   --min-sdk-version "$MIN_API" \
-  --out "$OUT/unwritten-recorder-signed.apk" "$OUT/unwritten-recorder-aligned.apk"
-"$BT/apksigner" verify "$OUT/unwritten-recorder-signed.apk"
-cp "$OUT/unwritten-recorder-signed.apk" "$HERE/unwritten-recorder.apk"
-echo "APK: $HERE/unwritten-recorder.apk"
-"$BT/aapt2" dump badging "$HERE/unwritten-recorder.apk" | head -4
+  --out "$OUT/unwritten-craft-signed.apk" "$OUT/unwritten-craft-aligned.apk"
+"$BT/apksigner" verify "$OUT/unwritten-craft-signed.apk"
+cp "$OUT/unwritten-craft-signed.apk" "$HERE/unwritten-craft.apk"
+echo "APK: $HERE/unwritten-craft.apk"
+"$BT/aapt2" dump badging "$HERE/unwritten-craft.apk" | head -4

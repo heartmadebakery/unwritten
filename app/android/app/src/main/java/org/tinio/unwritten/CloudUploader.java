@@ -208,11 +208,17 @@ public final class CloudUploader {
             tusSend(file, uploadUrl, creds, offset, listener);
             Log.i(TAG, "tusSend done videoId=" + videoId);
             listener.onUploaded(videoId);
+            int errors = 0;
             for (int i = 0; i < 120; i++) {
                 Thread.sleep(5000);
                 int st;
                 try { st = videoStatus(videoId); } catch (Exception e) { Log.w(TAG, "videoStatus err: " + e.getMessage()); st = -1; }
                 Log.i(TAG, "poll videoId=" + videoId + " status=" + st + " iter=" + i);
+                if (st < 0) {
+                    if (++errors > 6) { listener.onFailed(videoId, "Cloud status checks kept failing — tap ! on the session to try again."); return; }
+                    continue;
+                }
+                errors = 0;
                 if (st == 4) { listener.onFinished(videoId); return; }
                 if (st == 5 || st == 6) { listener.onFailed(videoId, "Cloud encoding failed (status " + st + ")"); return; }
             }
