@@ -47,7 +47,7 @@ public final class CameraEngine {
     public interface ErrorListener {
         void onError(String message);
         // The take is video-only (mic denied or unavailable) — the UI
-        // must say so out loud, like the web recorder's red banner.
+        // must say so out loud, like the web app's red banner.
         void onMicUnavailable();
     }
 
@@ -302,7 +302,7 @@ public final class CameraEngine {
         return preferredFacing == CameraCharacteristics.LENS_FACING_FRONT;
     }
 
-    // Switches front/back between takes, like the web recorder's camera
+    // Switches front/back between takes, like the web app's camera
     // toggle. Never interrupts a recording.
     public void switchCamera() {
         try {

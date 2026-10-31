@@ -33,7 +33,7 @@ struct HubSession: Decodable, Identifiable {
 }
 
 /// One row in the sessions list. Mirrors the Android session rows and
-/// the web recorder's clipHTML: left status icon, middle date + length,
+/// the web app's clipHTML: left status icon, middle date + length,
 /// right share/download action.
 struct SessionRow: Identifiable {
     enum RightKind: Equatable {
@@ -58,7 +58,7 @@ struct SessionRow: Identifiable {
 /// permission needed) and export through the share sheet. Cloud is
 /// strictly additive: the on-device save always happens first and never
 /// depends on the upload. Mirrors MainActivity's clips + Cloud sections
-/// and the web recorder's saveBlob/Cloud flow.
+/// and the web app's saveBlob/Cloud flow.
 @MainActor
 final class SessionStore: ObservableObject {
     @Published var rows: [SessionRow] = []
@@ -518,7 +518,7 @@ final class SessionStore: ObservableObject {
     }
 
     /// Resume interrupted uploads after the app restarts, like Android's
-    /// cloudResumePending and the web recorder's cloudResumePending.
+    /// cloudResumePending and the web app's cloudResumePending.
     func cloudResumePending() {
         if !cloud.cloudEnabledCfg() { return }
         for (name, link) in cloud.links() {

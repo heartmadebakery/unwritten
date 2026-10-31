@@ -176,17 +176,19 @@
 </div>
 <script>
 "use strict";
-/* Unwritten Craft — Recorder.
-   One job: record one lesson, stop, keep the file. No roles, no steps,
-   nothing performed for the machine — the pipeline (transcribe ->
-   write-up -> corrections) works afterwards on the single take, which
-   it picks as the largest media file in the lesson folder.
+/* Unwritten Craft — web app.
+   Home lands on the hub sessions with Record and Upload above them;
+   recording is one screen of the app, not a separate app. No roles,
+   no steps, nothing performed for the machine — the pipeline
+   (transcribe -> write-up -> corrections) works afterwards on each
+   session, take or upload alike, which it picks as the largest media
+   file in the lesson folder.
    On devices where in-page recording doesn't exist (old Safari,
    file://), the native camera / voice-memo apps record instead of
    failing. Lessons persist in IndexedDB so a reload, crash, or
-   discarded tab cannot lose them. The layout mirrors the native
-   Android recorder: viewfinder, zoom, record, cloud toggle, export,
-   sessions — newest first, tap to play in the viewfinder. */
+   discarded tab cannot lose them. The layout mirrors the native apps:
+   home (hub + cloud + device sessions), record (viewfinder, zoom,
+   record), upload — newest first, tap to play in the viewfinder. */
 
 function probe(){
   var caps = {

@@ -13,7 +13,7 @@ import java.io.File;
 import java.io.FileNotFoundException;
 
 /**
- * Read-only content:// access to the recorder's clips, so external
+ * Read-only content:// access to the app's clips, so external
  * players can open a session on Android 7+ (file:// intents arrive
  * unreadable there — no grant is possible for them). Zero
  * dependencies by design: this is the androidx FileProvider's job

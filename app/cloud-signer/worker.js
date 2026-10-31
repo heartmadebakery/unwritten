@@ -1,7 +1,7 @@
 /* Unwritten Craft — Cloud signer (Cloudflare Worker).
  *
- * Holds the Stream library API key as a Worker secret so neither
- * recorder client ever ships it. Three endpoints, all JSON:
+ * Holds the Stream library API key as a Worker secret so no app
+ * client ever ships it. Endpoints, all JSON:
  *
  *   POST /            {title, videoId?} -> {videoId, libraryId, signature,
  *                                          expire, embedUrl}
@@ -24,7 +24,7 @@
  * entry, so each distributed build can carry its own token and a leak
  * revokes one build instead of all of them. The older single
  * SIGNER_TOKEN secret is still honored as a fallback.
- * CORS_ORIGIN (var) — default "*"; set to your recorder origin before
+ * CORS_ORIGIN (var) — default "*"; set to your app origin before
  * real use. The vendor's docs warn that an open create route lets
  * anyone fill your library; the token + origin are the minimum.
  *

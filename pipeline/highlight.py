@@ -17,7 +17,7 @@ import subprocess
 import zlib
 
 DIM_ALPHA = 115          # dimmed background: ~45% black
-EDGE_RGB = (232, 161, 58)  # amber, the recorder accent
+EDGE_RGB = (232, 161, 58)  # amber, the app accent
 EDGE_WIDTH = 3
 
 

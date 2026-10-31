@@ -23,7 +23,7 @@ import javax.net.ssl.SSLSocketFactory;
 
 /** Optional Cloud upload: presigned TUS (resumable) upload of a
  *  finished lesson, then status polling until Cloud finishes encoding.
- *  Two credential modes, mirroring the web recorder:
+ *  Two credential modes, mirroring the web app:
  *   - signer mode: POST {title[, videoId]} to the signer URL (see
  *     app/cloud-signer) -> {videoId, libraryId, signature, expire};
  *     the library API key never lives on this device.

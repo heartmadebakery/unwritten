@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Fetch finished Cloud lessons so the pipeline can process them.
 
-The recorders upload a copy of every lesson to Cloud (see
+The apps upload a copy of every lesson to Cloud (see
 app/cloud-signer/); this module pulls the finished ones back down with
 the library credentials, which stay on the pipeline machine only:
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the recorder over local HTTPS so phones get a secure context
+"""Serve the web app over local HTTPS so phones get a secure context
 (in-page camera/mic recording requires HTTPS or localhost).
 
 Certs come from the project-local mkcert CA in ../../.certs/ (git-ignored):
@@ -15,7 +15,7 @@ import argparse, http.server, os, ssl
 HERE = os.path.dirname(os.path.abspath(__file__))
 CERTS = os.path.join(HERE, "..", "..", ".certs")
 
-ap = argparse.ArgumentParser(description="Serve the recorder over HTTPS.")
+ap = argparse.ArgumentParser(description="Serve the web app over HTTPS.")
 ap.add_argument("--port", type=int, default=8443)
 ap.add_argument("--cert", default=os.path.join(CERTS, "recorder.pem"))
 ap.add_argument("--key", default=os.path.join(CERTS, "recorder-key.pem"))

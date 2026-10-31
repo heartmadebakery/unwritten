@@ -3,7 +3,7 @@ import Foundation
 
 /// Optional Cloud upload: presigned TUS (resumable) upload of a
 /// finished lesson, then status polling until Cloud finishes encoding.
-/// Two credential modes, mirroring the Android and web recorders:
+/// Two credential modes, mirroring the Android and web apps:
 ///  - signer mode: POST {title[, videoId]} to the signer URL (see
 ///    app/cloud-signer) -> {videoId, libraryId, signature, expire};
 ///    the library API key never lives on this device.

@@ -305,7 +305,7 @@ public class MainActivity extends Activity {
         viewfinderBox.addView(playerControls, ctrlLp);
         recordScreen.addView(viewfinderBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Warning banners directly below the stage, like the web recorder.
+        // Warning banners directly below the stage, like the web app.
         micWarn = label("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings to re-enable it.", 15, 0xFFFFFFFF);
         micWarn.setBackgroundColor(RED);
         micWarn.setVisibility(View.GONE);
@@ -482,7 +482,7 @@ public class MainActivity extends Activity {
                 }
                 @Override public void onMicUnavailable() {
                     // Video-only take: say so out loud, like the web
-                    // recorder's red banner — never silent about silence.
+                    // app's red banner — never silent about silence.
                     runOnUiThread(new Runnable() { @Override public void run() { showMicWarn(); } });
                 }
             });
@@ -507,7 +507,7 @@ public class MainActivity extends Activity {
         } });
     }
 
-    // Quiet-minute check, mirroring the web recorder: MediaRecorder's
+    // Quiet-minute check, mirroring the web app: MediaRecorder's
     // peak amplitude is polled while recording, and a full quiet minute
     // raises the speech banner. Never touches the take itself.
     private final Runnable speechRunnable = new Runnable() {

@@ -339,7 +339,7 @@ final class CameraEngine: NSObject, ObservableObject {
     // ---------- native luma (uwcore, retained) ----------
 
     /// Attaches the per-frame luma analysis (mean + 8x8 grid, ≤10 fps).
-    /// Passing nil detaches it. The recorder UI leaves this detached —
+    /// Passing nil detaches it. The app UI leaves this detached —
     /// it exists so the native core stays linked and exercised, exactly
     /// like Android's setLumaListener.
     func setLumaListener(_ listener: ((Double, [Double]) -> Void)?) {
@@ -439,7 +439,7 @@ extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureA
         onMain { listener(mean, gridCopy) }
     }
 
-    // Quiet-minute check, mirroring the web recorder: capture RMS is
+    // Quiet-minute check, mirroring the web app: capture RMS is
     // evaluated while recording, and a full quiet minute raises the
     // speech banner. The tap only observes — never touches the take.
     private func handleAudio(_ sampleBuffer: CMSampleBuffer) {

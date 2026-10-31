@@ -1,7 +1,7 @@
 import Foundation
 
 /// Cloud settings + per-lesson link state, backed by UserDefaults.
-/// Mirrors Android's "unwritten_cloud" prefs and the web recorder's
+/// Mirrors Android's "unwritten_cloud" prefs and the web app's
 /// localStorage keys: lessons are always saved on-device first, and a
 /// copy uploads only when Cloud is on. Link states: uploading
 /// (progress/videoId/uploadUrl), processing, ready (videoId +
@@ -168,7 +168,7 @@ final class CloudStore: @unchecked Sendable {
     private func migrateLegacyPrefs() {
         // One-time move from the pre-rename store: the legacy keys are
         // adopted, then the legacy store is cleared. Mirrors Android's
-        // migrateCloudPrefs and the web recorder's uw_bunny_* legacy fallback.
+        // migrateCloudPrefs and the web app's uw_bunny_* legacy fallback.
         guard let legacy = defaults.dictionary(forKey: "unwritten_bunny"),
               !legacy.isEmpty else { return }
         for (key, value) in legacy {

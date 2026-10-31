@@ -2,7 +2,7 @@
 
 Reads a work dir (writeup.md, corrections.json, chapters.json) plus the
 cloud video id, and POSTs it to the signer's /hub/publish route, where
-the recorders' in-app hub reads it back. Video bytes stay in Stream —
+the apps' in-app hub reads it back. Video bytes stay in Stream —
 only playback URLs and the text artifacts travel here.
 
 Usage:
