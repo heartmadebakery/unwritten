@@ -2,7 +2,7 @@
    Pages are network-first so design updates arrive when online; the
    cache only answers when the network is gone. Clips never pass
    through here — they live in IndexedDB and downloads, as before. */
-var CACHE = "unwritten-recorder-v4";
+var CACHE = "unwritten-recorder-v5";
 var ASSETS = ["./", "index.html", "manifest.webmanifest",
               "icons/apple-touch-icon.png", "icons/icon-192.png",
               "icons/icon-512.png", "icons/icon-512-maskable.png"];
@@ -23,16 +23,33 @@ self.addEventListener("fetch", function(e){
                (e.request.headers.get("accept") || "").indexOf("text/html") >= 0;
   if(isPage){
     e.respondWith(fetch(e.request).then(function(res){
-      var copy = res.clone();
-      caches.open(CACHE).then(function(c){ c.put("index.html", copy); });
+      /* Cache good pages only: a cached 404/500 would brick the app
+         shell until the cache is cleared by hand. */
+      if(res && res.ok){
+        var copy = res.clone();
+        caches.open(CACHE).then(function(c){ c.put("index.html", copy); });
+      }
       return res;
-    }).catch(function(){ return caches.match("index.html"); }));
+    }).catch(function(){
+      return caches.match("index.html").then(function(hit){
+        /* Nothing cached and nothing reachable: answer plainly
+           instead of resolving undefined (a TypeError). */
+        return hit || new Response("Unwritten Craft is offline and was never cached.",
+                                   {status: 503, statusText: "Offline",
+                                    headers: {"Content-Type": "text/plain"}});
+      });
+    }));
   }else{
     e.respondWith(caches.match(e.request).then(function(hit){
-      return hit || fetch(e.request).then(function(res){
-        var copy = res.clone();
-        caches.open(CACHE).then(function(c){ c.put(e.request, copy); });
+      if(hit) return hit;
+      return fetch(e.request).then(function(res){
+        if(res && res.ok){
+          var copy = res.clone();
+          caches.open(CACHE).then(function(c){ c.put(e.request, copy); });
+        }
         return res;
+      }).catch(function(){
+        return new Response("", {status: 504, statusText: "Offline"});
       });
     }));
   }

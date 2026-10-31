@@ -1,16 +1,18 @@
-# The recorder (app/recorder/index.html)
+# Unwritten Craft web app (app/recorder/index.html)
 
-A single-file web app with one job: **record one lesson, stop, keep the
-file.** Plain HTML/CSS/JS — no dependencies; one tiny build step stamps
-a signer token into a servable copy. Every take is saved to the
-on-device vault (IndexedDB) with no download prompt, and with Cloud on
-(a default) a copy is also uploaded for streamed playback.
+A single-file web app: home lands on the hub sessions with Record and
+Upload above them, and recording is one screen of the app. Plain
+HTML/CSS/JS — no dependencies; one tiny build step stamps a signer
+token into a servable copy. Every take is saved to the on-device vault
+(IndexedDB) with no download prompt, and with Cloud on (a default) a
+copy is also uploaded for streamed playback. An upload rides the exact
+session path of a take, so the pipeline picks it up the same way a
+recording is picked up.
 
 The layout mirrors the [native Android app](../android/): the same dark
-palette, the same single-column order (viewfinder, zoom, record, Cloud
-toggle, export, sessions), and the same session rows — newest first,
-date + length, tap to play inside the viewfinder, ↓ to download one
-file, long-press to delete it from the device and the cloud.
+palette, the same session rows — newest first, date + length, tap to
+play inside the viewfinder, ↓ to download one file, long-press to
+delete it from the device and the cloud.
 
 There are no roles, steps, prompts, or session codes. The mentor
 teaches the way they would anyway; afterwards the pipeline transcribes
@@ -24,10 +26,11 @@ folder, so the single take is all it needs. Takes are named
 At startup the app probes the device (in-page recording? clip vault?)
 and adapts on its own:
 
-- **In-page recording available:** a camera preview, a zoom row below
-  it (hidden when the camera reports no zoom range), one **●
-  Record** / **■ Stop** button carrying the running timer, and the
-  sessions list below. If the stream ends up video-only, a red **No
+- **In-page recording available:** the record screen shows a camera
+  preview, a zoom row below it (hidden when the camera reports no
+  zoom range), and one **● Record** / **■ Stop** button carrying the
+  running timer; saved takes list on the home screen. If the stream
+  ends up video-only, a red **No
   microphone** banner says so — the mentor's words are the whole point.
   While recording, a local mic-level monitor warns after a quiet
   minute, so a dead mic is caught during the lesson, not after.

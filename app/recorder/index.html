@@ -6,18 +6,18 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
-<meta name="apple-mobile-web-app-title" content="Recorder">
+<meta name="apple-mobile-web-app-title" content="Unwritten">
 <meta name="theme-color" content="#17130E">
 <meta name="description" content="Record one lesson, in the mentor's own words.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
-<title>Unwritten Craft — Recorder</title>
+<title>Unwritten Craft</title>
 <style>
-  /* Same dark palette and single-column order as the native Android
-     recorder (MainActivity): viewfinder, zoom, record, cloud toggle,
-     export, sessions. */
+  /* Same dark palette as the native apps. One app, three screens:
+     home (record/upload actions over the hub, then cloud and device
+     sessions), record (viewfinder, zoom, record), upload. */
   :root{
     --bg:#17130E; --panel:#241C12; --ink:#F5EAD6; --dim:#B8A888;
     --red:#C0392B; --bright:#E74C3C; --line:#2E2213;
@@ -82,11 +82,18 @@
   .rstat{color:var(--dim);font-size:13px;min-width:40px;text-align:center;}
   .sempty{color:var(--dim);font-size:15px;padding:7px 0;}
   .note{color:var(--dim);font-size:14px;line-height:1.5;margin-top:14px;}
-  #hubnav{margin:0 0 4px;color:var(--dim);font-size:15px;}
-  #hubnav a{color:var(--dim);font-size:15px;text-decoration:none;}
+  .backbtn{background:none;border:none;color:var(--dim);font-size:16px;
+    padding:2px 0 8px;text-align:left;}
+  #hubstatus{color:var(--dim);font-size:15px;padding:4px 0;}
+  #hubstatus:empty{display:none;}
+  #hubplayer{width:100%;height:280px;object-fit:cover;display:block;background:#000;}
+  #hubclose{margin-bottom:6px;}
+  #uploadinput{width:100%;margin:6px 0 2px;color:var(--ink);font-size:15px;}
+  #uploadstatus{color:var(--dim);font-size:15px;line-height:1.5;padding:8px 4px;}
+  #uploadstatus:empty{display:none;}
   #caps{color:var(--dim);font-size:13px;line-height:1.55;}
   @media (min-width:700px){
-    #view,#player{height:340px;}
+    #view,#player,#hubplayer{height:340px;}
   }
 </style>
 </head>
@@ -94,56 +101,78 @@
 <div id="app">
   <header>
     <h1>Unwritten Craft</h1>
-    <p class="sub">Film mentor session. Record and let it happen.</p>
+    <p class="sub">Record, upload, and revisit craft lessons.</p>
   </header>
-  <p id="hubnav">‹ Hub — standalone copy, no Hub next door.</p>
-  <div id="stage">
-    <video id="view" autoplay playsinline muted></video>
-    <video id="player" class="hidden" playsinline preload="metadata"></video>
-    <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
-    <div id="playercontrols" class="hidden">
-      <button id="vfplay" title="Play">▶</button>
-      <button id="vfpause" title="Pause">⏸</button>
-      <button id="vfclose" title="Close">✕</button>
+  <div id="status">Record a new lesson, upload a video, or open a published session below.</div>
+  <section id="screen-home">
+    <button class="bigbtn" id="gorecord">● Record</button>
+    <button class="bigbtn" id="goupload">⬆ Upload video</button>
+    <div class="library"><h3>Hub</h3>
+      <div id="hubstatus"></div>
+      <video id="hubplayer" class="hidden" controls playsinline preload="metadata"></video>
+      <button id="hubclose" class="hidden backbtn" title="Close player">✕ Close</button>
+      <div id="hublist"><div class="sempty">Loading…</div></div>
     </div>
-  </div>
-  <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
-  <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
-  <div id="zoomrow" class="hidden">
-    <button id="zoomout" title="Zoom out">−</button>
-    <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
-    <button id="zoomin" title="Zoom in">+</button>
-    <span id="zoomlabel">1.0×</span>
-  </div>
-  <div id="status">Point the camera at the mentor's hands and the work. Press Record, let the lesson happen, press Stop at the end.</div>
-  <button class="bigbtn" id="recbtn">● Record</button>
-  <button class="bigbtn" id="cloudtoggle">☁ Cloud: on</button>
-  <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
-  <div class="hidden" id="capcontrols">
-    <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
-    <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
-  </div>
-  <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list below.</div>
-  <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
-  <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
-  <div class="smallrow">
-    <button id="camtoggle">📷 Back camera</button>
-    <button id="cloudsettings">⚙ Cloud settings</button>
-  </div>
-  <div id="cloudpanel" class="hidden">
-    <label for="cloudsigner">Signer URL (prefilled by the build; override only to point elsewhere)</label>
-    <input id="cloudsigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-cloud-signer.heartmade.workers.dev">
-    <label for="cloudsignertoken">Signer token (prefilled by the build; override only if rotated)</label>
-    <input id="cloudsignertoken" type="password" autocomplete="off" placeholder="baked into this build">
-    <label for="cloudlib">— or, without a signer: Stream library ID</label>
-    <input id="cloudlib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
-    <label for="cloudkey">Library API key (then lives on this device)</label>
-    <input id="cloudkey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
-    <p class="bnote">On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the ↗ share action on the session offers its link when ready. The signer URL and token arrive baked into this build; these fields are only overrides. As a fallback, a library key pasted below talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only).</p>
-  </div>
-  <div class="library"><h3>Sessions</h3><div id="clips"><div class="sempty">Nothing yet.</div></div></div>
-  <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it above; long-press it to delete it from the device and the cloud.</p>
-  <p id="caps"></p>
+    <button class="bigbtn" id="cloudtoggle">☁ Cloud: on</button>
+    <div class="smallrow">
+      <button id="cloudsettings">⚙ Cloud settings</button>
+    </div>
+    <div id="cloudpanel" class="hidden">
+      <label for="cloudsigner">Signer URL (prefilled by the build; override only to point elsewhere)</label>
+      <input id="cloudsigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-cloud-signer.heartmade.workers.dev">
+      <label for="cloudsignertoken">Signer token (prefilled by the build; override only if rotated)</label>
+      <input id="cloudsignertoken" type="password" autocomplete="off" placeholder="baked into this build">
+      <label for="cloudlib">— or, without a signer: Stream library ID</label>
+      <input id="cloudlib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
+      <label for="cloudkey">Library API key (then lives on this device)</label>
+      <input id="cloudkey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
+      <p class="bnote">On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the ↗ share action on the session offers its link when ready. The signer URL and token arrive baked into this build; these fields are only overrides. As a fallback, a library key pasted below talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only).</p>
+    </div>
+    <div class="library"><h3>This device</h3><div id="clips"><div class="sempty">Nothing yet.</div></div></div>
+    <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
+    <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.</p>
+    <p id="caps"></p>
+  </section>
+  <section id="screen-record" class="hidden">
+    <button class="backbtn" id="backhome-record">‹ Home</button>
+    <div id="stage">
+      <video id="view" autoplay playsinline muted></video>
+      <video id="player" class="hidden" playsinline preload="metadata"></video>
+      <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
+      <div id="playercontrols" class="hidden">
+        <button id="vfplay" title="Play">▶</button>
+        <button id="vfpause" title="Pause">⏸</button>
+        <button id="vfclose" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
+    <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
+    <div id="zoomrow" class="hidden">
+      <button id="zoomout" title="Zoom out">−</button>
+      <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
+      <button id="zoomin" title="Zoom in">+</button>
+      <span id="zoomlabel">1.0×</span>
+    </div>
+    <button class="bigbtn" id="recbtn">● Record</button>
+    <div class="hidden" id="capcontrols">
+      <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
+      <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
+    </div>
+    <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list on the home screen.</div>
+    <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
+    <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
+    <div class="smallrow">
+      <button id="camtoggle">📷 Back camera</button>
+    </div>
+  </section>
+  <section id="screen-upload" class="hidden">
+    <button class="backbtn" id="backhome-upload">‹ Home</button>
+    <div class="library"><h3>Upload a lesson video</h3></div>
+    <p class="note">Pick a video file: it is saved as a session on this device and uploaded to Cloud, and the pipeline picks it up exactly like a recording.</p>
+    <input type="file" id="uploadinput" accept="video/*">
+    <button class="bigbtn" id="uploadbtn">⬆ Upload</button>
+    <div id="uploadstatus"></div>
+  </section>
 </div>
 <script>
 "use strict";
@@ -200,6 +229,29 @@ async function openCamera(){
     state.stream.getAudioTracks()[0].onended = function(){ $("micwarn").classList.remove("hidden"); };
   }
   if(!CAPS.mediaRecorder) showCaptureControls(); else hideCaptureControls();
+}
+/* One app, three screens. Home (hub + device sessions) is the
+   landing; record owns the camera (opened on entry, released on
+   exit, so landing never prompts for permission); upload files
+   into the same session path as a take. */
+var currentScreen = "home";
+function showScreen(name){
+  if(state.recording && name !== "record") stopRec();
+  currentScreen = name;
+  ["home", "record", "upload"].forEach(function(s){
+    $("screen-" + s).classList.toggle("hidden", s !== name);
+  });
+  if(name === "record"){ openCamera(); }
+  else{
+    closeCamera();
+    if(name === "home"){ renderClips(); loadHub(); }
+  }
+  if(window.scrollTo) window.scrollTo(0, 0);
+}
+function closeCamera(){
+  stopLocalPlayback(); stopSpeechMonitor();
+  if(state.stream){ state.stream.getTracks().forEach(function(t){ try{ t.stop(); }catch(e){} }); state.stream = null; }
+  $("view").srcObject = null;
 }
 function showCaptureControls(){
   /* Old-device path: native camera / voice apps do the recording. */
@@ -307,6 +359,8 @@ function playInViewfinder(name){
   var c = clipByName(name);
   if(!c){ $("status").textContent = "That session file is missing from this device."; return; }
   if(state.recording) return;
+  /* Sessions live on home; playback happens on the record screen. */
+  showScreen("record");
   stopLocalPlayback();
   state.playing = name;
   $("view").classList.add("hidden");
@@ -438,14 +492,19 @@ function durationFor(name){
 }
 function clipHTML(c){
   var b = loadCloudLinks()[c.name] || null, st = b ? b.state : "", right;
-  if(!b) right = "<a class='sright dim' href='" + c.url + "' download='" + c.name + "' title='Download " + c.name + "'>↓</a>";
-  else if(st === "uploading") right = "<span class='rstat'>" + (b.progress | 0) + "%</span>";
-  else if(st === "processing" && !b.videoId) right = "<span class='rstat'>…</span>";
-  else if(st === "failed") right = "<a class='sright' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload'>!</a>";
-  else right = "<a class='sright box' href='#' data-cloud-watch='" + c.name + "' title='Share session link'>↗</a>";
+  /* Cloud-linking never removes the on-device download: every linked
+     row keeps ↓ next to its cloud action. */
+  var dl = "<a class='sright dim' href='" + c.url + "' download='" + c.name + "' title='Download " + c.name + "'>↓</a>";
+  if(!b) right = dl;
+  else if(st === "uploading") right = dl + "<span class='rstat'>" + (b.progress | 0) + "%</span>";
+  else if(st === "processing" && !b.videoId) right = dl + "<span class='rstat'>…</span>";
+  else if(st === "failed") right = dl + "<a class='sright' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload'>!</a>";
+  else right = dl + "<a class='sright box' href='#' data-cloud-watch='" + c.name + "' title='Share session link'>↗</a>";
   var dur = durationFor(c.name);
-  var mid = displayDateFor(c.name) + (dur ? "  •  " + dur : "");
-  return "<div class='srow' data-row='" + c.name + "' title='Play — long-press to delete'>" +
+  var memOnly = c.persisted === false;
+  var mid = displayDateFor(c.name) + (dur ? "  •  " + dur : "") + (memOnly ? " ⚠" : "");
+  var rowTitle = "Play — long-press to delete" + (memOnly ? " — in memory only, download before closing" : "");
+  return "<div class='srow' data-row='" + c.name + "' title='" + rowTitle + "'>" +
     "<span class='sleft'>" + leftIconFor(c.name) + "</span>" +
     "<span class='smid'>" + mid + "</span>" + right +
     "<button class='vh' data-cloud-delete='" + c.name + "'>Delete " + c.name + "</button></div>";
@@ -484,6 +543,16 @@ function cloudUseDirect(){ return !!(cloudCfg.libraryId && cloudCfg.apiKey); }
 function cloudReady(){
   if(!cloudEnabled()) return false;
   if(cloudSignerUrl()) return true;
+  return cloudUseDirect();
+}
+/* True when an upload could possibly succeed. Signer mode needs
+   its token — the URL always has a built-in default, so URL-alone
+   must not count — and direct mode needs library ID + API key.
+   Without this, fresh installs (Cloud on by default, no
+   credentials yet) fire doomed uploads that can only 401. Same
+   contract as the native recorders' canUpload. */
+function cloudCanUpload(){
+  if(cloudToken()) return true;
   return cloudUseDirect();
 }
 function cloudLibraryId(){ return cloudCfg.libraryId || ""; }
@@ -648,14 +717,33 @@ async function pollCloudStatus(name, videoId){
       await sleep(5000);
       var v = null;
       try{ v = await cloudGetVideo(videoId); failures = 0; }
-      catch(e){ if(++failures > 6) return; continue; }
+      catch(e){
+        if(++failures > 6){
+          setCloudLink(name, {state: "failed", videoId: videoId});
+          renderClips();
+          $("status").innerHTML = "☁️ <b>Cloud status checks kept failing</b> — tap ! on the session to try again. The session is safe on this device.";
+          return;
+        }
+        continue;
+      }
       if(v.status === 4){ setCloudLink(name, {state: "ready", progress: 100, videoId: videoId}); renderClips(); return; }
       if(v.status === 5 || v.status === 6){ setCloudLink(name, {state: "failed", videoId: videoId}); renderClips(); return; }
     }
+    /* Ten minutes with no finished stream: stop polling and offer a
+       retry instead of leaving the session on "…" forever. */
+    setCloudLink(name, {state: "failed", videoId: videoId});
+    renderClips();
+    $("status").innerHTML = "☁️ <b>Cloud is taking too long</b> to prepare the stream — tap ! on the session to try again. The session is safe on this device.";
   } finally { delete cloudPolling[name]; }
 }
 async function startCloudUpload(name, blob, sess){
   if(!cloudReady() || cloudActive[name]) return;
+  if(!cloudCanUpload()){
+    setCloudLink(name, {state: "failed"});
+    renderClips();
+    $("status").innerHTML = "☁️ <b>Cloud credentials missing</b> — add the signer token in Cloud settings. The session is safe on this device.";
+    return;
+  }
   cloudActive[name] = true;
   try{
     if(sess && sess.uploadUrl && sess.videoId){
@@ -691,6 +779,7 @@ async function shareCloudLinkFor(name){
   var link = loadCloudLinks()[name];
   if(!link || !link.videoId) return;
   var lib = link.libraryId || cloudCfg.libraryId;
+  if(!lib){ $("status").innerHTML = "☁️ <b>No Cloud link yet</b> for this session — the upload hasn't finished."; return; }
   var url = "https://player.mediadelivery.net/embed/" + lib + "/" + link.videoId;
   try{ if(navigator.clipboard) await navigator.clipboard.writeText(url); }catch(e){}
   if(navigator.share){
@@ -704,6 +793,14 @@ async function cloudOpenWatch(name){
 }
 async function cloudRetry(name){
   var blob = await idbGetBlob(name);
+  if(!blob){
+    /* No vault (old Safari, file://) but the take is still in memory:
+       re-read it from its object URL instead of giving up. */
+    var c = clipByName(name);
+    if(c){
+      try{ blob = await (await fetch(c.url)).blob(); }catch(e){ blob = null; }
+    }
+  }
   if(!blob){ $("status").innerHTML = "☁️ That session is no longer stored on this device, so it can't be re-uploaded from here."; return; }
   var link = loadCloudLinks()[name] || {};
   startCloudUpload(name, blob, (link.uploadUrl && link.videoId) ? {videoId: link.videoId, uploadUrl: link.uploadUrl} : null);
@@ -723,8 +820,12 @@ async function cloudDeleteLesson(name){
   if(link.videoId){
     try{ await cloudDeleteVideo(link.videoId); }
     catch(e){
-      $("status").innerHTML = "☁️ <b>Couldn't delete the cloud copy</b> (" + e.message + ") Keeping the local session so nothing is lost.";
-      return;
+      /* A dead cloud delete must not trap local storage: offer the
+         device-only delete as a second confirm. */
+      if(!confirm("The Cloud copy couldn't be deleted (" + e.message + ").\n\nDelete this device's copy anyway? The Cloud copy stays where it is.")){
+        $("status").innerHTML = "☁️ <b>Couldn't delete the cloud copy</b> (" + e.message + ") Keeping the local session so nothing is lost.";
+        return;
+      }
     }
   }
   await idbDelete(name);
@@ -735,6 +836,63 @@ async function cloudDeleteLesson(name){
   delCloudLink(name);
   renderClips();
   $("status").innerHTML = "🗑 Session deleted from this device" + (link.videoId ? " and the cloud." : ".");
+}
+$("uploadbtn").onclick = function(){
+  var f = $("uploadinput").files[0];
+  if(!f){ $("uploadstatus").innerHTML = "Pick a video file first."; return; }
+  if(f.type && f.type.indexOf("video/") !== 0){ $("uploadstatus").innerHTML = "That file isn't a video — pick a video file."; return; }
+  /* An upload rides the exact session path of a take: saved on this
+     device, then cloud-uploaded, so the pipeline picks it up the
+     same way a recording is picked up. */
+  saveBlob(f, "unwritten_lesson_upload_" + stamp() + "." + extFor(f, "mp4"));
+  $("uploadinput").value = "";
+  $("uploadstatus").innerHTML = "✅ <b>Upload started.</b> The video is saved on this device and uploading to Cloud — watch its progress on the home screen.";
+};
+/* The hub lives on the signer, so it needs a signer token. Direct
+   (library-key) mode has no hub at all. */
+function hubAvailable(){ return !cloudUseDirect() && !!cloudToken(); }
+function escHtml(s){
+  return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function hubRowHTML(r){
+  var playUrl = r.mp4_url || r.hls_url || "";
+  return "<div class='srow' data-hub-play='" + playUrl + "'>" +
+    "<span class='sleft'>☁</span><span class='smid'>" + escHtml(r.title || "Untitled") +
+    (r.lesson_date ? "  •  " + escHtml(r.lesson_date) : "") + "</span>" +
+    (playUrl ? "<span class='sright box'>▶</span>" : "") + "</div>";
+}
+function stopHubPlayback(){
+  var p = $("hubplayer");
+  try{ p.pause(); }catch(e){}
+  p.removeAttribute("src"); p.load();
+  p.classList.add("hidden"); $("hubclose").classList.add("hidden");
+}
+async function loadHub(){
+  var box = $("hublist"), st = $("hubstatus");
+  stopHubPlayback();
+  if(!hubAvailable()){
+    st.innerHTML = cloudUseDirect()
+      ? "The hub lives on the signer — direct library-key mode has no hub."
+      : "Add the signer token in Cloud settings to see published lessons.";
+    box.innerHTML = "";
+    return;
+  }
+  st.innerHTML = "Loading…";
+  try{
+    var rs = await fetch(cloudSignerUrl() + "/hub/sessions", {headers: {"X-Signer-Token": cloudToken()}});
+    if(rs.status === 401){ st.innerHTML = "Signer refused the token — check it in Cloud settings."; box.innerHTML = ""; return; }
+    if(rs.status === 503){ st.innerHTML = "Hub isn't switched on at the server yet."; box.innerHTML = ""; return; }
+    if(!rs.ok) throw new Error("HTTP " + rs.status);
+    var rows = await rs.json();
+    if(!rows || !rows.length){ st.innerHTML = ""; box.innerHTML = '<div class="sempty">Nothing published yet.</div>'; return; }
+    st.innerHTML = "";
+    box.innerHTML = rows.map(hubRowHTML).join("");
+  }catch(e){
+    st.innerHTML = "Hub couldn't load — check the connection and Cloud settings. (" + escHtml(e.message) + ")";
+    box.innerHTML = "";
+  }
 }
 function cloudResumePending(){
   if(!cloudReady()) return;
@@ -813,15 +971,24 @@ function startRec(){
   catch(e){ showCaptureControls(); return; }
   /* Capture everything the async onstop needs NOW, in case anything
      changes before it fires. */
-  var rec = state.recorder, recChunks = state.chunks;
+  var rec = state.recorder, recChunks = state.chunks, recErr = false;
   rec.ondataavailable = function(e){ if(e.data && e.data.size) recChunks.push(e.data); };
-  rec.onerror = function(){ stopRec(); $("status").innerHTML = "⚠️ <b>Recording hit a problem</b> — the device may have been interrupted. Check the sessions below, then record again."; };
+  /* onerror fires before onstop: the flag carries the failure across,
+     or onstop's "Session saved" buries it every time. */
+  rec.onerror = function(){ recErr = true; stopRec(); };
   rec.onstop = function(){
     var blob = new Blob(recChunks, {type: rec.mimeType || "video/webm"});
-    if(!blob.size){ $("status").innerHTML = "⚠️ <b>That take was empty</b> — nothing was captured. Record the lesson again."; return; }
+    if(!blob.size){
+      $("status").innerHTML = recErr
+        ? "⚠️ <b>Recording hit a problem</b> — the device may have been interrupted and nothing was captured. Check the home screen, then record again."
+        : "⚠️ <b>That take was empty</b> — nothing was captured. Record the lesson again.";
+      return;
+    }
     var ext = (rec.mimeType || "").indexOf("mp4") >= 0 ? "mp4" : "webm";
     saveBlob(blob, "unwritten_lesson_" + stamp() + "." + ext);
-    $("status").innerHTML = "✅ <b>Session saved</b> — on this device (sessions below). Hand the file to whoever runs the pipeline.";
+    $("status").innerHTML = recErr
+      ? "⚠️ <b>Session saved, but recording hit a problem</b> — the device may have been interrupted, so the take may be cut short. Check it below."
+      : "✅ <b>Session saved</b> — on this device (see the home screen). Hand the file to whoever runs the pipeline.";
   };
   try{ rec.start(250); }catch(e){ try{ rec.start(); }catch(e2){ showCaptureControls(); return; } }
   state.recording = true;
@@ -851,7 +1018,18 @@ $("cloudtoggle").onclick = function(){
   $("status").innerHTML = cloudEnabled()
     ? "☁️ <b>Cloud on.</b> New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
     : "☁️ <b>Cloud off.</b> Sessions stay on this device only. Export sessions to Downloads below to move them.";
+  if(cloudEnabled()) sweepBacklog();
 };
+/* Sessions recorded while Cloud was off (or failed) still need
+   their copy when Cloud comes back on — without this sweep they
+   would stay local-only forever, silently. */
+function sweepBacklog(){
+  if(!cloudCanUpload()) return;
+  state.clips.forEach(function(c){
+    var l = loadCloudLinks()[c.name];
+    if(isVideoLesson(null, c.name) && (!l || l.state === "failed")) cloudRetry(c.name);
+  });
+}
 $("cloudsettings").onclick = function(){
   var panel = $("cloudpanel");
   if(panel.classList.contains("hidden")){
@@ -920,23 +1098,28 @@ $("camtoggle").onclick = async function(){
 };
 $("capvideo").onclick = function(){ $("fileinput").click(); };
 $("capaudio").onclick = function(){ $("audioinput").click(); };
-$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_camera-app_" + stamp() + "." + extFor(f, "mp4")); $("status").innerHTML = "✅ <b>Session saved</b> from the camera app — see the sessions below."; } };
-$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_voice-app_" + stamp() + "." + extFor(f, "m4a")); $("status").innerHTML = "✅ <b>Session saved</b> from the voice app — see the sessions below."; } };
+$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_camera-app_" + stamp() + "." + extFor(f, "mp4")); $("status").innerHTML = "✅ <b>Session saved</b> from the camera app — see the home screen."; } };
+$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_voice-app_" + stamp() + "." + extFor(f, "m4a")); $("status").innerHTML = "✅ <b>Session saved</b> from the voice app — see the home screen."; } };
 document.addEventListener("visibilitychange", function(){
   /* Leaving the page mid-recording stops and keeps the take. */
   if(document.hidden && state.recording) stopRec();
   if(!document.hidden) wakeLock();
 });
-/* Hub nav: this page doubles as the recorder inside the site
-   (<site>/recorder/). Served standalone it has no hub next door,
-   so the nav names that instead of hiding; the link swaps in when
-   the hub page answers. */
-if(typeof fetch === "function"){
-  fetch("../index.html", {method:"HEAD"}).then(function(r){
-    if(r && r.ok) $("hubnav").innerHTML = '<a href="../">‹ Hub</a>';
-  }).catch(function(){});
-}
-wakeLock(); idbRestore().then(function(){ cloudResumePending(); }); openCamera();
+$("gorecord").onclick = function(){ showScreen("record"); };
+$("goupload").onclick = function(){ showScreen("upload"); };
+$("backhome-record").onclick = function(){ showScreen("home"); };
+$("backhome-upload").onclick = function(){ showScreen("home"); };
+$("hubclose").onclick = function(){ stopHubPlayback(); };
+$("hublist").onclick = function(e){
+  var row = e.target.closest ? e.target.closest("[data-hub-play]") : null;
+  var url = row ? row.getAttribute("data-hub-play") : "";
+  if(!url) return;
+  var p = $("hubplayer");
+  p.src = url;
+  p.classList.remove("hidden"); $("hubclose").classList.remove("hidden");
+  p.play().catch(function(){});
+};
+wakeLock(); idbRestore().then(function(){ renderClips(); cloudResumePending(); }); showScreen("home");
 </script>
 <script>
 /* PWA: register the offline shell where supported (secure contexts
