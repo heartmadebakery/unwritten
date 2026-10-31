@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the Unwritten Recorder iOS app and verify the bundle.
+# Build the Unwritten Craft iOS app and verify the bundle.
 #
 # Like the Android and web builds, this stamps one random token from the
 # signer pool into the app (CloudConfig.swift) before compiling, then

@@ -1,10 +1,10 @@
-# Unwritten Recorder — native iOS app
+# Unwritten Craft — native iOS app
 
-The native port of the [web recorder](../recorder/) and the [native
-Android app](../android/). Same single job — record one lesson, stop,
-keep the file — and the same filename contract
-(`unwritten_lesson_<timestamp>.mp4`), so lessons from this app drop
-straight into the existing pipeline (`pipeline/ingest.py`) unchanged.
+Unwritten Craft for iOS: home lands on the hub sessions with Record
+and Upload above them, and recording is one screen of the app. Same
+filename contract (`unwritten_lesson_<timestamp>.mp4`), so lessons
+from this app drop straight into the existing pipeline
+(`pipeline/ingest.py`) unchanged.
 Base device: **iPhone** (2019-class, the iOS counterpart to the
 Pixel 4). **iOS 17+**, iPhone only. No storyboards, no third-party
 libraries — SwiftUI + AVFoundation and one C++ core only.
@@ -36,9 +36,10 @@ does). Native iOS wins where the web cannot:
   stays Android-only — it drives an API with no iOS equivalent.
 
 Swift handles what it is good at: the capture-session wrapper and the
-single-screen UI (built programmatically — no storyboards): preview,
-zoom, one Record/Stop button, the Cloud toggle, export, the lessons
-list, and in-viewfinder playback.
+two-screen UI (built programmatically — no storyboards): home (record
+and upload actions over the hub, then cloud and device sessions) and
+record (preview, zoom, one Record/Stop button, in-viewfinder
+playback).
 
 ## Layout
 
@@ -48,7 +49,7 @@ build.sh                             (stamp + simulator build — see below)
 UnwrittenRecorder/
     Info.plist             camera/mic usage, Files sharing, portrait
     UnwrittenRecorderApp.swift   app entry
-    ContentView.swift      single screen: preview, zoom, record, Cloud, sessions
+    ContentView.swift      home + record screens, upload picker, playback
     CameraEngine.swift     AVCaptureSession + movie output + zoom + luma hook
     SessionStore.swift     clips dir, rows, durations, export/share/delete, uploads
     CloudStore.swift       Cloud settings + per-lesson link state (UserDefaults)

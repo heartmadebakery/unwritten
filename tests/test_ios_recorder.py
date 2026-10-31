@@ -9,6 +9,7 @@ presigned-TUS Cloud upload with the same link states.
 """
 import glob
 import os
+import re
 import unittest
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
@@ -83,6 +84,19 @@ class IOSRecorderTests(unittest.TestCase):
         up = self.store.index("maybeCloudUpload")
         self.assertLess(reg, up)
 
+    def test_remux_failure_keeps_original_before_cleanup(self):
+        # Regression: the export handler deleted the temp .mov before
+        # the fallback move ran, losing the lesson and registering a
+        # phantom row. The temp file must survive until its case is
+        # decided, and the fallback warning must survive registerLesson.
+        handler = self.store.split("exportAsynchronously", 1)[1] \
+                            .split("private func keepMovFallback", 1)[0]
+        self.assertLess(handler.index("switch status"),
+                        handler.index("removeItem(at: tempURL)"))
+        self.assertIn("moveItem(at: tempURL, to: movURL)", handler)
+        self.assertLess(handler.index("registerLesson(url: movURL)"),
+                        handler.index("kept the original recording"))
+
     def test_leaving_mid_recording_keeps_the_take(self):
         self.assertIn("scenePhase", self.view)
         self.assertIn("stopVideo()", self.view)
@@ -118,6 +132,18 @@ class IOSRecorderTests(unittest.TestCase):
         for token in ["playHubSession", "hubDetailCard", '"Hub"']:
             self.assertIn(token, self.view, token)
 
+    def test_hub_delete_removes_record_before_video(self):
+        # Hub record first, then the Stream video: a failure between
+        # the two must leave the bytes orphaned (playable,
+        # re-publishable) — never a hub row pointing at a dead video
+        # while the app claims nothing was lost. The partial outcome
+        # is reported as partial.
+        body = self.store.split("func deleteHubSession", 1)[1] \
+                         .split("// ---------- share sheet", 1)[0]
+        self.assertLess(body.index("deleteHubRecord"),
+                        body.index("deleteVideo"))
+        self.assertIn("but the cloud copy remains", body)
+
     def test_hub_section_always_visible_with_reason(self):
         # The Hub header renders regardless of Cloud state; the body
         # names the reason (Cloud off, missing signer token, server
@@ -152,6 +178,31 @@ class IOSRecorderTests(unittest.TestCase):
         start = body.index("UWStartCaptureSession")
         self.assertLess(begin, commit)
         self.assertLess(commit, start)
+
+    def test_camera_switch_rechecks_recording_on_queue(self):
+        # A take starting between the caller-thread check and the
+        # queued reconfiguration must not get its inputs swapped
+        # mid-take: the queue block re-checks before touching inputs.
+        engine = read(ENGINE)
+        body = engine.split("func switchCamera()", 1)[1] \
+                     .split("func pauseSession()", 1)[0]
+        self.assertEqual(body.count("movieOutput.isRecording"), 2)
+
+    def test_foreground_refreshes_permissions_and_resumes(self):
+        # Granting access in Settings then returning must unblock
+        # Record (or lift video-only) without a relaunch, and the
+        # session must pause in the background instead of running
+        # behind the app's back.
+        engine = read(ENGINE)
+        for token in ["func refreshPermissions()", "func resumeSession()",
+                      "func pauseSession()"]:
+            self.assertIn(token, engine, token)
+        self.assertNotIn("func shutdown()", engine)
+        phase = self.view.split(".onChange(of: scenePhase)", 1)[1] \
+                         .split(".alert(", 1)[0]
+        for token in ["pauseSession()", "refreshPermissions()",
+                      "resumeSession()"]:
+            self.assertIn(token, phase, token)
 
 
 class IOSBaselineTests(unittest.TestCase):
@@ -245,9 +296,70 @@ class CloudIOSTests(unittest.TestCase):
         self.assertIn("cloudResumePending", self.store)
         self.assertIn("onSession", self.uploader)
 
+    def test_no_force_unwrapped_request_urls(self):
+        # A mistyped signer URL or a corrupt persisted upload URL must
+        # surface as an error, never crash the app. The only allowed
+        # force-unwrap is the compile-time vendor constant.
+        bangs = re.findall(r"URL\(string: [^)]+\)!", self.uploader)
+        self.assertEqual(bangs, ["URL(string: Self.TUS_URL)!"], bangs)
+
+    def test_poll_timeout_and_errors_offer_retry(self):
+        # A resumed poll must not sit on "…" forever when Cloud never
+        # finishes, nor spin for ten minutes on dead status checks:
+        # both end in the failed state (the ! retry action).
+        poll = self.store.split("private func pollCloud", 1)[1] \
+                         .split("func cloudResumePending", 1)[0]
+        self.assertIn("taking too long", poll)
+        self.assertIn("kept failing", poll)
+        loop = self.uploader.split("for _ in 0 ..< 120", 1)[1] \
+                            .split("Still processing on Cloud", 1)[0]
+        self.assertIn("kept failing", loop)
+
+    def test_delete_cancels_polls_and_ignores_stragglers(self):
+        # Deleting mid-poll must stop the poll, and any late upload
+        # or poll completion for a deleted file must not resurrect
+        # its link row.
+        self.assertIn("pollTasks", self.store)
+        delete = self.store.split("func deleteLesson", 1)[1] \
+                           .split("func retryCloud", 1)[0]
+        self.assertIn("pollTasks[name]?.cancel()", delete)
+        finished = self.store.split("private func cloudFinished", 1)[1] \
+                             .split("private func cloudFailed", 1)[0]
+        failed = self.store.split("private func cloudFailed", 1)[1] \
+                           .split("private func pollCloud", 1)[0]
+        for region in (finished, failed):
+            self.assertIn("guard url(for: name) != nil", region)
+
+    def test_hub_load_reports_cause_and_clears_rows(self):
+        # A failed hub load names its cause (like Android), and the
+        # docstring must not claim cleared rows are kept.
+        load = self.store.split("func loadHub()", 1)[1] \
+                         .split("func openHubSession", 1)[0]
+        self.assertIn("localizedDescription", load)
+        self.assertNotIn("keep the last rows", self.store)
+
+    def test_enabling_cloud_sweeps_the_backlog(self):
+        # Sessions recorded while Cloud was off (or failed) still
+        # need their copy when Cloud comes back on — without a sweep
+        # they would stay local-only forever, silently.
+        self.assertIn("func sweepBacklog", self.store)
+        toggle = self.store.split("func toggleCloud()", 1)[1] \
+                           .split("func paintCloudToggle", 1)[0]
+        self.assertIn("sweepBacklog()", toggle)
+
     def test_legacy_cloud_keys_migrated(self):
         # One-generation legacy storage key, marked legacy per the rule.
         self.assertIn("unwritten_bunny", self.cloud)  # legacy
+
+    def test_share_never_serves_another_lesson_link(self):
+        # The lastLink fallback must be scoped to the same lesson:
+        # sharing lesson B's URL under lesson A's name is a mixup.
+        # And a link is only published when the library id is known
+        # (no embed//videoId links).
+        self.assertIn("cloud.lastName == name", self.store)
+        finished = self.store.split("private func cloudFinished", 1)[1] \
+                             .split("private func cloudFailed", 1)[0]
+        self.assertIn("if !lib.isEmpty", finished)
 
 
 class IOSParityTests(unittest.TestCase):
@@ -270,9 +382,13 @@ class IOSParityTests(unittest.TestCase):
             self.assertIn(color, self.view, color)
 
     def test_title_and_sessions_wording(self):
+        # Post-restructure contract (user-ordered): Unwritten Craft
+        # lands on the hub; "Sessions" split into Hub + This device.
         self.assertIn("Unwritten Craft", self.view)
-        self.assertIn("Film mentor session. Record and let it happen.", self.view)
-        self.assertIn('"Sessions"', self.view)
+        self.assertIn("Record, upload, and revisit craft lessons.", self.view)
+        self.assertNotIn("Film mentor session. Record and let it happen.", self.view)
+        self.assertNotIn('"Sessions"', self.view)
+        self.assertIn('"This device"', self.view)
 
     def test_cloud_toggle_below_record_and_export_when_off(self):
         self.assertIn("☁ Cloud: on", self.view)
@@ -291,6 +407,42 @@ class IOSParityTests(unittest.TestCase):
                       "stopLocalPlayback"]:
             self.assertIn(token, self.view, token)
 
+    def test_player_view_updates_its_player(self):
+        # SwiftUI reuses the UIView: an empty updateUIView keeps
+        # playing session A after the user taps session B.
+        update = self.view.split(
+            "func updateUIView(_ uiView: PlayerUIView", 1)[1] \
+            .split("}", 1)[0]
+        self.assertIn("playerLayer.player", update)
+
+    def test_settings_show_stored_values_not_effective(self):
+        # Loading effective (compiled-default) values into the fields
+        # persists them as overrides on open, shadowing later stamp
+        # rotations. Fields bind stored values; placeholders name the
+        # build defaults.
+        load = self.view.split("private func loadCloudFields()", 1)[1] \
+                        .split("private static func fmt", 1)[0]
+        self.assertNotIn("effSignerUrl()", load)
+        self.assertNotIn("effSignerToken()", load)
+        self.assertIn("store.cloud.signerUrl", load)
+        self.assertIn("store.cloud.signerToken", load)
+        self.assertIn("prompt", self.view)
+
+    def test_delete_offers_device_only_when_cloud_unreachable(self):
+        # A dead cloud delete must not trap local storage: the user
+        # gets a second confirm to delete this phone's copy anyway
+        # (the cloud copy stays where it is).
+        self.assertIn("pendingForceDelete", self.view)
+        self.assertIn("forceDeleteLocal", self.store)
+        self.assertIn("removeLocalSession", self.store)
+
+    def test_linked_rows_keep_their_download(self):
+        # Cloud-linking a session must not remove its on-device
+        # download: linked rows keep ↓ next to their cloud action.
+        row = self.view.split("private func sessionRow", 1)[1] \
+                       .split("private func rightAction", 1)[0]
+        self.assertIn("downloadSingle", row)
+
     def test_stop_button_carries_timer_like_android(self):
         self.assertIn("■ Stop  ", self.view)
 
@@ -308,6 +460,56 @@ class IOSParityTests(unittest.TestCase):
 
     def test_filename_contract_matches_android(self):
         self.assertIn("unwritten_lesson_", self.store)
+
+
+class IOSScreensTests(unittest.TestCase):
+    """Single-app restructure: home lands on the hub with Record and
+    Upload above it; record owns the camera; a picked video rides the
+    take path (clips folder, then Cloud) like a recording."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.view = read(VIEW)
+        cls.store = read(STORE)
+        cls.names = read(NAMES)
+
+    def test_home_is_the_landing_with_record_and_upload_above_hub(self):
+        home = self.view.split("private var homeView", 1)[1] \
+                        .split("private var recordView", 1)[0]
+        self.assertIn("● Record", home)
+        self.assertIn("Upload video", home)
+        self.assertLess(home.index("Upload video"), home.index('"Hub"'))
+        self.assertLess(home.index('"Hub"'), home.index('"This device"'))
+
+    def test_record_screen_owns_the_camera(self):
+        appear = self.view.split(".onAppear", 1)[1] \
+                          .split(".onChange(of: showCloudPanel)", 1)[0]
+        self.assertNotIn("requestAccessAndConfigure", appear)
+        show = self.view.split("private func showScreen", 1)[1] \
+                        .split("// ---------- recording", 1)[0]
+        for token in ["stopVideo()", "pauseSession()",
+                      "requestAccessAndConfigure()", "resumeSession()",
+                      "refresh()", "loadHub()"]:
+            self.assertIn(token, show, token)
+        self.assertIn("‹ Home", self.view)
+
+    def test_upload_picker_saves_like_a_take(self):
+        for token in ["UIDocumentPickerViewController", ".movie",
+                      "showUploadPicker", "registerUpload"]:
+            self.assertIn(token, self.view, token)
+        self.assertIn("uploadName", self.names)
+        self.assertIn("unwritten_lesson_upload_", self.names)
+        save = self.store.split("func registerUpload", 1)[1] \
+                         .split("\n    // ----------", 1)[0]
+        for token in ["isn't a video", "copyItem", "registerLesson(url:"]:
+            self.assertIn(token, save, token)
+        self.assertLess(save.index("copyItem"),
+                        save.index("registerLesson(url:"))
+
+    def test_home_playback_moves_to_record_screen(self):
+        play = self.view.split("private func playInViewfinder", 1)[1] \
+                        .split("private func playHubSession", 1)[0]
+        self.assertIn('showScreen("record")', play)
 
 
 if __name__ == "__main__":

@@ -21,4 +21,12 @@ enum Names {
         if e.hasPrefix(".") { e = String(e.dropFirst()) }
         return "unwritten_lesson_" + stamp() + "." + e
     }
+
+    /// An upload rides the take path: same folder, same cloud flow,
+    /// only the upload_ infix tells it apart for the mentor.
+    static func uploadName(_ ext: String) -> String {
+        var e = ext
+        if e.hasPrefix(".") { e = String(e.dropFirst()) }
+        return "unwritten_lesson_upload_" + stamp() + "." + e
+    }
 }

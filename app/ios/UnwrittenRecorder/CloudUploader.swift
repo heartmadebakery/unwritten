@@ -60,7 +60,11 @@ struct CloudUploader {
         if !useDirect() {
             var payload: [String: String] = ["title": title]
             if let reuseVideoId, !reuseVideoId.isEmpty { payload["videoId"] = reuseVideoId }
-            var req = URLRequest(url: URL(string: signerUrl)!)
+            guard let signerEndpoint = URL(string: signerUrl),
+                  signerEndpoint.scheme != nil, signerEndpoint.host != nil else {
+                throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+            }
+            var req = URLRequest(url: signerEndpoint)
             req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -86,7 +90,10 @@ struct CloudUploader {
         }
         var videoId = reuseVideoId ?? ""
         if videoId.isEmpty {
-            var req = URLRequest(url: URL(string: Self.API + "/library/" + libraryId + "/videos")!)
+            guard let createEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos") else {
+                throw CloudError.message("Library ID looks wrong — check it in Cloud settings.")
+            }
+            var req = URLRequest(url: createEndpoint)
             req.httpMethod = "POST"
             req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
             req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -117,7 +124,11 @@ struct CloudUploader {
     func deleteHubRecord(_ videoId: String) async throws {
         guard !useDirect() else { return }
         let encoded = videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoId
-        var req = URLRequest(url: URL(string: signerUrl + "/hub/sessions/" + encoded)!)
+        guard let hubEndpoint = URL(string: signerUrl + "/hub/sessions/" + encoded),
+              hubEndpoint.scheme != nil, hubEndpoint.host != nil else {
+            throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+        }
+        var req = URLRequest(url: hubEndpoint)
         req.httpMethod = "DELETE"
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
@@ -133,14 +144,21 @@ struct CloudUploader {
         let status: Int
         if !useDirect() {
             let sep = signerUrl.contains("?") ? "&" : "?"
-            var req = URLRequest(url: URL(string: signerUrl + sep + "videoId=" + videoId)!)
+            guard let deleteEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
+                  deleteEndpoint.scheme != nil, deleteEndpoint.host != nil else {
+                throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+            }
+            var req = URLRequest(url: deleteEndpoint)
             req.httpMethod = "DELETE"
             req.setValue("application/json", forHTTPHeaderField: "Accept")
             if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
             let (_, resp) = try await URLSession.shared.data(for: req)
             status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         } else {
-            var req = URLRequest(url: URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId)!)
+            guard let deleteEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId) else {
+                throw CloudError.message("Library ID looks wrong — check it in Cloud settings.")
+            }
+            var req = URLRequest(url: deleteEndpoint)
             req.httpMethod = "DELETE"
             req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
             req.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -160,14 +178,17 @@ struct CloudUploader {
             let status: Int
             if !useDirect() {
                 let sep = signerUrl.contains("?") ? "&" : "?"
-                var req = URLRequest(url: URL(string: signerUrl + sep + "videoId=" + videoId)!)
+                guard let statusEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
+                      statusEndpoint.host != nil else { return -1 }
+                var req = URLRequest(url: statusEndpoint)
                 req.setValue("application/json", forHTTPHeaderField: "Accept")
                 if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
                 let (d, resp) = try await URLSession.shared.data(for: req)
                 data = d
                 status = (resp as? HTTPURLResponse)?.statusCode ?? 0
             } else {
-                var req = URLRequest(url: URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId)!)
+                guard let statusEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId) else { return -1 }
+                var req = URLRequest(url: statusEndpoint)
                 req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
                 req.setValue("application/json", forHTTPHeaderField: "Accept")
                 let (d, resp) = try await URLSession.shared.data(for: req)
@@ -206,14 +227,26 @@ struct CloudUploader {
             uploadUrl = try await tusCreate(creds: creds, fileURL: fileURL)
             offset = 0
         }
+        guard let uploadUrl else {
+            throw CloudError.message("Cloud upload start returned no URL.")
+        }
         // Persist the session for resume before the first byte moves.
-        onSession(creds, uploadUrl!)
+        onSession(creds, uploadUrl)
         onProgress(offset, Self.fileSize(fileURL))
-        try await tusSend(fileURL: fileURL, uploadUrl: uploadUrl!, creds: creds,
+        try await tusSend(fileURL: fileURL, uploadUrl: uploadUrl, creds: creds,
                           offset: offset, onProgress: onProgress)
+        var errors = 0
         for _ in 0 ..< 120 {
             try await Task.sleep(nanoseconds: 5_000_000_000)
             let st = await videoStatus(creds.videoId)
+            if st < 0 {
+                errors += 1
+                if errors > 6 {
+                    throw CloudError.message("Cloud status checks kept failing — tap ! on the session to try again.")
+                }
+                continue
+            }
+            errors = 0
             if st == 4 { return creds.videoId }
             if st == 5 || st == 6 {
                 throw CloudError.message("Cloud encoding failed (status \(st))")
@@ -262,7 +295,10 @@ struct CloudUploader {
     }
 
     private func tusHead(uploadUrl: String, creds: Creds) async throws -> Int64 {
-        var req = URLRequest(url: URL(string: uploadUrl)!)
+        guard let headEndpoint = URL(string: uploadUrl) else {
+            throw CloudError.message("Cloud returned a bad upload URL.")
+        }
+        var req = URLRequest(url: headEndpoint)
         req.httpMethod = "HEAD"
         for (k, v) in authHeaders(creds) { req.setValue(v, forHTTPHeaderField: k) }
         let (_, resp) = try await URLSession.shared.data(for: req)
@@ -289,7 +325,10 @@ struct CloudUploader {
             guard let chunk = try handle.read(upToCount: want), !chunk.isEmpty else {
                 throw CloudError.message("could not read lesson file at offset \(offset)")
             }
-            var req = URLRequest(url: URL(string: uploadUrl)!)
+            guard let patchEndpoint = URL(string: uploadUrl) else {
+                throw CloudError.message("Cloud returned a bad upload URL.")
+            }
+            var req = URLRequest(url: patchEndpoint)
             req.httpMethod = "PATCH"
             for (k, v) in authHeaders(creds) { req.setValue(v, forHTTPHeaderField: k) }
             req.setValue(String(offset), forHTTPHeaderField: "Upload-Offset")

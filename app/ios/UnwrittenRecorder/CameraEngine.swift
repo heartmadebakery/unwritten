@@ -110,6 +110,10 @@ final class CameraEngine: NSObject, ObservableObject {
         nc.addObserver(forName: .AVCaptureSessionWasInterrupted, object: session, queue: nil) { [weak self] note in
             self?.diag("SESSION INTERRUPTED: \(note.userInfo ?? [:])")
         }
+        nc.addObserver(forName: .AVCaptureSessionInterruptionEnded, object: session, queue: nil) { [weak self] _ in
+            self?.diag("SESSION INTERRUPTION ENDED")
+            self?.resumeSession()
+        }
     }
 
     private func configureSession() {
@@ -199,6 +203,12 @@ final class CameraEngine: NSObject, ObservableObject {
         onMain { [weak self] in self?.isFront = next }
         sessionQueue.async { [weak self] in
             guard let self else { return }
+            // A take may have started after the caller-thread check —
+            // re-check on the queue before swapping inputs mid-take.
+            if self.movieOutput.isRecording {
+                self.onMain { [weak self] in self?.isFront = !next }
+                return
+            }
             self.session.beginConfiguration()
             defer { self.session.commitConfiguration() }
             self.attachInputsLocked(front: next)
@@ -206,11 +216,57 @@ final class CameraEngine: NSObject, ObservableObject {
         }
     }
 
-    func shutdown() {
+    /// Stops the capture session when the app backgrounds (the view
+    /// stops any take first, so the take is kept). Restart with
+    /// resumeSession() — without this pair the camera runs behind
+    /// the app's back with no resume path.
+    func pauseSession() {
         sessionQueue.async { [weak self] in
             guard let self else { return }
-            if self.movieOutput.isRecording { self.movieOutput.stopRecording() }
             if self.session.isRunning { self.session.stopRunning() }
+            self.onMain { self.sessionRunning = false }
+        }
+    }
+
+    /// Restarts a paused session. Safe to call redundantly: running
+    /// and input-less sessions are left alone.
+    func resumeSession() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            if self.session.isRunning || self.session.inputs.isEmpty { return }
+            if UWStartCaptureSession(self.session) {
+                self.onMain { self.sessionRunning = true }
+            } else {
+                self.diag("resumeSession failed; isRunning=\(self.session.isRunning)")
+            }
+        }
+    }
+
+    /// Re-checks permissions when the app returns to the foreground:
+    /// granting access in Settings then returning unblocks Record
+    /// (or lifts video-only) without a relaunch.
+    func refreshPermissions() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            onMain { [weak self] in self?.cameraDenied = false }
+            sessionQueue.async { [weak self] in
+                guard let self else { return }
+                if !self.session.isRunning && self.session.inputs.isEmpty {
+                    self.configureSession()
+                } else if !self.movieOutput.isRecording {
+                    // A newly-granted mic joins outside a take; a live
+                    // take keeps the inputs it started with.
+                    self.session.beginConfiguration()
+                    self.attachInputsLocked(front: self.isFront)
+                    self.session.commitConfiguration()
+                }
+            }
+        case .denied, .restricted:
+            onMain { [weak self] in self?.cameraDenied = true }
+        case .notDetermined:
+            break // the launch-time prompt flow owns this case
+        @unknown default:
+            break
         }
     }
 

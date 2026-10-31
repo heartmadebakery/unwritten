@@ -1,5 +1,6 @@
 import AVFoundation
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension Color {
     init(hex: String) {
@@ -19,12 +20,10 @@ private let UWB_RED = Color(hex: "C0392B")
 private let BRIGHT = Color(hex: "E74C3C")
 private let LINE = Color(hex: "2E2213")
 
-/// Unwritten Craft — Recorder. One job: record one lesson, stop, keep
-/// the file. No roles, no steps, nothing performed for the machine;
-/// the pipeline (transcribe -> write-up -> corrections) works
-/// afterwards on the single take. Single screen, same single-column
-/// order as the Android recorder: viewfinder, zoom, record, Cloud
-/// toggle, export, sessions.
+/// Unwritten Craft. Home lands on the hub sessions with Record and
+/// Upload above them; recording is one screen of the app, not a
+/// separate app. The pipeline (transcribe -> write-up -> corrections)
+/// works afterwards on each session — a take or an upload alike.
 struct ContentView: View {
     @StateObject private var engine = CameraEngine()
     @StateObject private var store = SessionStore()
@@ -49,6 +48,10 @@ struct ContentView: View {
     @State private var libraryId = ""
     @State private var apiKey = ""
 
+    @State private var screen = "home"
+    @State private var cameraConfigured = false
+    @State private var showUploadPicker = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -57,232 +60,16 @@ struct ContentView: View {
                     .foregroundColor(INK)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 2)
-                Text("Film mentor session. Record and let it happen.")
+                Text("Record, upload, and revisit craft lessons.")
                     .font(.system(size: 16))
                     .foregroundColor(DIM)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.bottom, 10)
-
-                // Viewfinder with in-player overlay (playback appears
-                // inside the viewfinder, like Android).
-                ZStack(alignment: .bottom) {
-                    CameraPreview(engine: engine)
-                        .frame(height: 280)
-                        .background(Color.black)
-                    if player != nil, let player {
-                        PlayerView(player: player)
-                            .frame(height: 280)
-                            .background(Color.black)
-                    }
-                    if engine.isRecording {
-                        HStack {
-                            HStack(spacing: 8) {
-                                Circle().fill(BRIGHT).frame(width: 12, height: 12)
-                                Text("REC  \(elapsedText)")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.white)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.55))
-                            .cornerRadius(20)
-                            Spacer()
-                        }
-                        .padding(12)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }
-                    if player != nil {
-                        HStack(spacing: 8) {
-                            playerButton("▶") { player?.play() }
-                            playerButton("⏸") { player?.pause() }
-                            playerButton("✕") { stopLocalPlayback() }
-                        }
-                        .padding(8)
-                        .background(Color.black.opacity(0.66))
-                    }
-                }
-
-                // A video-only stream must never be silent about being
-                // silent: the lesson IS the mentor's words.
-                if engine.micWarning {
-                    Text("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings > Privacy > Microphone.")
-                        .font(.system(size: 15))
-                        .foregroundColor(.white)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(UWB_RED)
-                }
-
-                // Quiet-minute check, mirroring the web recorder: a full
-                // quiet minute raises this banner; speech clears it.
-                if engine.speechWarning {
-                    Text("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.")
-                        .font(.system(size: 15))
-                        .foregroundColor(INK)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PANEL)
-                        .cornerRadius(4)
-                        .overlay(RoundedRectangle(cornerRadius: 4).stroke(BRIGHT, lineWidth: 1))
-                }
-
-                // Zoom directly below the viewfinder. Hidden when the
-                // camera reports no zoom range, so it is never dead UI.
-                if engine.maxZoom > 1.01 {
-                    HStack(spacing: 8) {
-                        zoomButton("−") { engine.nudgeZoom(-0.2) }
-                        Slider(value: $zoomProgress, in: 0 ... 100)
-                            .tint(DIM)
-                            .onChange(of: zoomProgress) { _, new in
-                                let max = engine.maxZoom
-                                let ratio = 1.0 + Float(new / 100) * (max - 1.0)
-                                if abs(ratio - engine.zoom) > 0.02 {
-                                    engine.setZoom(ratio)
-                                }
-                            }
-                        zoomButton("+") { engine.nudgeZoom(0.2) }
-                        Text(String(format: "%.1f×", engine.zoom))
-                            .font(.system(size: 14))
-                            .foregroundColor(DIM)
-                            .frame(minWidth: 48)
-                    }
-                    .padding(.vertical, 8)
-                    .onChange(of: engine.zoom) { _, new in
-                        let max = engine.maxZoom
-                        if max > 1.0 {
-                            let p = Double((new - 1.0) / (max - 1.0) * 100)
-                            if abs(p - zoomProgress) > 1 { zoomProgress = p }
-                        }
-                    }
-                }
-
-                Text(store.status)
-                    .font(.system(size: 15))
-                    .foregroundColor(DIM)
-                    .lineSpacing(4)
-                    .padding(.vertical, 10)
-
-                bigButton(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record") {
-                    toggleRecord()
-                }
-
-                // Cloud toggle directly below Record.
-                bigButton(store.cloudOn ? "☁ Cloud: on" : "☁ Cloud: off") {
-                    store.toggleCloud()
-                }
-
-                // Export is the offline fallback: only with Cloud off.
-                if !store.cloudOn {
-                    bigButton("Export sessions to Downloads") {
-                        store.exportSessions()
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    smallButton(engine.isFront ? "🤳 Front camera" : "📷 Back camera") {
-                        if !engine.isRecording { engine.switchCamera() }
-                    }
-                    smallButton("⚙ Cloud settings") {
-                        if !showCloudPanel { loadCloudFields() }
-                        showCloudPanel.toggle()
-                    }
-                }
-                .padding(.top, 6)
-
-                if showCloudPanel {
-                    VStack(alignment: .leading, spacing: 0) {
-                        cloudField(label: "Signer URL (prefilled by the build; override only to point elsewhere)",
-                                   text: $signerUrl, secure: false)
-                        cloudField(label: "Signer token (prefilled by the build; override only if rotated)",
-                                   text: $signerToken, secure: true)
-                        cloudField(label: "— or, without a signer: Stream library ID",
-                                   text: $libraryId, secure: false)
-                        cloudField(label: "Library API key (then lives on this device)",
-                                   text: $apiKey, secure: true)
-                        Text("On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the ↗ share action on the session offers its link when ready. As a fallback, a library key pasted above talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only).")
-                            .font(.system(size: 13.5))
-                            .foregroundColor(DIM)
-                            .lineSpacing(3)
-                            .padding(.top, 10)
-                    }
-                    .padding(14)
-                    .background(PANEL)
-                    .cornerRadius(4)
-                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(LINE, lineWidth: 1))
-                    .padding(.top, 10)
-                    .onChange(of: signerUrl) { _, v in store.cloud.signerUrl = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-                    .onChange(of: signerToken) { _, v in store.cloud.signerToken = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-                    .onChange(of: libraryId) { _, v in store.cloud.libraryId = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-                    .onChange(of: apiKey) { _, v in store.cloud.apiKey = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-                }
-
-                // Sessions at bottom: left icon, middle date + duration,
-                // right share/download.
-                Text("Sessions")
-                    .font(.system(size: 17))
-                    .foregroundColor(DIM)
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-                if store.rows.isEmpty {
-                    Text("Nothing yet.")
-                        .font(.system(size: 15))
-                        .foregroundColor(DIM)
-                        .padding(.vertical, 7)
+                if screen == "home" {
+                    homeView
                 } else {
-                    VStack(spacing: 0) {
-                        ForEach(store.rows) { row in
-                            sessionRow(row)
-                            Divider().background(LINE)
-                        }
-                    }
+                    recordView
                 }
-
-                Text("Hub")
-                    .font(.system(size: 17))
-                    .foregroundColor(DIM)
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
-                if store.hubRows.isEmpty {
-                        Text(store.hubStatusText())
-                            .font(.system(size: 15))
-                            .foregroundColor(DIM)
-                            .padding(.vertical, 7)
-                    } else {
-                        VStack(spacing: 0) {
-                            ForEach(store.hubRows) { row in
-                                HStack(spacing: 0) {
-                                    Text("☁")
-                                        .font(.system(size: 16))
-                                        .foregroundColor(INK)
-                                        .frame(minWidth: 32)
-                                    Text((row.title ?? row.videoId) + (row.lessonDate.map { "  •  " + $0 } ?? ""))
-                                        .font(.system(size: 15))
-                                        .foregroundColor(INK)
-                                        .lineLimit(1)
-                                        .padding(.horizontal, 8)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                    Text("›")
-                                        .font(.system(size: 20))
-                                        .foregroundColor(DIM)
-                                        .frame(width: 40, height: 36)
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 6)
-                                .contentShape(Rectangle())
-                                .onTapGesture { store.openHubSession(row) }
-                                Divider().background(LINE)
-                            }
-                        }
-                    }
-                    if let detail = store.hubDetail {
-                        hubDetailCard(detail)
-                    }
-
-                Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it above; long-press it to delete it from the device and the cloud.")
-                    .font(.system(size: 14))
-                    .foregroundColor(DIM)
-                    .lineSpacing(3)
-                    .padding(.top, 14)
             }
             .padding(14)
         }
@@ -293,7 +80,6 @@ struct ContentView: View {
             let store = self.store
             engine.statusHandler = { store.status = $0 }
             engine.recordingFinishedHandler = { store.finishRecording(tempURL: $0) }
-            engine.requestAccessAndConfigure()
             store.cloudResumePending()
             store.loadHub()
         }
@@ -314,10 +100,25 @@ struct ContentView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
-            // Leaving mid-recording stops and keeps the take.
-            if phase != .active, engine.isRecording {
-                engine.stopVideo()
+            if phase != .active {
+                // Leaving mid-recording stops and keeps the take;
+                // the session itself pauses so the camera never runs
+                // behind the app's back.
+                if engine.isRecording { engine.stopVideo() }
+                engine.pauseSession()
+            } else {
+                // A grant in Settings takes effect without a relaunch.
+                // The record screen owns the camera: returning to home
+                // must not restart it behind the hub.
+                engine.refreshPermissions()
+                if screen == "record" { engine.resumeSession() }
             }
+        }
+        .sheet(isPresented: $showUploadPicker) {
+            UploadPicker(onPick: { url in
+                showUploadPicker = false
+                store.registerUpload(sourceURL: url)
+            }, onCancel: { showUploadPicker = false })
         }
         .alert("Delete session?", isPresented: Binding(
             get: { pendingDelete != nil },
@@ -334,6 +135,20 @@ struct ContentView: View {
         } message: {
             Text("Delete '\(pendingDelete ?? "")' from this phone and the cloud?")
         }
+        .alert("Cloud copy couldn't be deleted", isPresented: Binding(
+            get: { store.pendingForceDelete != nil },
+            set: { if !$0 { store.pendingForceDelete = nil } }
+        )) {
+            Button("Delete from this phone", role: .destructive) {
+                if let name = store.pendingForceDelete {
+                    if playingName == name { stopLocalPlayback() }
+                    store.forceDeleteLocal(name)
+                }
+            }
+            Button("Keep", role: .cancel) { store.pendingForceDelete = nil }
+        } message: {
+            Text("Delete '\(store.pendingForceDelete ?? "")' from this phone anyway? The cloud copy stays where it is.")
+        }
         .alert("Delete hub session?", isPresented: Binding(
             get: { pendingHubDelete != nil },
             set: { if !$0 { pendingHubDelete = nil } }
@@ -349,6 +164,283 @@ struct ContentView: View {
         } message: {
             Text("Delete '\(pendingHubDelete?.title ?? "")' from the cloud and the hub?")
         }
+    }
+
+    // One app, two screens. Home (record/upload actions over the hub,
+    // then cloud and device sessions) is the landing; record owns the
+    // viewfinder and the camera behind it.
+    private var homeView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            bigButton("● Record") {
+                showScreen("record")
+            }
+            bigButton("⬆ Upload video") {
+                showUploadPicker = true
+            }
+
+            Text(store.status)
+                .font(.system(size: 15))
+                .foregroundColor(DIM)
+                .lineSpacing(4)
+                .padding(.vertical, 10)
+
+            Text("Hub")
+                .font(.system(size: 17))
+                .foregroundColor(DIM)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
+            if store.hubRows.isEmpty {
+                Text(store.hubStatusText())
+                    .font(.system(size: 15))
+                    .foregroundColor(DIM)
+                    .padding(.vertical, 7)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(store.hubRows) { row in
+                        HStack(spacing: 0) {
+                            Text("☁")
+                                .font(.system(size: 16))
+                                .foregroundColor(INK)
+                                .frame(minWidth: 32)
+                            Text((row.title ?? row.videoId) + (row.lessonDate.map { "  •  " + $0 } ?? ""))
+                                .font(.system(size: 15))
+                                .foregroundColor(INK)
+                                .lineLimit(1)
+                                .padding(.horizontal, 8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("›")
+                                .font(.system(size: 20))
+                                .foregroundColor(DIM)
+                                .frame(width: 40, height: 36)
+                        }
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 6)
+                        .contentShape(Rectangle())
+                        .onTapGesture { store.openHubSession(row) }
+                        Divider().background(LINE)
+                    }
+                }
+            }
+            if let detail = store.hubDetail {
+                hubDetailCard(detail)
+            }
+
+            // Cloud toggle below the hub.
+            bigButton(store.cloudOn ? "☁ Cloud: on" : "☁ Cloud: off") {
+                store.toggleCloud()
+            }
+
+            // Export is the offline fallback: only with Cloud off.
+            if !store.cloudOn {
+                bigButton("Export sessions to Downloads") {
+                    store.exportSessions()
+                }
+            }
+
+            smallButton("⚙ Cloud settings") {
+                if !showCloudPanel { loadCloudFields() }
+                showCloudPanel.toggle()
+            }
+            .padding(.top, 6)
+
+            if showCloudPanel {
+                VStack(alignment: .leading, spacing: 0) {
+                    cloudField(label: "Signer URL (prefilled by the build; override only to point elsewhere)",
+                               text: $signerUrl, secure: false,
+                               prompt: CloudStore.CLOUD_SIGNER_DEFAULT)
+                    cloudField(label: "Signer token (prefilled by the build; override only if rotated)",
+                               text: $signerToken, secure: true,
+                               prompt: "baked into this build")
+                    cloudField(label: "— or, without a signer: Stream library ID",
+                               text: $libraryId, secure: false)
+                    cloudField(label: "Library API key (then lives on this device)",
+                               text: $apiKey, secure: true)
+                    Text("On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the ↗ share action on the session offers its link when ready. As a fallback, a library key pasted above talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only).")
+                        .font(.system(size: 13.5))
+                        .foregroundColor(DIM)
+                        .lineSpacing(3)
+                        .padding(.top, 10)
+                }
+                .padding(14)
+                .background(PANEL)
+                .cornerRadius(4)
+                .overlay(RoundedRectangle(cornerRadius: 4).stroke(LINE, lineWidth: 1))
+                .padding(.top, 10)
+                .onChange(of: signerUrl) { _, v in store.cloud.signerUrl = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
+                .onChange(of: signerToken) { _, v in store.cloud.signerToken = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
+                .onChange(of: libraryId) { _, v in store.cloud.libraryId = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
+                .onChange(of: apiKey) { _, v in store.cloud.apiKey = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
+            }
+
+            // This device: left icon, middle date + duration, right
+            // share/download.
+            Text("This device")
+                .font(.system(size: 17))
+                .foregroundColor(DIM)
+                .padding(.top, 14)
+                .padding(.bottom, 4)
+            if store.rows.isEmpty {
+                Text("Nothing yet.")
+                    .font(.system(size: 15))
+                    .foregroundColor(DIM)
+                    .padding(.vertical, 7)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(store.rows) { row in
+                        sessionRow(row)
+                        Divider().background(LINE)
+                    }
+                }
+            }
+
+            Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.")
+                .font(.system(size: 14))
+                .foregroundColor(DIM)
+                .lineSpacing(3)
+                .padding(.top, 14)
+        }
+    }
+
+    private var recordView: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button("‹ Home") {
+                showScreen("home")
+            }
+            .font(.system(size: 16))
+            .foregroundColor(DIM)
+            .padding(.bottom, 8)
+
+            // Viewfinder with in-player overlay (playback appears
+            // inside the viewfinder, like Android).
+            ZStack(alignment: .bottom) {
+                CameraPreview(engine: engine)
+                    .frame(height: 280)
+                    .background(Color.black)
+                if player != nil, let player {
+                    PlayerView(player: player)
+                        .frame(height: 280)
+                        .background(Color.black)
+                }
+                if engine.isRecording {
+                    HStack {
+                        HStack(spacing: 8) {
+                            Circle().fill(BRIGHT).frame(width: 12, height: 12)
+                            Text("REC\u{00A0}\u{00A0}\(elapsedText)")
+                                .font(.system(size: 16))
+                                .foregroundColor(.white)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.black.opacity(0.55))
+                        .cornerRadius(20)
+                        Spacer()
+                    }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                }
+                if player != nil {
+                    HStack(spacing: 8) {
+                        playerButton("▶") { player?.play() }
+                        playerButton("⏸") { player?.pause() }
+                        playerButton("✕") { stopLocalPlayback() }
+                    }
+                    .padding(8)
+                    .background(Color.black.opacity(0.66))
+                }
+            }
+
+            // A video-only stream must never be silent about being
+            // silent: the lesson IS the mentor's words.
+            if engine.micWarning {
+                Text("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings > Privacy > Microphone.")
+                    .font(.system(size: 15))
+                    .foregroundColor(.white)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(UWB_RED)
+            }
+
+            // Quiet-minute check, mirroring the web recorder: a full
+            // quiet minute raises this banner; speech clears it.
+            if engine.speechWarning {
+                Text("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.")
+                    .font(.system(size: 15))
+                    .foregroundColor(INK)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(PANEL)
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(BRIGHT, lineWidth: 1))
+            }
+
+            // Zoom directly below the viewfinder. Hidden when the
+            // camera reports no zoom range, so it is never dead UI.
+            if engine.maxZoom > 1.01 {
+                HStack(spacing: 8) {
+                    zoomButton("−") { engine.nudgeZoom(-0.2) }
+                    Slider(value: $zoomProgress, in: 0 ... 100)
+                        .tint(DIM)
+                        .onChange(of: zoomProgress) { _, new in
+                            let max = engine.maxZoom
+                            let ratio = 1.0 + Float(new / 100) * (max - 1.0)
+                            if abs(ratio - engine.zoom) > 0.02 {
+                                engine.setZoom(ratio)
+                            }
+                        }
+                    zoomButton("+") { engine.nudgeZoom(0.2) }
+                    Text(String(format: "%.1f×", engine.zoom))
+                        .font(.system(size: 14))
+                        .foregroundColor(DIM)
+                        .frame(minWidth: 48)
+                }
+                .padding(.vertical, 8)
+                .onChange(of: engine.zoom) { _, new in
+                    let max = engine.maxZoom
+                    if max > 1.0 {
+                        let p = Double((new - 1.0) / (max - 1.0) * 100)
+                        if abs(p - zoomProgress) > 1 { zoomProgress = p }
+                    }
+                }
+            }
+
+            Text(store.status)
+                .font(.system(size: 15))
+                .foregroundColor(DIM)
+                .lineSpacing(4)
+                .padding(.vertical, 10)
+
+            bigButton(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record") {
+                toggleRecord()
+            }
+
+            smallButton(engine.isFront ? "🤳 Front camera" : "📷 Back camera") {
+                if !engine.isRecording { engine.switchCamera() }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    // ---------- screens ----------
+
+    private func showScreen(_ name: String) {
+        if name == "record" {
+            if !cameraConfigured {
+                cameraConfigured = true
+                engine.requestAccessAndConfigure()
+            } else {
+                engine.resumeSession()
+            }
+        } else {
+            // Leaving the record screen stops a live take (kept, like
+            // backgrounding) and parks the camera; home refreshes both
+            // lists so a just-finished take shows immediately.
+            if engine.isRecording { engine.stopVideo() }
+            stopLocalPlayback()
+            engine.pauseSession()
+            store.refresh()
+            store.loadHub()
+        }
+        screen = name
     }
 
     // ---------- recording ----------
@@ -390,6 +482,8 @@ struct ContentView: View {
             return
         }
         if engine.isRecording { return }
+        // Sessions live on home; playback happens on the record screen.
+        showScreen("record")
         playingHubId = nil
         startPlayer(url: url, label: name)
     }
@@ -402,6 +496,7 @@ struct ContentView: View {
             return
         }
         if engine.isRecording { return }
+        showScreen("record")
         playingHubId = session.videoId
         startPlayer(url: url, label: "hub:" + session.videoId)
     }
@@ -431,6 +526,14 @@ struct ContentView: View {
                 .lineLimit(1)
                 .padding(.horizontal, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            // Cloud-linking never removes the on-device download:
+            // linked rows keep ↓ next to their cloud action.
+            if row.rightKind != .download {
+                Button("↓") { store.downloadSingle(row.name) }
+                    .font(.system(size: 20))
+                    .foregroundColor(DIM)
+                    .frame(width: 40, height: 36)
+            }
             rightAction(row)
         }
         .padding(.vertical, 8)
@@ -527,7 +630,7 @@ struct ContentView: View {
         }
     }
 
-    private func cloudField(label: String, text: Binding<String>, secure: Bool) -> some View {
+    private func cloudField(label: String, text: Binding<String>, secure: Bool, prompt: String = "") -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(label)
                 .font(.system(size: 14))
@@ -535,9 +638,9 @@ struct ContentView: View {
                 .padding(.top, 10)
             Group {
                 if secure {
-                    SecureField("", text: text)
+                    SecureField(prompt, text: text)
                 } else {
-                    TextField("", text: text)
+                    TextField(prompt, text: text)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
@@ -552,8 +655,12 @@ struct ContentView: View {
     }
 
     private func loadCloudFields() {
-        signerUrl = store.cloud.effSignerUrl()
-        signerToken = store.cloud.effSignerToken()
+        // Stored overrides only: loading effective values would
+        // persist the compiled defaults as overrides on open and
+        // shadow later stamp rotations. The placeholders name the
+        // build defaults instead.
+        signerUrl = store.cloud.signerUrl
+        signerToken = store.cloud.signerToken
         libraryId = store.cloud.libraryId
         apiKey = store.cloud.apiKey
     }
@@ -668,10 +775,52 @@ struct PlayerView: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {}
+    func updateUIView(_ uiView: PlayerUIView, context: Context) {
+        // SwiftUI reuses the UIView: without this, tapping session B
+        // keeps showing session A's player.
+        uiView.playerLayer.player = player
+    }
 }
 
 final class PlayerUIView: UIView {
     override class var layerClass: AnyClass { AVPlayerLayer.self }
     var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+}
+
+/// System video picker for uploads. The picked video is copied into
+/// the clips folder by the store, so it rides the exact session path
+/// of a take from there on.
+struct UploadPicker: UIViewControllerRepresentable {
+    var onPick: (URL) -> Void
+    var onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [.movie], asCopy: true)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick, onCancel: onCancel)
+    }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: (URL) -> Void
+        let onCancel: () -> Void
+
+        init(onPick: @escaping (URL) -> Void, onCancel: @escaping () -> Void) {
+            self.onPick = onPick
+            self.onCancel = onCancel
+        }
+
+        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            if let url = urls.first { onPick(url) }
+        }
+
+        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+            onCancel()
+        }
+    }
 }

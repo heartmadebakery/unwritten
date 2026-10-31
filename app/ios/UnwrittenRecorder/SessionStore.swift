@@ -71,6 +71,7 @@ final class SessionStore: ObservableObject {
     private var inFlight: Set<String> = []
     private var polling: Set<String> = []
     private var uploadTasks: [String: Task<Void, Never>] = [:]
+    private var pollTasks: [String: Task<Void, Never>] = [:]
 
     @MainActor
     init() {
@@ -224,21 +225,29 @@ final class SessionStore: ObservableObject {
             let message = box.session.error?.localizedDescription
             guard let self else { return }
             Task { @MainActor in
-                try? FileManager.default.removeItem(at: tempURL)
+                // The temp file survives until its case is decided:
+                // deleting it up front would lose the lesson on the
+                // failure path and register a phantom row.
                 switch status {
                 case .completed:
+                    try? FileManager.default.removeItem(at: tempURL)
                     self.registerLesson(url: mp4URL)
                 case .cancelled:
+                    try? FileManager.default.removeItem(at: tempURL)
                     self.status = "⚠️ That take was interrupted before it finished. Record the lesson again."
                 default:
                     // Passthrough failed (unexpected codec mix) — keep the
                     // .mov rather than lose the lesson; the pipeline takes
                     // the largest media file whatever its extension.
                     try? FileManager.default.removeItem(at: mp4URL)
-                    self.status = "⚠️ MP4 remux failed (\(message ?? "unknown")) — kept the original recording."
                     let movURL = self.clipsDir.appendingPathComponent("unwritten_lesson_" + stamp + ".mov")
-                    try? FileManager.default.moveItem(at: tempURL, to: movURL)
-                    self.registerLesson(url: movURL)
+                    do {
+                        try FileManager.default.moveItem(at: tempURL, to: movURL)
+                        self.registerLesson(url: movURL)
+                        self.status = "⚠️ MP4 remux failed (\(message ?? "unknown")) — kept the original recording."
+                    } catch {
+                        self.status = "⚠️ MP4 remux failed (\(message ?? "unknown")) — and the original could not be kept: \(error.localizedDescription)"
+                    }
                 }
             }
         }
@@ -248,17 +257,42 @@ final class SessionStore: ObservableObject {
         let movURL = clipsDir.appendingPathComponent("unwritten_lesson_" + stamp + ".mov")
         do {
             try FileManager.default.moveItem(at: tempURL, to: movURL)
-            status = "⚠️ MP4 remux unavailable — kept the original recording."
             registerLesson(url: movURL)
+            // After registerLesson: it reports "saved", which would
+            // bury the remux warning.
+            status = "⚠️ MP4 remux unavailable — kept the original recording."
         } catch {
             status = "⚠️ Could not keep that take: \(error.localizedDescription)"
         }
     }
 
     private func registerLesson(url: URL) {
-        status = "✅ Session saved — on this device (sessions below). Hand the file to whoever runs the pipeline."
+        status = "✅ Session saved — on this device. Hand the file to whoever runs the pipeline."
         refresh()
         maybeCloudUpload(url.lastPathComponent)
+    }
+
+    /// An upload rides the exact session path of a take: copied into
+    /// the clips folder under an upload_ name, then registered (listed
+    /// and cloud-uploaded), so the pipeline picks it up the same way a
+    /// recording is picked up.
+    func registerUpload(sourceURL: URL) {
+        let ext = sourceURL.pathExtension.lowercased()
+        guard ["mov", "mp4", "m4v"].contains(ext) else {
+            status = "That file isn't a video — pick a video file."
+            return
+        }
+        let dest = clipsDir.appendingPathComponent(Names.uploadName(ext))
+        do {
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.copyItem(at: sourceURL, to: dest)
+        } catch {
+            status = "Upload failed: \(error.localizedDescription)"
+            return
+        }
+        registerLesson(url: dest)
     }
 
     // ---------- export / download ----------
@@ -291,9 +325,22 @@ final class SessionStore: ObservableObject {
         cloudOn = cloud.cloudEnabledCfg()
         refresh()
         loadHub()
-        status = cloud.cloudEnabledCfg()
-            ? "☁️ Cloud on. New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
-            : "☁️ Cloud off. Sessions stay on this device only. Export sessions below to move them."
+        if cloud.cloudEnabledCfg() {
+            status = "☁️ Cloud on. New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
+            sweepBacklog()
+        } else {
+            status = "☁️ Cloud off. Sessions stay on this device only. Export sessions below to move them."
+        }
+    }
+
+    /// Sessions recorded while Cloud was off (or failed) still need
+    /// their copy when Cloud comes back on — without this sweep they
+    /// would stay local-only forever, silently.
+    private func sweepBacklog() {
+        guard cloud.canUpload() else { return }
+        for file in clipFiles() {
+            maybeCloudUpload(file.lastPathComponent)
+        }
     }
 
     func paintCloudToggle() {
@@ -301,8 +348,11 @@ final class SessionStore: ObservableObject {
     }
 
     func cloudWatchUrl(_ name: String) -> String? {
-        cloud.watchUrl(for: name)
-            ?? (cloud.lastLink.isEmpty ? nil : cloud.lastLink)
+        if let direct = cloud.watchUrl(for: name) { return direct }
+        // Same lesson only: a stale lastLink from another lesson must
+        // never be shared under this lesson's name.
+        if cloud.lastName == name, !cloud.lastLink.isEmpty { return cloud.lastLink }
+        return nil
     }
 
     /// Per-session share, like Android: the link is copied, then offered
@@ -397,19 +447,25 @@ final class SessionStore: ObservableObject {
     }
 
     private func cloudFinished(_ name: String, videoId: String) {
+        guard url(for: name) != nil else { return }  // deleted mid-flight: no zombie row
         var lib = (cloud.cloudLink(name)?["libraryId"] as? String) ?? ""
         if lib.isEmpty { lib = cloud.libraryId }
-        let url = "https://player.mediadelivery.net/embed/" + lib + "/" + videoId
         cloud.setCloudLink(name, state: "ready", videoId: videoId,
                            libraryId: lib, uploadUrl: nil, progress: 100)
-        cloud.lastLink = url
-        cloud.lastName = name
-        UIPasteboard.general.string = url
+        // A link is only published when the library id is known — an
+        // embed//videoId URL helps nobody and poisons the fallback.
+        if !lib.isEmpty {
+            let url = "https://player.mediadelivery.net/embed/" + lib + "/" + videoId
+            cloud.lastLink = url
+            cloud.lastName = name
+            UIPasteboard.general.string = url
+        }
         status = "☁️ Uploaded. Cloud is preparing the streaming version — the ↗ share action on the session offers its link when ready."
         refresh()
     }
 
     private func cloudFailed(_ name: String, videoId: String?, message: String) {
+        guard url(for: name) != nil else { return }  // deleted mid-flight: no zombie row
         cloud.setCloudLink(name, state: "failed", videoId: videoId,
                            libraryId: nil, uploadUrl: nil, progress: -1)
         if message.contains("(401)") || message.contains("(403)")
@@ -424,14 +480,28 @@ final class SessionStore: ObservableObject {
     private func pollCloud(_ name: String, videoId: String) {
         if videoId.isEmpty || polling.contains(name) { return }
         polling.insert(name)
-        Task { [weak self] in
+        pollTasks[name]?.cancel()
+        pollTasks[name] = Task { [weak self] in
             guard let self else { return }
-            defer { self.polling.remove(name) }
+            defer {
+                self.polling.remove(name)
+                self.pollTasks.removeValue(forKey: name)
+            }
             guard let uploader = self.cloud.uploader() else { return }
+            var errors = 0
             for _ in 0 ..< 120 {
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 if Task.isCancelled { return }
                 let st = await uploader.videoStatus(videoId)
+                if st < 0 {
+                    errors += 1
+                    if errors > 6 {
+                        self.cloudFailed(name, videoId: videoId, message: "Cloud status checks kept failing — tap ! on the session to try again.")
+                        return
+                    }
+                    continue
+                }
+                errors = 0
                 if st == 4 {
                     self.cloudFinished(name, videoId: videoId)
                     return
@@ -441,6 +511,9 @@ final class SessionStore: ObservableObject {
                     return
                 }
             }
+            // Ten minutes with no finished stream: offer a retry
+            // instead of leaving the session on "…" forever.
+            self.cloudFailed(name, videoId: videoId, message: "Cloud is taking too long to prepare the stream — tap ! on the session to try again.")
         }
     }
 
@@ -461,10 +534,17 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Set when a cloud delete fails: the view offers deleting this
+    /// phone's copy anyway (the cloud copy stays where it is) instead
+    /// of trapping local storage behind a dead delete.
+    @Published var pendingForceDelete: String?
+
     /// Long-press a session to delete it, like Android and the web —
-    /// cloud copy first, and the local session is kept if that fails.
+    /// cloud copy first, and the local session is kept if that fails
+    /// (with a second confirm to delete the device copy anyway).
     func deleteLesson(_ name: String) {
         uploadTasks[name]?.cancel()
+        pollTasks[name]?.cancel()
         Task { [weak self] in
             guard let self else { return }
             let link = self.cloud.cloudLink(name)
@@ -481,18 +561,31 @@ final class SessionStore: ObservableObject {
                         message = error.localizedDescription
                     }
                     self.status = "☁️ Couldn't delete the cloud copy (\(message)) Keeping the local session so nothing is lost."
+                    self.pendingForceDelete = name
                     return
                 }
             }
-            try? FileManager.default.removeItem(at: self.clipsDir.appendingPathComponent(name))
-            self.cloud.delCloudLink(name)
-            self.inFlight.remove(name)
-            self.polling.remove(name)
-            self.durationCache.removeValue(forKey: name)
-            if name == self.cloud.lastName { self.cloud.clearLastLink() }
-            self.refresh()
+            self.removeLocalSession(name)
             self.status = "🗑 Session deleted from this device" + (videoId.isEmpty ? "." : " and the cloud.")
         }
+    }
+
+    /// Deletes this phone's copy after the user confirms past a dead
+    /// cloud delete. The cloud copy stays where it is.
+    func forceDeleteLocal(_ name: String) {
+        pendingForceDelete = nil
+        removeLocalSession(name)
+        status = "🗑 Session deleted from this phone. The cloud copy stays where it is."
+    }
+
+    private func removeLocalSession(_ name: String) {
+        try? FileManager.default.removeItem(at: clipsDir.appendingPathComponent(name))
+        cloud.delCloudLink(name)
+        inFlight.remove(name)
+        polling.remove(name)
+        durationCache.removeValue(forKey: name)
+        if name == cloud.lastName { cloud.clearLastLink() }
+        refresh()
     }
 
     func retryCloud(_ name: String) {
@@ -541,8 +634,8 @@ final class SessionStore: ObservableObject {
             : hubNotice
     }
 
-    /// Published lessons, newest first. Unconfigured hubs keep the
-    /// last rows but the status text explains why nothing new loads.
+    /// Published lessons, newest first. Unconfigured hubs clear the
+    /// rows while the status text explains why nothing new loads.
     func loadHub() {
         guard hubAvailable(), let req = hubRequest("/hub/sessions") else {
             hubRows = []
@@ -571,7 +664,9 @@ final class SessionStore: ObservableObject {
                 } else if failedStatus == 503 {
                     self?.hubNotice = "Hub isn't switched on at the server yet."
                 } else {
-                    self?.hubNotice = "Hub couldn't load — check the connection and Cloud settings."
+                    // Surface cause for debugging — keep generic prefix.
+                    let cause = String(error.localizedDescription.prefix(180))
+                    self?.hubNotice = "Hub couldn't load — check the connection and Cloud settings. (\(cause))"
                 }
             }
         }
@@ -615,8 +710,11 @@ final class SessionStore: ObservableObject {
         presentShare(items: [url])
     }
 
-    /// Hub delete is cloud-first like device delete: the Stream copy
-    /// goes first, then the hub record; a failure keeps everything.
+    /// Hub delete removes the hub record first, then the Stream copy:
+    /// a failure between the two leaves the bytes orphaned in Stream
+    /// (still playable, still re-publishable) instead of a hub row
+    /// pointing at a dead video. The partial outcome is reported as
+    /// partial, never as "nothing was lost".
     func deleteHubSession(_ session: HubSession) {
         let videoId = session.videoId
         guard !videoId.isEmpty else { return }
@@ -626,14 +724,25 @@ final class SessionStore: ObservableObject {
                 guard let uploader = self.cloud.uploader() else {
                     throw CloudError.message("Cloud settings incomplete.")
                 }
-                try await uploader.deleteVideo(videoId)
                 try await uploader.deleteHubRecord(videoId)
+                do {
+                    try await uploader.deleteVideo(videoId)
+                } catch {
+                    let message: String
+                    if case let CloudError.message(m) = error { message = m } else {
+                        message = error.localizedDescription
+                    }
+                    if self.hubDetail?.videoId == videoId { self.hubDetail = nil }
+                    self.loadHub()
+                    self.status = "☁️ Hub entry removed, but the cloud copy remains (\(message)) Delete it from the Stream dashboard."
+                    return
+                }
             } catch {
                 let message: String
                 if case let CloudError.message(m) = error { message = m } else {
                     message = error.localizedDescription
                 }
-                self.status = "☁️ Couldn't delete the cloud copy (\(message)) Keeping everything so nothing is lost."
+                self.status = "☁️ Couldn't delete the hub entry (\(message)) Keeping everything so nothing is lost."
                 return
             }
             if self.hubDetail?.videoId == videoId { self.hubDetail = nil }
