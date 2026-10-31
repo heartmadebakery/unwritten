@@ -24,10 +24,12 @@ mkdir -p pipeline/models
   https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
 
 # Android (optional): JDK 17 in ~/opt, SDK in ~/Android/Sdk (both user-local,
-# env persisted in ~/.bashrc). Rebuild the recorder APK with:
+# env persisted in ~/.bashrc). Rebuild the app APK with:
 #   cd app/android && bash build.sh    # needs SDK cmake bin on PATH for ninja
 
 .venv/bin/python -m unittest discover -s tests
 echo "OK. Run:  source .venv/bin/activate"
-echo "Recorder: .venv/bin/python -m http.server 8765 --directory app/recorder  ->  http://localhost:8765"
+echo "Next: read docs/SETUP.md (secrets, token pool, service, builds)."
+echo "Web app:  bash app/recorder/build.sh  # needs app/cloud-signer/tokens.txt"
+echo "          .venv/bin/python -m http.server 8765 --directory app/recorder/dist  ->  http://localhost:8765"
 echo "Pipeline: .venv/bin/python pipeline/run_pipeline.py <session_dir> <work_dir>"
