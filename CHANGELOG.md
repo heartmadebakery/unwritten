@@ -8,10 +8,93 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-10-30
 
+### Changed
+- **One app: Unwritten Craft.** Recording is a screen, not a separate
+  app, on all three platforms. Web (`app/recorder/index.html`), Android
+  (`MainActivity.java`), and iOS (`ContentView.swift`) now land on home:
+  Record and Upload actions above the hub sessions, cloud toggle and
+  settings, then the on-device sessions — with ‹ Home navigation back
+  from the record screen. An upload rides the exact session path of a
+  take (clips folder under an `unwritten_lesson_upload_` name, then
+  Cloud), so the pipeline picks it up like a recording. The camera only
+  opens on the record screen; leaving it stops a live take (kept) and
+  releases the camera. Product naming follows: Android label and APK
+  (`unwritten-craft.apk`), iOS display name, web manifest/title/service
+  worker, and the site hub/session templates all say Unwritten Craft;
+  `recorder/` URL paths and internal identifiers are unchanged. New
+  contract tests: `AndroidScreensTests`, `IOSScreensTests`, web screen
+  tests, and a terminology ban on the retired product name (271 tests,
+  23 hub checks green).
+- **Pipeline: ignored videos stay set aside.** `select_ready` now skips
+  state entries with result `ignored` — an operator decision that a
+  video is not a lesson — even under `--retry-failed`, so test clips
+  (two single-word "Yeah" takes failed write-up validation twice) stop
+  showing as failed without being re-downloaded. The two entries keep
+  their title/lesson/workDir with a reason; Cloud videos untouched.
+
 ### Added
 - **Cloud proxy for local pipeline.** `app/cloud-signer/worker.js` exposes `GET /pipeline/videos` proxied with `CLOUD_API_KEY` so the local `pipeline/cloud_fetch.py --cloud` can list via `CLOUD_PROXY_URL` without holding the library key; `CLOUD_LIBRARY_KEY` becomes optional when the proxy is set. `http_get_json` now sends `User-Agent: UnwrittenCraft/1.0`.
 - **Local cloud runner (auto-publish).** `run_cloud.sh` (now tracked) runs `run_pipeline.py --cloud work/cloud` *and* publishes each finished `work/cloud/*__*/writeup.md` via `pipeline/publish.py` to `HUB_SIGNER_URL` (`app/cloud-signer/tokens.txt`) then `make_site.py work/cloud work/site` every minute via `flock` to `work/cloud/cron.log`; `work/site` on `0.0.0.0:8787`.
 - **Hub WAF fix.** `pipeline/publish.py:91` sends `User-Agent: UnwrittenCraft/1.0` (like `cloud_fetch.py`) to bypass Cloudflare WAF `1010` that blocked `Python-urllib`; plus `Android: surface hub error cause + log` at `MainActivity.java:874-884` surfaces `(Unable to resolve host…)` instead of generic.
+
+### Fixed
+- **Bug-fix campaign, service first.** `GET /pipeline/videos` required
+  no token — anyone could list the library through the proxy; it now
+  sits behind the token check like every other route (6 new
+  `hub-check.mjs` checks). Hub routes tolerate trailing/doubled
+  slashes (pasted signer URLs), corrupt JSON columns serve as empty
+  instead of 500ing, and the header documents the token trust
+  boundary. `hub-check.mjs` grows 13 → 23 checks.
+- **Pipeline: tighter clips, safer fetching.** Correction windows
+  bisect to the next segment instead of a blind 20 s default;
+  `parse_ts` tolerates `[02:08]`/fractions and rejects out-of-range
+  stamps; the finder prompt demands bare `mm:ss`. Downloads land via
+  `.part` + rename (truncated files can never pass as lessons),
+  `cloud_fetch` main records per-video failures and continues, and
+  `--transcript` is refused when blank or unstamped. New: `muse`
+  preflight, ffmpeg timeouts with stderr tails, a guarded
+  `corrections.json` load, shared 429/500 retry plus TLS/HTTP error
+  wrapping in `meta_api`, streaming (constant-RAM) file uploads,
+  fail-closed redaction hold, `yuv420p` muxes with partial cleanup,
+  and an ffprobe fallback ladder for phone WebM/VFR. Pages render
+  intro, "What you need", and audio (`.m4a`) clips, and survive
+  corrupt JSON.
+- **Recorders: no more silent/stuck states.** Web, Android, and iOS
+  all fail fast without cloud credentials (was: doomed 401s on web),
+  end 10-minute processing polls and dead status checks in the
+  failed state with retry, cancel in-flight work on delete (no
+  zombie rows), sweep the offline backlog when Cloud is re-enabled,
+  and offer device-only delete when the cloud delete fails. Linked
+  rows keep their ↓ download on all three; share fallbacks can no
+  longer serve another lesson's link or an `embed//videoId` URL; hub
+  deletes remove the record before the video and report partial
+  outcomes honestly.
+- **iOS specifics.** Fixed a remux-failure path that deleted the
+  take and registered a phantom row; guarded 9 force-unwrapped URLs
+  (mistyped signer URLs now error, never crash); `PlayerView` swaps
+  players; settings fields bind stored values with build defaults as
+  placeholders (no override shadowing); foreground refreshes
+  permissions and resumes the session; background pauses it;
+  camera-switch re-checks recording on-queue.
+- **Android specifics.** New ⚙ Cloud settings screen (token/keys
+  were previously unstamped-build dead ends); camera/permission/
+  record errors Toast instead of dying in a hidden view; stop
+  uploads wait for take finalization (was: partial uploads); failed
+  uploads retry from the ! badge; clips dir survives missing
+  external storage; external playback goes through a read-only
+  `TinyFileProvider` (the `file://` + StrictMode bypass never worked
+  on Android 7+); export cleans `IS_PENDING` rows per file and
+  continues past failures; background releases the camera and
+  foreground reopens it. Full `build.sh` APK verified.
+- **Repo hygiene.** `requirements.txt` is live-only (torch moves to
+  `requirements-retired.txt` with its CPU index; `setup.sh` installs
+  both); `sw.js` caches good pages only and answers offline plainly;
+  `run_cloud.sh` logs FAIL markers plus lock contention and exits
+  non-zero; `baseten.py` names its optional `openai` dependency;
+  fixture plumbing over `samples/lesson_transcript_fixture.md` is
+  covered by tests. Investigated and cleared: sample write-ups all
+  validate; untimestamped sample transcripts are drafter fixtures by
+  design. Full suite (Python + hub-check + javac + APK) green.
 
 ## 2026-10-29
 

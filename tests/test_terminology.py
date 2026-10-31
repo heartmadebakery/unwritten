@@ -1,6 +1,8 @@
 """Terminology contract: the product calls its storage "Cloud" (not the
-vendor's name) and the lesson-giver a generic mentor — no "teacher", no
-she/her anywhere in live code, copy, prompts, samples, or tests.
+vendor's name), itself "Unwritten Craft" on every platform (never the
+retired "Unwritten Recorder"), and the lesson-giver a generic mentor —
+no "teacher", no she/her anywhere in live code, copy, prompts, samples,
+or tests.
 
 Dated history is exempt: CHANGELOG.md and the dated docs logs record
 the past, so they keep their original wording. Vendor endpoints
@@ -74,6 +76,22 @@ class TerminologyTests(unittest.TestCase):
                         bad.append("%s:%d: %s" % (
                             os.path.relpath(path, ROOT), i, line.strip()[:80]))
         self.assertEqual(bad, [], "bunny product naming:\n" + "\n".join(bad))
+
+    def test_no_unwritten_recorder_product_naming(self):
+        # The product is one app called Unwritten Craft on all three
+        # platforms; the retired "Unwritten Recorder" product name must
+        # not survive in live code, copy, or docs. Internal identifiers
+        # without the space (UnwrittenRecorderApp, the app/recorder and
+        # recorder/ paths) are untouched and do not match.
+        bad = []
+        for path in self.files:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                for i, line in enumerate(fh, 1):
+                    if "Unwritten Recorder" in line:
+                        bad.append("%s:%d: %s" % (
+                            os.path.relpath(path, ROOT), i, line.strip()[:80]))
+        self.assertEqual(bad, [],
+                         "retired product naming:\n" + "\n".join(bad))
 
 
 if __name__ == "__main__":
