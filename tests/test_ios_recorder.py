@@ -1,8 +1,7 @@
-"""iOS recorder contract: native port in parity with Android and web.
+"""iOS app contract: native port in parity with Android and web.
 
-app/ios/ has exactly one job, like the other two recorders: record one
-lesson, stop, keep the file. Same dark palette, same single-column
-order (viewfinder, zoom, record, Cloud toggle, export, sessions), same
+app/ios/ lands on the hub sessions with Record and Upload above them,
+like the other two apps. Same dark palette, same home landing, same
 session-row contract (newest first, date + duration, tap to play in
 the viewfinder, long-press to delete), same filename contract, same
 presigned-TUS Cloud upload with the same link states.
@@ -363,10 +362,10 @@ class CloudIOSTests(unittest.TestCase):
 
 
 class IOSParityTests(unittest.TestCase):
-    """The iOS recorder mirrors the Android and web recorders' design.
+    """The iOS app mirrors the Android and web apps' design.
 
-    Same dark palette, same single-column order (viewfinder, zoom,
-    record, cloud toggle, export, sessions), same session-row contract:
+    Same dark palette, same home landing (Record + Upload above the
+    hub, then cloud and device sessions), same session-row contract:
     newest first, date + duration, tap to play in the viewfinder,
     long-press to delete, per-lesson share/download.
     """

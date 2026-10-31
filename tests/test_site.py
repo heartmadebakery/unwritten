@@ -114,7 +114,7 @@ class TestPageNav(unittest.TestCase):
             with open(os.path.join(
                     site, "sessions", "lesson1", "page.html")) as fh:
                 html = fh.read()
-            # Back to the hub list and over to the recorder, by
+            # Back to the hub list and over to the app, by
             # relative path so the site works from any base URL.
             self.assertIn('href="../../"', html)
             self.assertIn('href="../../recorder/"', html)

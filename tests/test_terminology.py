@@ -17,6 +17,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 LIVE_DIRS = ["app", "pipeline", "harness", "prompts", "samples", "tests"]
 LIVE_FILES = ["README.md",
+              "AGENTS.md",
+              os.path.join("docs", "SETUP.md"),
               os.path.join("docs", "DEVICES.md"),
               os.path.join("docs", "PIPELINE.md"),
               os.path.join("docs", "android-app-worklog.md")]

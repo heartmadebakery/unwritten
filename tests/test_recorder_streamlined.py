@@ -1,9 +1,10 @@
-"""Streamlined recorder contract (Oct 27 simplification, applied to app/).
+"""Streamlined app contract (Oct 27 simplification, applied to app/).
 
-Both recorders have exactly one job: record one lesson, stop, keep the
-file. No roles/modes, no session steps, no apprentice line, no companion
-sync. The pipeline takes the largest media file as the lesson, so every
-take is named unwritten_lesson_<timestamp>.<ext>.
+Both apps open on the hub sessions with Record and Upload above them;
+recording is one screen, not a separate app. No roles/modes, no
+session steps, no apprentice line, no companion sync. The pipeline
+takes the largest media file as the lesson, so every take is named
+unwritten_lesson_<timestamp>.<ext> (uploads add an upload_ infix).
 """
 import os
 import re
@@ -29,7 +30,7 @@ ANDROID_MANIFEST = os.path.join(ROOT, "app", "android", "app", "src", "main",
                                 "AndroidManifest.xml")
 
 # Vocabulary of the cut multi-mode design. None of it may survive in the
-# streamlined recorders (docs and dated logs may keep it as history).
+# streamlined apps (docs and dated logs may keep it as history).
 CUT_WORDS = ["interviewer", "companion", "apprentice", "rolebtn",
              "Show me", "Teach me", "Your try"]
 
@@ -622,10 +623,10 @@ class CloudSignerTests(unittest.TestCase):
 
 
 class WebAndroidParityTests(unittest.TestCase):
-    """The web recorder mirrors the native Android recorder's design.
+    """The web app mirrors the native Android app's design.
 
-    Same dark palette, same single-column order (viewfinder, zoom,
-    record, cloud toggle, export, sessions), same session-row contract:
+    Same dark palette, same home landing (Record + Upload above the
+    hub, then cloud and device sessions), same session-row contract:
     newest first, date + duration, tap to play in the viewfinder,
     long-press to delete, per-lesson share/download.
     """
