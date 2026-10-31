@@ -14,6 +14,10 @@
  *
  *   DELETE /?videoId=X -> {deleted: true} (removes the cloud copy)
  *
+ *   GET  /pipeline/videos?page=N -> the library listing, passed
+ *        through (lets the local pipeline list videos without holding
+ *        the vendor key; needs the same token as every other route)
+ *
  * Env: CLOUD_LIBRARY_ID (var), CLOUD_API_KEY (secret).
  * Optional: SIGNER_TOKENS (secret) — comma-separated token pool; a
  * caller is authorized when its X-Signer-Token header matches ANY
@@ -23,6 +27,14 @@
  * CORS_ORIGIN (var) — default "*"; set to your recorder origin before
  * real use. The vendor's docs warn that an open create route lets
  * anyone fill your library; the token + origin are the minimum.
+ *
+ * Trust boundary: one token authorizes the whole library — re-sign,
+ * status, delete, and the listing proxy take any videoId with no
+ * ownership check. That is deliberate (tokens go only to our own
+ * builds and the pipeline machine), but treat a token as
+ * library-admin: a leaked one revokes that build (rotate it out of
+ * SIGNER_TOKENS), and per-token issuance tracking would be the next
+ * step if tokens ever go to third parties.
  *
  * Hub store (D1, SQLite): the published lessons behind the in-app hub.
  *
@@ -61,11 +73,36 @@ export default {
         status: status || 200,
         headers: Object.assign({ "Content-Type": "application/json" }, cors),
       });
+    // A corrupt JSON column (hand-edited D1, old writer) serves as
+    // empty instead of 500ing the whole hub.
+    const parseList = (text) => {
+      try {
+        const v = JSON.parse(text || "[]");
+        return Array.isArray(v) ? v : [];
+      } catch { return []; }
+    };
+    const parseObj = (text) => {
+      try {
+        const v = JSON.parse(text || "{}");
+        return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+      } catch { return {}; }
+    };
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    // Pipeline proxy: lets local pipeline list videos without holding the vendor API key.
+    const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
+    if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
+    if (pool.length && !pool.includes(request.headers.get("X-Signer-Token") || "")) {
+      return json({ error: "unauthorized" }, 401);
+    }
+    // Clients paste signer URLs with or without a trailing slash;
+    // normalize so every form routes the same.
+    const normPath = new URL(request.url).pathname.replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
+    // Pipeline proxy: lets the local pipeline list videos without
+    // holding the vendor API key (it sends X-Signer-Token). Behind
+    // the token check like every other route — an open proxy would
+    // leak the library listing to anyone.
     {
       const pUrl = new URL(request.url);
-      if (pUrl.pathname === "/pipeline/videos") {
+      if (normPath === "/pipeline/videos") {
         const page = pUrl.searchParams.get("page") || "1";
         const br = await fetch(CLOUD_API + "/library/" + env.CLOUD_LIBRARY_ID + "/videos?page=" + page + "&itemsPerPage=100&orderBy=date", {
           headers: { AccessKey: env.CLOUD_API_KEY, Accept: "application/json" }
@@ -73,17 +110,12 @@ export default {
         return new Response(await br.text(), { status: br.status, headers: Object.assign({ "Content-Type": "application/json" }, cors) });
       }
     }
-    const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
-    if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
-    if (pool.length && !pool.includes(request.headers.get("X-Signer-Token") || "")) {
-      return json({ error: "unauthorized" }, 401);
-    }
     if (!env.CLOUD_LIBRARY_ID || !env.CLOUD_API_KEY) {
       return json({ error: "signer not configured (CLOUD_LIBRARY_ID / CLOUD_API_KEY)" }, 500);
     }
     const url = new URL(request.url);
     try {
-      if (url.pathname === "/hub/publish" && request.method === "POST") {
+      if (normPath === "/hub/publish" && request.method === "POST") {
         const store = hubStore(env);
         if (!store) return json({ error: "hub store not configured" }, 503);
         const body = await request.json().catch(() => ({}));
@@ -122,7 +154,7 @@ export default {
           .run();
         return json({ published: videoId });
       }
-      if (url.pathname === "/hub/sessions" && request.method === "GET") {
+      if (normPath === "/hub/sessions" && request.method === "GET") {
         const store = hubStore(env);
         if (!store) return json({ error: "hub store not configured" }, 503);
         const rows = await store
@@ -142,7 +174,7 @@ export default {
         );
       }
       {
-        const m = url.pathname.match(/^\/hub\/sessions\/([^/]+)$/);
+        const m = normPath.match(/^\/hub\/sessions\/([^/]+)$/);
         if (m) {
           const store = hubStore(env);
           if (!store) return json({ error: "hub store not configured" }, 503);
@@ -161,9 +193,9 @@ export default {
               hlsUrl: row.hls_url,
               mp4Url: row.mp4_url,
               writeupMd: row.writeup_md,
-              corrections: JSON.parse(row.corrections_json || "[]"),
-              chapters: JSON.parse(row.chapters_json || "[]"),
-              glossary: JSON.parse(row.glossary_json || "{}"),
+              corrections: parseList(row.corrections_json),
+              chapters: parseList(row.chapters_json),
+              glossary: parseObj(row.glossary_json),
               publishedAt: row.published_at,
             });
           }

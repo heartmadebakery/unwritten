@@ -118,4 +118,65 @@ const VID = "vid-123";
   const r = await call(authed, "PUT", `/hub/sessions/${VID}`, {}, TOKEN);
   check(r.status === 405, "unknown hub method rejected");
 }
+// Pipeline proxy needs the token like every other route: an open
+// proxy would leak the library listing to anyone.
+{
+  const r = await call(authed, "GET", "/pipeline/videos?page=1", undefined, "nope");
+  check(r.status === 401, "pipeline proxy rejects a bad token");
+  const r2 = await call(authed, "GET", "/pipeline/videos?page=1");
+  check(r2.status === 401, "pipeline proxy rejects a missing token");
+}
+// A signer URL pasted with a trailing slash (or a doubled one)
+// must route the same as the clean URL.
+{
+  const r = await call(authed, "GET", "/hub/sessions/", undefined, TOKEN);
+  check(r.status === 200 && Array.isArray(r.data), "hub list tolerates a trailing slash");
+  await call(authed, "POST", "/hub/publish", { videoId: "slash1", title: "Slash" }, TOKEN);
+  const r2 = await call(authed, "GET", "//hub/sessions/slash1/", undefined, TOKEN);
+  check(r2.status === 200 && r2.data.videoId === "slash1", "hub detail tolerates doubled slashes");
+}
+// A corrupt JSON column (hand-edited D1, old writer) must not 500
+// the whole hub: the row serves with empty lists instead.
+{
+  authed.DB.prepare(
+    `INSERT INTO sessions (video_id, title, corrections_json, chapters_json, glossary_json, published_at)
+     VALUES ('corrupt1', 'Corrupt', 'nope{', 'nope{', 'nope{', 1)`
+  ).run();
+  const r = await call(authed, "GET", "/hub/sessions/corrupt1", undefined, TOKEN);
+  check(r.status === 200 && Array.isArray(r.data.corrections) && r.data.corrections.length === 0
+    && Array.isArray(r.data.chapters) && JSON.stringify(r.data.glossary) === "{}",
+    "hub detail survives a corrupt row");
+  const l = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  const row = l.data.find((s) => s.videoId === "corrupt1");
+  check(l.status === 200 && row && row.title === "Corrupt", "hub list survives a corrupt row");
+}
+// Authenticated proxy passes the vendor listing through untouched,
+// with the caller's page and the CORS headers.
+{
+  const realFetch = globalThis.fetch;
+  let seenUrl = "", seenKey = "";
+  globalThis.fetch = async (url, opts) => {
+    seenUrl = String(url);
+    seenKey = (opts && opts.headers && opts.headers.AccessKey) || "";
+    return new Response(JSON.stringify({ items: [{ guid: "g1" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } });
+  };
+  try {
+    const req = new Request(URL + "/pipeline/videos?page=2", {
+      method: "GET",
+      headers: { "X-Signer-Token": TOKEN },
+    });
+    const resp = await worker.fetch(req, authed);
+    const data = await resp.json();
+    check(resp.status === 200 && data.items.length === 1 && data.items[0].guid === "g1",
+      "pipeline proxy passes the listing through");
+    check(seenUrl.includes("/library/L/videos") && seenUrl.includes("page=2"),
+      "pipeline proxy forwards the page");
+    check(seenKey === "K", "pipeline proxy authenticates to the vendor");
+    check(resp.headers.get("Access-Control-Allow-Origin") !== null,
+      "pipeline proxy answers with CORS headers");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
 console.log(`ALL HUB CHECKS PASSED (${n})`);
