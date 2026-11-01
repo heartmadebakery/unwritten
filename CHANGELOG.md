@@ -8,16 +8,42 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Fixed
+- **iOS playback was broken for hub sessions and device recordings.**
+  *Hub:* the Cloud CDN's hotlink protection 403s any request without
+  the player page as `Referer` (the pipeline fetcher already sends it),
+  and AVPlayer sent none, so every hub stream failed to a crossed-out
+  play glyph. Hub playback now sends the session's embed URL as
+  `Referer`, prefers the progressive MP4 (then HLS), plays through the
+  speaker (`.playback` audio category), and a stream that still fails
+  opens the Cloud player instead of dying silently — like Android and
+  the web. *Device:* tapping a session row played the video in the
+  viewfinder at the top of the Record list, off-screen whenever the
+  row was scrolled into view (and `scrollTo` inside the List did not
+  bring it back). A tapped session now plays in a full-screen native
+  `VideoPlayer` (scrub, AirPlay, close), and the camera rests while it
+  plays. Verified on an iPhone 14 Pro: hub frames advance; the player
+  covers the screen with the list scrolled to the bottom.
+
+### Added
+- **iOS app icon, the same artwork as the web PWA icon.** New
+  `Assets.xcassets/AppIcon` (single 1024 opaque PNG, upscaled from
+  `app/recorder/icons/icon-512.png`) wired into the Xcode project;
+  contract test added.
+
 ### Changed
 - **Android parity sync + at-home redesign (user-ordered).** Hub
-  playback moves to its own dialog player (MP4 then HLS, Cloud embed
-  last — watching never opens the camera); REC badge, auto-hiding
-  zoom, player ✕, hub ⟳ refresh, device empty state, denial→Settings.
-  ActionBar titles + Up replace ‹ Home; red Record action, ripples,
-  elevated hub card, 48dp targets, adaptive launcher icon (`res/` +
-  `aapt2 compile` step). 12 `AndroidSyncTests`; verified on the
-  Pixel 4 over wireless adb (record, upload, export, cloud-first
-  delete, restored takes).
+  playback moves to its own dialog player (MP4 then HLS with the
+  embed URL as `Referer` for the CDN's hotlink protection, Cloud
+  embed last — watching never opens the camera); REC badge,
+  auto-hiding zoom, player ✕, hub ⟳ refresh, device empty state,
+  denial→Settings; device playback scrolls the viewfinder into view.
+  Merged with the native-feel pass below: its Material foundation
+  stands (cards, `RippleDrawable`s, `Switch`, action-bar camera menu,
+  primary buttons), these behaviors kept on top. ActionBar titles +
+  Up replace ‹ Home; adaptive launcher icon (`res/` + `aapt2 compile`
+  step). `AndroidSyncTests` reconciled with `AndroidNativeFeelTests`;
+  rebuilt, re-tested, re-verified on the Pixel 4 in the merge.
 
 ### Fixed
 - **URL fetcher finds yt-dlp without a PATH binary.** `fetch_jobs.py`
@@ -28,6 +54,29 @@ history (30 commits) and is maintained in the open from then on.
   (3 jobs, 0 failed).
 
 ### Changed
+- **Native-feel UI pass on all three apps (user-ordered goal: they
+  should feel native to their platforms and be intuitive).**
+  - *Web:* drawn as a phone app — large title on home, top bar with a
+    back chevron and the camera switch on Record/Upload, grouped inset
+    lists, a real `role="switch"` Cloud row, a round shutter-style
+    Record button, 48px targets, visible keyboard focus, per-platform
+    nudges (`html.ios` / `html.android`). Same element IDs; service
+    worker cache `v9`.
+  - *iOS:* Record is an inset-grouped List (viewfinder card with zoom,
+    a ring-and-disc shutter, the system Cloud toggle, and session rows
+    whose swipe now really deletes — it was a no-op in the old
+    ScrollView); empty state is a `ContentUnavailableView`; Fetch from
+    link waits for a link and submits from the keyboard's Go. The Cloud
+    toggle's binding now acts only on a real change.
+  - *Android (source-only — no SDK on the machine that wrote it, so
+    **not compiled and the APK is NOT rebuilt**):* `Theme.Material`
+    with an ActionBar (up arrow replaces the `‹ Home` button, camera
+    switch is a menu action), themed system bars, rounded ripple
+    buttons, a primary Record button, a `Switch` for Cloud, card lists
+    with ripple rows and empty states, 48dp targets. Rebuild and
+    shake out on the Pixel 4 before trusting it.
+  - Contract tests added per platform; the Android `‹ Home` assertion
+    was rewritten (up arrow) — user-ordered, noted in the test.
 - **Home is actions with the hub last; cloud + device moved to the
   record screen (user-ordered, all three apps).** Cloud settings hide
   behind a small Advanced settings link (debug overrides only). Web:

@@ -763,11 +763,10 @@ class AndroidScreensTests(unittest.TestCase):
         for token in ["stopRecording()", "engine.close()", "hasPermissions()",
                       "openPreview()", "refreshClipList()", "loadHub()"]:
             self.assertIn(token, show, token)
-        # User-ordered Nov 1 (Android idioms): the custom "‹ Home"
-        # button is gone — the ActionBar Up button and the system Back
-        # button are the ways off the record screen, like iOS's
-        # NavigationStack back.
-        self.assertNotIn('"‹ Home"', self.main)
+        # User-ordered Nov 1 (native-feel goal): the "‹ Home" button
+        # became the ActionBar up arrow (android.R.id.home), which
+        # routes through onBackPressed like the system back does.
+        self.assertNotIn("‹ Home", self.main)
         self.assertIn("android.R.id.home", self.main)
         started = self.main.split("protected void onStart", 1)[1] \
                            .split("protected void onDestroy", 1)[0]
@@ -793,6 +792,76 @@ class AndroidScreensTests(unittest.TestCase):
         play = self.main.split("private void playInViewfinder", 1)[1] \
                         .split("private void playLocalLesson", 1)[0]
         self.assertIn('showScreen("record")', play)
+
+
+class AndroidNativeFeelTests(unittest.TestCase):
+    """User-ordered Nov 1 (goal: apps feel native and intuitive).
+
+    Android gets Material touches without AndroidX: an ActionBar with
+    the up arrow (and the camera switch as a menu action), themed
+    system bars, rounded ripple buttons instead of flat color blocks,
+    a real Switch for Cloud, card-style lists with ripple rows, and
+    48dp touch targets. Source-only: this host has no Android SDK, so
+    these tests are the contract and the build is the next machine's."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.main = read(MAIN)
+        cls.manifest = read(ANDROID_MANIFEST)
+        cls.home = cls.main.split("private void buildHomeScreen", 1)[1] \
+                           .split("private void buildRecordScreen", 1)[0]
+        cls.record = cls.main.split("private void buildRecordScreen", 1)[1] \
+                             .split("// ---------- permissions", 1)[0]
+
+    def test_theme_has_an_action_bar(self):
+        self.assertIn("@android:style/Theme.Material", self.manifest)
+        self.assertNotIn("NoActionBar", self.manifest)
+        for token in ["getActionBar()", "setDisplayHomeAsUpEnabled",
+                      "onOptionsItemSelected", "android.R.id.home",
+                      "setStatusBarColor", "setNavigationBarColor"]:
+            self.assertIn(token, self.main, token)
+
+    def test_camera_switch_is_a_menu_action(self):
+        for token in ["onCreateOptionsMenu", "onPrepareOptionsMenu",
+                      "MENU_CAMERA", "SHOW_AS_ACTION_ALWAYS"]:
+            self.assertIn(token, self.main, token)
+        self.assertNotIn("camToggle = button(", self.record)
+
+    def test_buttons_are_rounded_with_ripple(self):
+        for token in ["RippleDrawable", "GradientDrawable", "setCornerRadius",
+                      "setStateListAnimator(null)"]:
+            self.assertIn(token, self.main, token)
+        # Flat setBackgroundColor on a Button kills touch feedback.
+        for region in (self.home, self.record):
+            self.assertNotIn("Button.setBackgroundColor", region)
+            self.assertNotIn("recordButton.setBackgroundColor", region)
+            self.assertNotIn("exportBtn.setBackgroundColor", region)
+
+    def test_record_is_the_primary_action(self):
+        self.assertIn('primaryButton("● Record"', self.home)
+        self.assertIn('primaryButton("● Record"', self.record)
+
+    def test_cloud_is_a_real_switch_that_only_acts_on_change(self):
+        self.assertIn("android.widget.Switch cloudToggleButton", self.main)
+        self.assertIn("setOnCheckedChangeListener", self.main)
+        paint = self.main.split("private void paintCloudToggle", 1)[1] \
+                         .split("\n    private ", 1)[0]
+        self.assertIn("setChecked(", paint)
+        self.assertNotIn("Cloud: on", self.main)
+        self.assertIn("isChecked != cloudEnabledCfg()", self.main)
+
+    def test_lists_are_cards_with_ripple_rows_and_an_empty_state(self):
+        self.assertIn("rowRipple()", self.main)
+        refresh = self.main.split("private void refreshClipList", 1)[1] \
+                           .split("private String mimeFor", 1)[0]
+        self.assertIn("rowRipple()", refresh)
+        self.assertIn("Nothing yet.", refresh)
+        self.assertIn("lessonContainer.setBackground(", self.record)
+        self.assertIn("hubContainer.setBackground(", self.home)
+
+    def test_touch_targets_are_48dp(self):
+        self.assertIn("dp(48)", self.main)
+        self.assertNotIn("LayoutParams(dp(40), dp(36))", self.main)
 
 
 class CloudSignerTests(unittest.TestCase):
@@ -993,22 +1062,118 @@ class AndroidSyncTests(unittest.TestCase):
     def test_record_button_is_the_primary_action(self):
         # The camera idiom: one filled red Record action, restyled for
         # both states instead of a plain panel button with new text.
+        # Merge Nov 1: the native-feel pass's paint (ripple + BRIGHT,
+        # recording goes dark with red text) stands over this sync's
+        # GradientDrawable + RED original.
         self.assertIn("paintRecordButton", self.main)
         paint = self.main.split("private void paintRecordButton", 1)[1] \
                          .split("\n    private ", 1)[0]
-        self.assertIn("GradientDrawable", paint)
-        self.assertIn("RED", paint)
+        self.assertIn("ripple(", paint)
+        self.assertIn("BRIGHT", paint)
 
     def test_rows_use_ripple(self):
         # Touch feedback is the Android idiom: session and hub rows
         # ripple instead of sitting on flat color.
-        self.assertIn("selectableItemBackground", self.main)
+        # Merge Nov 1: the native-feel pass's real RippleDrawable rows
+        # stand over this sync's selectableItemBackground original.
+        self.assertIn("rowRipple()", self.main)
+        self.assertIn("RippleDrawable", self.main)
 
     def test_hub_card_has_elevation(self):
         # The hub detail reads as a Material card, not a flat panel.
         card = self.main.split("private View hubDetailView", 1)[1] \
                         .split("\n    private ", 1)[0]
         self.assertIn("setElevation", card)
+
+    def test_hub_stream_sends_referer(self):
+        # Merge Nov 1 (from the iOS playback fix): the Cloud CDN's
+        # hotlink protection 403s streams without the player page as
+        # Referer, so the dialog player sends the embed URL with the
+        # stream request instead of failing to the browser fallback.
+        play = self.main.split("private void playHubRemote", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("Referer", play)
+
+    def test_link_field_submits_from_go(self):
+        # Merge Nov 1 (iOS parity): the link field's keyboard Go
+        # submits the queue action — the IME option alone is a dead key.
+        self.assertIn("OnEditorActionListener", self.home)
+        self.assertIn("IME_ACTION_GO", self.home)
+        self.assertIn("queueFetchUrl", self.home)
+
+    def test_device_playback_scrolls_the_viewfinder_into_view(self):
+        # Merge Nov 1 (from the iOS playback fix): a row tapped below
+        # the fold used to play in an off-screen viewfinder — the
+        # record screen scrolls to the top so the video is visible.
+        play = self.main.split("private void playInViewfinder", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("smoothScrollTo", play)
+
+
+class WebNativeFeelTests(unittest.TestCase):
+    """User-ordered Nov 1 (goal: apps feel native and intuitive).
+
+    The web app reads as a mobile app, not a styled web page: a large
+    title on home, a top bar with a back chevron on the other pages,
+    grouped inset lists, a real switch for Cloud, a round shutter-style
+    record button, 44px+ touch targets, and visible keyboard focus.
+    Every element ID the scripts query is unchanged."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.home = read(WEB)
+        cls.record = read(REC_RECORD)
+        cls.upload = read(REC_UPLOAD)
+        cls.css = read(REC_CSS)
+        cls.common = read(REC_COMMON)
+        cls.recordjs = read(REC_RECORD_JS)
+        cls.sw = read(SW)
+
+    def test_home_has_large_title_others_have_topbar_with_back(self):
+        self.assertIn('class="largetitle"', self.home)
+        for page, back in ((self.record, "backhome-record"),
+                           (self.upload, "backhome-upload")):
+            self.assertIn('class="topbar"', page)
+            self.assertIn('id="%s"' % back, page)
+            self.assertLess(page.index('class="topbar"'),
+                            page.index('id="status"'))
+            self.assertNotIn("‹ Home", page)
+
+    def test_actions_are_a_grouped_list_with_chevrons(self):
+        self.assertIn('class="group"', self.home)
+        self.assertIn('class="grow"', self.home)
+        self.assertIn(".group", self.css)
+        self.assertIn(".chev", self.css)
+
+    def test_cloud_is_a_real_switch(self):
+        self.assertIn('role="switch"', self.record)
+        paint = self.common.split("function paintCloudToggle", 1)[1] \
+                           .split("function stamp", 1)[0]
+        self.assertIn("aria-checked", paint)
+        self.assertNotIn("Cloud: on", paint)
+        self.assertIn('[aria-checked="true"]', self.css)
+
+    def test_record_button_is_a_round_shutter(self):
+        # Text still carries "● Record" / "■ Stop m:ss" (shared with the
+        # native apps); the shape and color come from CSS.
+        self.assertIn("#recbtn", self.css)
+        self.assertIn("border-radius:50%", self.css.split("#recbtn{", 1)[1]
+                                                  .split("}", 1)[0])
+        self.assertIn("#recbtn.stop", self.css)
+
+    def test_touch_targets_and_keyboard_focus(self):
+        self.assertIn("--tap:48px", self.css)
+        self.assertIn(":focus-visible", self.css)
+        self.assertIn("prefers-reduced-motion", self.css)
+
+    def test_platform_class_set_for_native_leaning_styles(self):
+        self.assertIn('classList.add("ios")', self.common)
+        self.assertIn('classList.add("android")', self.common)
+        self.assertIn("html.ios", self.css)
+        self.assertIn("html.android", self.css)
+
+    def test_service_worker_cache_bumped_for_the_restyle(self):
+        self.assertIn("unwritten-recorder-v9", self.sw)
 
 
 if __name__ == "__main__":

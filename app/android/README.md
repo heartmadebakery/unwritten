@@ -37,12 +37,15 @@ does, including iPhones). Native Android wins where the web cannot:
 Managed Java handles what it is good at: the Camera2 state machine and
 the two-screen UI (built programmatically — no layout XML): home
 (record and upload actions with the hub last) and record (preview
-with REC badge, auto-hiding zoom, one red Record/Stop action,
-in-viewfinder playback with ▶/⏸/✕, cloud, device sessions,
-advanced link). The ActionBar carries the screen title with Up
-navigation off the record screen; session and hub rows ripple, the
-hub detail is an elevated card, and hub playback runs in its own
-dialog player (MP4 then HLS, Cloud embed last) so watching a
+with REC badge, auto-hiding zoom, one primary Record/Stop action,
+in-viewfinder playback with ▶/⏸/✕, a `Switch` for Cloud, device
+sessions, advanced link). It is drawn in Material idioms without
+AndroidX: `Theme.Material` with an ActionBar (the title, the up arrow
+on Record, the camera switch as a menu action), dark status and
+navigation bars, rounded ripple buttons, card-style lists with ripple
+rows, 48dp targets, and empty states. The hub detail is an elevated
+card, and hub playback runs in its own dialog player (MP4 then HLS
+with the embed URL as `Referer`, Cloud embed last) so watching a
 published lesson never opens the camera. The launcher icon is an
 adaptive amber-record-dot (`res/`, minSdk 29 needs no legacy PNGs).
 

@@ -54,6 +54,7 @@ struct ContentView: View {
     @State private var playingName: String?
     @State private var endObserver: NSObjectProtocol?
     @State private var hubPlayer: AVPlayer?
+    @State private var hubItemObserver: NSKeyValueObservation?
 
     @State private var showCloudPanel = false
     @State private var pendingDelete: String?
@@ -201,6 +202,18 @@ struct ContentView: View {
         }
     }
 
+    /// Fetch waits for a link: the row is dimmed and inert until one
+    /// is pasted, and the keyboard's Go does the same thing.
+    private var canFetchLink: Bool {
+        !fetchUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func fetchLink() {
+        guard canFetchLink else { return }
+        store.queueFetchUrl(fetchUrl)
+        fetchUrl = ""
+    }
+
     // One app, two screens. Home (record/upload actions with the hub
     // last) is the landing; record owns the viewfinder and the camera
     // behind it, with cloud and device sessions below.
@@ -235,16 +248,19 @@ struct ContentView: View {
                 // fetcher, which downloads and processes them.
                 TextField("Paste a video link…", text: $fetchUrl)
                     .font(.system(size: 16))
-                    .autocapitalization(.none)
-                    .disableAutocorrection(true)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .onSubmit { fetchLink() }
                 Button {
-                    store.queueFetchUrl(fetchUrl)
-                    fetchUrl = ""
+                    fetchLink()
                 } label: {
                     Label("Fetch from link", systemImage: "arrow.down.circle")
                         .font(.system(size: 18))
-                        .foregroundColor(INK)
+                        .foregroundColor(canFetchLink ? INK : DIM)
                 }
+                .disabled(!canFetchLink)
             } header: {
                 Text("Record, upload, and revisit craft lessons.")
                     .textCase(nil)
@@ -298,47 +314,33 @@ struct ContentView: View {
     }
 
     private var recordView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Viewfinder with in-player overlay (playback appears
-                // inside the viewfinder, like Android and the web).
+        List {
+            // The viewfinder card: the live preview, the red/quiet
+            // banners, and zoom — all in one group.
+            Section {
                 ZStack(alignment: .bottom) {
                     CameraPreview(engine: engine)
                         .frame(height: 280)
                         .background(Color.black)
-                    if player != nil, let player {
-                        PlayerView(player: player)
-                            .frame(height: 280)
-                            .background(Color.black)
-                    }
                     if engine.isRecording {
                         HStack {
                             HStack(spacing: 8) {
                                 Circle().fill(BRIGHT).frame(width: 12, height: 12)
                                 Text("REC\u{00A0}\u{00A0}\(elapsedText)")
-                                    .font(.system(size: 16).monospacedDigit())
+                                    .font(.system(size: 16, weight: .semibold).monospacedDigit())
                                     .foregroundColor(.white)
                             }
                             .padding(.horizontal, 12)
                             .padding(.vertical, 6)
-                            .background(Color.black.opacity(0.55))
-                            .cornerRadius(20)
+                            .background(.black.opacity(0.55), in: Capsule())
                             Spacer()
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
-                    if player != nil {
-                        HStack(spacing: 8) {
-                            playerButton("play.fill", "Play") { player?.play() }
-                            playerButton("pause.fill", "Pause") { player?.pause() }
-                            playerButton("xmark", "Close") { stopLocalPlayback() }
-                        }
-                        .padding(8)
-                        .background(Color.black.opacity(0.66))
-                    }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.black)
 
                 // A video-only stream must never be silent about being
                 // silent: the lesson IS the mentor's words.
@@ -346,11 +348,7 @@ struct ContentView: View {
                     Text("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings > Privacy > Microphone.")
                         .font(.system(size: 15))
                         .foregroundColor(.white)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(UWB_RED)
-                        .cornerRadius(8)
-                        .padding(.top, 8)
+                        .listRowBackground(UWB_RED)
                 }
 
                 // Quiet-minute check, mirroring the web app: a full
@@ -359,12 +357,7 @@ struct ContentView: View {
                     Text("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.")
                         .font(.system(size: 15))
                         .foregroundColor(INK)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(PANEL)
-                        .cornerRadius(8)
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(BRIGHT, lineWidth: 1))
-                        .padding(.top, 8)
+                        .listRowBackground(PANEL)
                 }
 
                 // Zoom directly below the viewfinder. Hidden when the
@@ -387,7 +380,8 @@ struct ContentView: View {
                             .foregroundColor(DIM)
                             .frame(minWidth: 48)
                     }
-                    .padding(.vertical, 8)
+                    .buttonStyle(.borderless)
+                    .listRowBackground(PANEL)
                     .onChange(of: engine.zoom) { _, new in
                         let max = engine.maxZoom
                         if max > 1.0 {
@@ -396,36 +390,33 @@ struct ContentView: View {
                         }
                     }
                 }
+            }
 
+            // The shutter, centred under the viewfinder like a camera
+            // app; the status line is its footer.
+            Section {
+                shutterButton
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } footer: {
                 Text(store.status)
                     .font(.system(size: 15))
                     .foregroundColor(DIM)
-                    .lineSpacing(4)
-                    .padding(.vertical, 10)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .multilineTextAlignment(.center)
+            }
 
-                Button(action: toggleRecord) {
-                    Text(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record")
-                        .font(.system(size: 19, weight: .semibold).monospacedDigit())
-                        .foregroundColor(engine.isRecording ? .white : INK)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 15)
-                        .background(engine.isRecording ? UWB_RED : PANEL)
-                        .cornerRadius(12)
-                }
-                .sensoryFeedback(.impact, trigger: engine.isRecording)
-
-                // Cloud + device sessions live on the record screen now.
-                HStack {
+            // Cloud + device sessions live on the record screen.
+            Section {
+                // The setter acts only on a real change: toggleCloud()
+                // flips persisted state, so a redundant set must never
+                // flip it back.
+                Toggle(isOn: Binding(get: { store.cloudOn },
+                                     set: { on in if on != store.cloudOn { store.toggleCloud() } })) {
                     Label("Cloud", systemImage: store.cloudOn ? "icloud" : "icloud.slash")
                         .foregroundColor(INK)
-                    Spacer()
-                    Toggle(isOn: Binding(get: { store.cloudOn },
-                                         set: { _ in store.toggleCloud() })) {
-                    }
-                    .labelsHidden()
-                    .tint(DIM)
                 }
-                .padding(.vertical, 8)
+                .tint(.green)
                 // Export is the offline fallback: only with Cloud off.
                 if !store.cloudOn {
                     Button {
@@ -434,46 +425,60 @@ struct ContentView: View {
                         Label("Export sessions to Downloads", systemImage: "square.and.arrow.up")
                             .foregroundColor(INK)
                     }
-                    .padding(.bottom, 8)
                 }
+            }
+            .listRowBackground(PANEL)
 
-                // This device: left status icon, middle date + duration,
-                // right share/download. Rows keep their context menu
-                // (swipe actions only fire inside a List, so Delete
-                // here means the context menu, not a swipe).
-                Text("This device")
-                    .font(.system(size: 17))
-                    .foregroundColor(DIM)
-                    .padding(.top, 14)
-                    .padding(.bottom, 4)
+            // This device: left status icon, middle date + duration,
+            // right share/download. A List, so the rows' trailing swipe
+            // really deletes (and the context menu offers the rest).
+            Section {
                 if store.rows.isEmpty {
-                    Text("Nothing yet.")
-                        .font(.system(size: 15))
-                        .foregroundColor(DIM)
+                    ContentUnavailableView {
+                        Label("Nothing yet", systemImage: "video")
+                    } description: {
+                        Text("Sessions you record or upload appear here.")
+                    }
+                    .foregroundStyle(DIM)
+                    .listRowBackground(Color.clear)
                 } else {
                     ForEach(store.rows) { row in
                         sessionRow(row)
                     }
+                    .listRowBackground(PANEL)
                 }
-                Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; touch and hold to share or delete it from the device and the cloud.")
+            } header: {
+                Text("This device").sectionHeader()
+            } footer: {
+                Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; swipe it, or touch and hold, to share or delete it from the device and the cloud.")
                     .font(.system(size: 13))
                     .foregroundColor(DIM)
-                    .padding(.top, 8)
+            }
 
-                // Debug overrides hide behind a small link at the bottom.
+            // Debug overrides hide behind a small link at the bottom.
+            Section {
                 Button {
                     if !showCloudPanel { loadCloudFields() }
                     showCloudPanel = true
                 } label: {
                     Text("Advanced settings")
-                        .font(.system(size: 14))
+                        .font(.system(size: 15))
                         .foregroundColor(DIM)
                 }
-                .padding(.vertical, 8)
             }
-            .padding(14)
+            .listRowBackground(PANEL)
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(BG)
+        // A device session plays in a full-screen native player. (It
+        // used to play in the viewfinder at the top of this list, which
+        // sat off-screen whenever the tapped row was scrolled into view
+        // — the video played where nobody could see it.)
+        .fullScreenCover(isPresented: Binding(get: { player != nil },
+                                              set: { if !$0 { stopLocalPlayback() } })) {
+            devicePlayerCover
+        }
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -487,6 +492,53 @@ struct ContentView: View {
                 .accessibilityLabel(engine.isFront ? "Front camera — switch to back" : "Back camera — switch to front")
             }
         }
+    }
+
+    /// The camera-style shutter: a white ring with a red disc, which
+    /// becomes a rounded square while recording. The label keeps the
+    /// shared "● Record" / "■ Stop  m:ss" text (assistive tech reads
+    /// it, and it is the same contract as the web and Android buttons).
+    private var shutterButton: some View {
+        Button(action: toggleRecord) {
+            ZStack {
+                Circle().stroke(Color.white, lineWidth: 4)
+                    .frame(width: 74, height: 74)
+                RoundedRectangle(cornerRadius: engine.isRecording ? 8 : 29)
+                    .fill(BRIGHT)
+                    .frame(width: engine.isRecording ? 30 : 58,
+                           height: engine.isRecording ? 30 : 58)
+            }
+            .frame(width: 84, height: 84)
+            .animation(.easeInOut(duration: 0.18), value: engine.isRecording)
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record")
+        .sensoryFeedback(.impact, trigger: engine.isRecording)
+    }
+
+    /// Full-screen native playback of a device session: system
+    /// transport controls (scrub, AirPlay, picture in picture) and a
+    /// close button. The end of the video closes it.
+    private var devicePlayerCover: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea(edges: .bottom)
+            }
+            Button {
+                stopLocalPlayback()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 32))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.55))
+            }
+            .padding(16)
+            .accessibilityLabel("Close player")
+        }
+        .preferredColorScheme(.dark)
     }
 
     // ---------- screens ----------
@@ -554,6 +606,12 @@ struct ContentView: View {
         if engine.isRecording { return }
         stopLocalPlayback()
         playingName = label
+        // The camera rests while a lesson plays, and the sound comes
+        // out of the speaker like any video app (the capture session's
+        // record-capable audio session would use the earpiece).
+        engine.pauseSession()
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
         let p = AVPlayer(url: url)
         player = p
         endObserver = NotificationCenter.default.addObserver(
@@ -577,27 +635,53 @@ struct ContentView: View {
     }
 
     /// Hub sessions stream in the hub screen's own player — watching a
-    /// published lesson never opens the camera. With no stream URL the
-    /// Cloud embed page opens instead (Android's openInBrowser), so
-    /// Play is never a dead button.
+    /// published lesson never opens the camera. The progressive MP4 is
+    /// preferred (one resource, so the Referer below rides every range
+    /// request), then HLS. The Cloud CDN's hotlink protection 403s any
+    /// request without the player page as Referer — AVPlayer sends none
+    /// by itself, so every stream failed until it was added (the
+    /// pipeline fetcher works around it the same way). A stream that
+    /// still fails, or no stream URL at all, opens the Cloud embed page
+    /// instead (Android's openInBrowser): Play is never a dead button.
     private func playHubSession(_ session: HubSession) {
-        let str = (session.hlsUrl?.isEmpty == false) ? session.hlsUrl : session.mp4Url
+        let str = (session.mp4Url?.isEmpty == false) ? session.mp4Url : session.hlsUrl
         guard let str, !str.isEmpty, let url = URL(string: str) else {
-            if let embed = store.hubEmbedUrl(session), let url = URL(string: embed) {
-                store.status = "Opening the Cloud player for this session."
-                openURL(url)
-            } else {
-                store.status = "No playable stream on this hub session yet."
-            }
+            openHubEmbed(session, note: "No stream on this hub session yet — opening the Cloud player.")
             return
         }
         stopHubPlayer()
-        let p = AVPlayer(url: url)
+        var headers: [String: String] = [:]
+        if let embed = store.hubEmbedUrl(session) { headers["Referer"] = embed }
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let item = AVPlayerItem(asset: asset)
+        hubItemObserver = item.observe(\.status, options: [.new]) { item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async {
+                stopHubPlayer()
+                openHubEmbed(session, note: "That stream couldn't play here — opening the Cloud player.")
+            }
+        }
+        // A video screen plays through the speaker like any video app;
+        // the camera engine's record-capable session would use the earpiece.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let p = AVPlayer(playerItem: item)
         hubPlayer = p
         p.play()
     }
 
+    private func openHubEmbed(_ session: HubSession, note: String) {
+        if let embed = store.hubEmbedUrl(session), let url = URL(string: embed) {
+            store.status = note
+            openURL(url)
+        } else {
+            store.status = "No playable stream on this hub session yet."
+        }
+    }
+
     private func stopHubPlayer() {
+        hubItemObserver?.invalidate()
+        hubItemObserver = nil
         hubPlayer?.pause()
         hubPlayer = nil
     }
@@ -610,6 +694,9 @@ struct ContentView: View {
         }
         player = nil
         playingName = nil
+        // Back from the full-screen player: the camera wakes again (a
+        // redundant resume is a no-op; leaving Record parks it itself).
+        if onRecordScreen { engine.resumeSession() }
     }
 
     // ---------- sessions ----------
@@ -727,19 +814,6 @@ struct ContentView: View {
                 .frame(width: 44, height: 34)
                 .background(PANEL)
                 .cornerRadius(8)
-        }
-        .accessibilityLabel(label)
-    }
-
-    private func playerButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundColor(INK)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(PANEL)
-                .cornerRadius(6)
         }
         .accessibilityLabel(label)
     }
@@ -992,28 +1066,6 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewUIView, context: Context) {}
-}
-
-struct PlayerView: UIViewRepresentable {
-    let player: AVPlayer
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        let view = PlayerUIView()
-        view.backgroundColor = .black
-        view.playerLayer.player = player
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        // SwiftUI reuses the UIView: without this, tapping session B
-        // keeps showing session A's player.
-        uiView.playerLayer.player = player
-    }
-}
-
-final class PlayerUIView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
 
 /// System video picker for uploads. The picked video is copied into

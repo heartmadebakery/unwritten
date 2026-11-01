@@ -204,6 +204,120 @@ class IOSRecorderTests(unittest.TestCase):
             self.assertIn(token, phase, token)
 
 
+class IOSNativeFeelTests(unittest.TestCase):
+    """User-ordered Nov 1 (goal: apps feel native and intuitive).
+
+    Record is an inset-grouped List like home, so its swipe actions
+    really fire (they are no-ops inside a ScrollView); the shutter is
+    a camera-style ring and disc; an empty device list is a system
+    empty state; Fetch from link waits for a link."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.view = read(VIEW)
+        cls.record = cls.view.split("private var recordView", 1)[1] \
+                             .split("private func showScreen", 1)[0]
+        cls.home = cls.view.split("private var homeView", 1)[1] \
+                           .split("private var recordView", 1)[0]
+
+    def test_record_is_an_inset_grouped_list_so_swipe_deletes_work(self):
+        self.assertIn("List {", self.record)
+        self.assertIn(".listStyle(.insetGrouped)", self.record)
+        # No ScrollView *container* (swipe actions don't fire inside one);
+        # a ScrollViewReader around the List is only a scroll helper.
+        self.assertNotIn("ScrollView {", self.record)
+        self.assertIn(".swipeActions", self.view)
+
+    def test_shutter_is_a_ring_and_disc_with_shared_labels(self):
+        self.assertIn("shutterButton", self.record)
+        shutter = self.view.split("private var shutterButton", 1)[1] \
+                           .split("// ---------- screens", 1)[0]
+        self.assertIn("Circle()", shutter)
+        self.assertIn(".stroke(", shutter)
+        self.assertIn("■ Stop  ", shutter)
+        self.assertIn("● Record", shutter)
+        self.assertIn(".accessibilityLabel", shutter)
+        self.assertIn(".sensoryFeedback", shutter)
+
+    def test_empty_device_list_is_a_system_empty_state(self):
+        self.assertIn("ContentUnavailableView", self.record)
+
+    def test_cloud_is_a_native_toggle_row(self):
+        self.assertIn("Toggle(isOn:", self.record)
+        self.assertIn('"Cloud"', self.record)
+        # toggleCloud() flips persisted state; the binding must only act
+        # on a real change, so a redundant set can never flip Cloud.
+        self.assertIn("set: { on in if on != store.cloudOn", self.record)
+        self.assertNotIn("set: { _ in store.toggleCloud() }", self.record)
+
+    def test_fetch_waits_for_a_link_and_submits_from_keyboard(self):
+        self.assertIn(".keyboardType(.URL)", self.home)
+        self.assertIn(".submitLabel(.go)", self.home)
+        self.assertIn(".onSubmit", self.home)
+        self.assertIn(".disabled(", self.home)
+
+
+class IOSPlaybackTests(unittest.TestCase):
+    """Playback bugs reported Nov 1: hub videos never played and device
+    recordings looked dead.
+
+    Hub: the Cloud CDN's hotlink protection 403s any request without
+    the player page as Referer (the pipeline fetcher already works
+    around it the same way), and AVPlayer sends none — so every hub
+    stream failed. Device: a session row sits far below the viewfinder
+    on the Record list, so tapping it played the video off-screen."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.view = read(VIEW)
+        cls.play = cls.view.split("private func playHubSession", 1)[1] \
+                           .split("private func stopLocalPlayback", 1)[0]
+        cls.record = cls.view.split("private var recordView", 1)[1] \
+                          .split("private func showScreen", 1)[0]
+
+    def test_hub_playback_sends_the_player_page_as_referer(self):
+        self.assertIn("AVURLAssetHTTPHeaderFieldsKey", self.play)
+        self.assertIn('"Referer"', self.play)
+        self.assertIn("hubEmbedUrl(", self.play)
+
+    def test_hub_prefers_the_progressive_mp4_then_hls(self):
+        self.assertLess(self.play.index("mp4Url"), self.play.index("hlsUrl"))
+
+    def test_failed_hub_stream_falls_back_to_the_cloud_player(self):
+        # Never a silent dead player: a failed item says so and opens
+        # the embed page (Android's openInBrowser, the web's onerror).
+        self.assertIn(".failed", self.play)
+        self.assertIn("openURL(", self.play)
+        self.assertIn("hubItemObserver", self.view)
+
+    def test_hub_audio_uses_the_playback_category(self):
+        # The camera engine leaves a record-capable session behind,
+        # which routes video sound to the quiet earpiece.
+        self.assertIn(".moviePlayback", self.play)
+
+    def test_device_playback_is_a_full_screen_native_player(self):
+        # Found on device: tapping a session row (scrolled far below the
+        # viewfinder) played the video in the off-screen viewfinder, and
+        # scrollTo inside the List did not bring it back. Playback is now
+        # a full-screen cover with the system player's controls.
+        self.assertIn(".fullScreenCover(", self.record)
+        self.assertIn("devicePlayerCover", self.view)
+        cover = self.view.split("private var devicePlayerCover", 1)[1] \
+                         .split("// ---------- screens", 1)[0]
+        self.assertIn("VideoPlayer(player:", cover)
+        self.assertIn("stopLocalPlayback()", cover)
+        self.assertNotIn("ScrollViewReader", self.view)
+
+    def test_camera_rests_while_a_session_plays(self):
+        start = self.view.split("private func startPlayer", 1)[1] \
+                         .split("private func playInViewfinder", 1)[0]
+        self.assertIn("engine.pauseSession()", start)
+        self.assertIn(".moviePlayback", start)
+        stop = self.view.split("private func stopLocalPlayback", 1)[1] \
+                        .split("// ---------- sessions", 1)[0]
+        self.assertIn("engine.resumeSession()", stop)
+
+
 class IOSBaselineTests(unittest.TestCase):
     """Base device: iPhone (2019-class, like the Pixel 4) — iOS 17+,
     iPhone-only, no storyboards, programmatic SwiftUI like Android's
@@ -218,6 +332,22 @@ class IOSBaselineTests(unittest.TestCase):
         self.assertIn("IPHONEOS_DEPLOYMENT_TARGET = 17.0", self.pbxproj)
         self.assertIn("TARGETED_DEVICE_FAMILY = 1", self.pbxproj)
         self.assertIn("SDKROOT = iphoneos", self.pbxproj)
+
+    def test_app_icon_matches_web_pwa_icon(self):
+        # One 1024 AppIcon (iOS 17 single-size), made from the PWA icon.
+        assets = os.path.join(SRC, "Assets.xcassets", "AppIcon.appiconset")
+        meta = read(os.path.join(assets, "Contents.json"))
+        self.assertIn("icon-1024.png", meta)
+        self.assertTrue(os.path.isfile(os.path.join(assets, "icon-1024.png")))
+        with open(os.path.join(assets, "icon-1024.png"), "rb") as f:
+            head = f.read(32)
+        self.assertEqual(head[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(int.from_bytes(head[16:20], "big"), 1024)
+        self.assertEqual(int.from_bytes(head[20:24], "big"), 1024)
+        self.assertNotEqual(head[25], 6, "icon must be opaque (no alpha)")
+        self.assertIn("Assets.xcassets", self.pbxproj)
+        self.assertIn("ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon",
+                      self.pbxproj)
 
     def test_same_bundle_id_as_android(self):
         self.assertIn("org.tinio.unwritten", self.plist)
@@ -405,17 +535,14 @@ class IOSParityTests(unittest.TestCase):
             self.assertIn(token, self.view, token)
 
     def test_in_viewfinder_playback(self):
-        for token in ["PlayerView", "playInViewfinder",
+        # User-ordered Nov 1 (playback bug fix): a tapped session no
+        # longer plays in the viewfinder strip — which sat off-screen
+        # whenever the row was scrolled into view — but in a full-screen
+        # native VideoPlayer. The shared entry points keep their names.
+        for token in ["VideoPlayer(player:", "playInViewfinder",
                       "stopLocalPlayback"]:
             self.assertIn(token, self.view, token)
-
-    def test_player_view_updates_its_player(self):
-        # SwiftUI reuses the UIView: an empty updateUIView keeps
-        # playing session A after the user taps session B.
-        update = self.view.split(
-            "func updateUIView(_ uiView: PlayerUIView", 1)[1] \
-            .split("}", 1)[0]
-        self.assertIn("playerLayer.player", update)
+        self.assertNotIn("PlayerView(player:", self.view)
 
     def test_settings_show_stored_values_not_effective(self):
         # Loading effective (compiled-default) values into the fields
@@ -572,8 +699,9 @@ class IOSScreensTests(unittest.TestCase):
                         save.index("registerLesson(url:"))
 
     def test_home_playback_moves_to_record_screen(self):
-        # Device sessions still play inside the viewfinder (shared
-        # design); user-ordered Nov 1 the route there is a push.
+        # Device sessions play from the record screen (user-ordered Nov 1
+        # the route there is a push; the player itself is a full-screen
+        # cover now).
         play = self.view.split("private func playInViewfinder", 1)[1] \
                         .split("private func playHubSession", 1)[0]
         self.assertIn("path.append(.record)", play)

@@ -132,6 +132,43 @@ README; the notable porting decisions:
   so the granted/denied branches past the prompt are verified by
   code path + regression test, not by tapping — see open items.
 
+## Update — 2026-11-01: playback fix
+
+- Hub playback 403'd (CDN hotlink protection wants the player page as
+  `Referer`; `curl` without it → 403, with it → 200/206): AVPlayer now
+  gets `AVURLAssetHTTPHeaderFieldsKey: Referer` = the session's embed
+  URL, MP4 first then HLS, `.playback` audio, and a failed item opens
+  the Cloud embed page. Device recordings play in a full-screen
+  `VideoPlayer` cover (the old in-viewfinder strip was off-screen
+  whenever the tapped row was scrolled into view); camera pauses while
+  it plays and resumes after.
+- Evidence: iPhone 14 Pro screenshots — hub frames change 3 s apart;
+  the player covers the screen with the list scrolled to the bottom.
+- Not observed: sound (no remote hearing), the embed-fallback path on a
+  real stream failure, HLS-only sessions (the Referer header on HLS
+  segment requests), pause/scrub by hand.
+
+## Update — 2026-11-01: native-feel pass
+
+- Record is now an inset-grouped `List` (viewfinder card + zoom, a
+  ring-and-disc shutter, the system Cloud `Toggle`, device sessions,
+  Advanced settings). Swipe-to-delete on session rows now really
+  works (`.swipeActions` is a no-op inside a `ScrollView`, which is
+  what Record was). Empty device list is a `ContentUnavailableView`;
+  Fetch from link is dimmed until a link is pasted and the keyboard's
+  Go submits it. The Cloud toggle's binding acts only on a real change
+  (`toggleCloud()` flips persisted state).
+- Evidence: iPhone 14 Pro (device build via `devicectl`, screenshots
+  with `devicectl device capture screenshot`) — home, Record with the
+  live front camera, Cloud switch, empty/non-empty device list. The
+  simulator runtime is not installed on this Mac, so no simulator
+  captures. A black viewfinder seen mid-session was the phone lying
+  lens-down on a charger (unchanged HEAD was equally black); a
+  face-up capture shows a live picture.
+- Not yet observed: swipe-to-delete and the long-press menu by hand
+  (no remote touch), a take recorded from the new shutter, banners on
+  the small-screen layout (iPhone SE-class height).
+
 ## Open items
 
 1. **On-device shakeout (real iPhone)** — partly done (Oct 29):
@@ -141,6 +178,6 @@ README; the notable porting decisions:
    real TUS upload to the signer (stamped token) through encoding to
    ↗ share, and cloud-first delete. Capture sessions vary by device;
    the device is the only proof.
-2. **App icon** — no asset catalog yet (same open item as Android).
+2. **App icon** — done Nov 1: `Assets.xcassets/AppIcon` from the web PWA icon (Android still open).
 3. **Release signing** — the project uses automatic signing; device
    and store builds need a development team.

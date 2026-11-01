@@ -12,7 +12,7 @@ libraries — SwiftUI + AVFoundation and one C++ core only.
 **Continuing this work?** Read
 [`docs/ios-app-worklog.md`](../../docs/ios-app-worklog.md)
 first — full history, build verification, simulator evidence, and the
-open items (on-device shakeout, app icon, release signing). On-device
+open items (on-device shakeout, release signing). On-device
 note (Oct 29): the first real-iPhone run hit a `startRunning`-inside-
 `beginConfiguration` throw — fixed by committing the config before
 starting the session, proven by a test take on an iPhone 14 Pro.
@@ -39,10 +39,11 @@ Swift handles what it is good at: the capture-session wrapper and the
 UI (built programmatically — no storyboards). It is the same design
 as the web and Android apps, built from iOS parts: a `NavigationStack`
 home (a grouped list with Record and Upload over the hub last, pull
-to refresh) that pushes Record (preview, zoom, one Record/Stop
-button, in-viewfinder playback, camera switch in the toolbar, cloud,
-device sessions, an Advanced settings link opening the Cloud settings
-sheet) and hub sessions (their own player, never the camera,
+to refresh) that pushes Record (an inset-grouped list: the
+viewfinder card with zoom, a round camera-style shutter, the Cloud
+switch, and the device sessions — a swipe deletes — plus a
+full-screen native player for a tapped session, camera switch in the toolbar, and an Advanced settings link
+opening the Cloud settings sheet) and hub sessions (their own player, never the camera,
 plus the write-up, corrections and chapters, with Share/Delete in the
 toolbar). The system back button and edge swipe leave Record exactly
 like the old ‹ Home did: a live take stops and is kept, and the camera
@@ -55,6 +56,7 @@ UnwrittenRecorder.xcodeproj/         (project + shared scheme)
 build.sh                             (stamp + simulator build — see below)
 UnwrittenRecorder/
     Info.plist             camera/mic usage, Files sharing, portrait
+    Assets.xcassets        AppIcon (same art as the web PWA icon)
     UnwrittenRecorderApp.swift   app entry
     ContentView.swift      home + record screens, upload picker + link queue, playback
     CameraEngine.swift     AVCaptureSession + movie output + zoom + luma hook

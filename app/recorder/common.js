@@ -12,6 +12,14 @@
    upload.js; the renderers below tolerate pages that don't carry
    their elements. */
 
+/* Native-leaning look: the CSS nudges radii, type and the header per
+   platform (html.ios / html.android); everything else is shared. */
+(function(){
+  var ua = navigator.userAgent || "", root = document.documentElement;
+  if(/Android/i.test(ua)) root.classList.add("android");
+  else if(/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) root.classList.add("ios");
+})();
+
 function probe(){
   var caps = {
     mediaRecorder: (typeof MediaRecorder !== "undefined"),
@@ -717,7 +725,9 @@ function paintCloudToggle(){
   var on = cloudEnabled();
   var t = $("cloudtoggle"), e = $("exportbtn");
   if(!t || !e) return; /* only the home page carries cloud controls */
-  t.textContent = on ? "☁ Cloud: on" : "☁ Cloud: off";
+  /* A real switch: the state lives in aria-checked (the CSS draws the
+     knob from it), so assistive tech reads "Cloud, switch, on/off". */
+  t.setAttribute("aria-checked", on ? "true" : "false");
   t.classList.toggle("on", on);
   /* Export is the offline fallback, like Android: only with Cloud off. */
   e.classList.toggle("hidden", on);
