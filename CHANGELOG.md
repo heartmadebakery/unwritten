@@ -8,6 +8,44 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Added
+- **Fetch-to-Stream upload: fetched lessons reach the in-app hub.**
+  `--fetch` uploads each finished lesson after the pipeline (create
+  the video, PUT the bytes streamed from disk, wait for finished)
+  and records it in `cloud_state.json`, so `--cloud` skips it and
+  the publish loop picks it up — no manual backfill. The video id
+  is stored in `upload.json` before the bytes go up, so a retry
+  reuses it instead of minting a duplicate; without the library key
+  the run fails fast before claiming. Docs and all three app READMEs
+  updated; verified end to end over a live
+  queue→pipeline→upload→publish loop (test traces deleted after).
+- **Scheduled service with boot persistence.** `*/5 * * * *` runs
+  `run_cloud.sh` (fetch → cloud → publish → site) via BusyBox
+  `crond`, kept up by an inittab respawn line — back within 5
+  minutes of a reboot. SETUP notes the host rules: the crontab file
+  must be root-owned (this `crond` silently ignores user-owned
+  ones), jobs run as the file's name, and there is no `@reboot` /
+  `MAILTO` here — failures surface in `work/cloud/cron.log`.
+
+### Fixed
+- **Pipeline races closed; reruns are safe.** `--cloud`/`--fetch`
+  take an exclusive lock on the work root (`.lock`): a second run
+  on the same root skips with a message instead of processing videos
+  twice (verified live against a held lock). The publish loop now
+  requires both `writeup.md` and `corrections.json`, so a mid-run or
+  crashed dir can never push partial artifacts through the hub
+  upsert; it also resolves each work dir's guid up front and skips
+  finished fetch sessions that map to no cloud video instead of
+  failing every cron run. New "Races and reruns" section in
+  PIPELINE.md; `--cloud` stays a one-machine job.
+- **Android rebuild, backlog drained, hub filled.** Fresh APK from
+  `build.sh` (token-stamped, template restored), installed and
+  launch-verified on the Pixel 4 with no crash; processed the full
+  backlog (1 fetch job, 11 cloud lessons → 8 done, 3 validator
+  refusals on non-lesson test takes) and published 9 sessions to the
+  hub (10 with the manual omelette backfill that motivated the
+  upload feature above).
+
 ### Fixed
 - **Android: link lock, configured(), engine robustness.** Cloud
   link writes synchronize (callbacks persist off the UI thread);

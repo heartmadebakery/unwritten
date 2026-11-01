@@ -20,8 +20,14 @@ mkdir -p "$(dirname "$LOG")"
   HUB_SIGNER_TOKEN="${HUB_SIGNER_TOKEN:-$(head -1 app/cloud-signer/tokens.txt 2>/dev/null || echo "")}"
   if [ -n "$HUB_SIGNER_TOKEN" ]; then
     for work in work/cloud/*__*; do
-      [ -f "$work/writeup.md" ] || continue
-      .venv/bin/python pipeline/publish.py --work "$work" --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" >>"$LOG" 2>&1 || { echo "[cloud] FAIL: publish $work failed (see above)" >>"$LOG"; FAIL=1; }
+      [ -f "$work/writeup.md" ] && [ -f "$work/corrections.json" ] || continue
+      # Fetch-queue sessions finish here with a writeup but map to no
+      # cloud video, and publish.py only publishes Stream-backed
+      # lessons — resolve the guid first and skip those dirs, or every
+      # cron run would end FAIL on them.
+      GUID="$(.venv/bin/python -c 'import json,os,sys; st=json.load(open("work/cloud/cloud_state.json")); w=os.path.abspath(sys.argv[1]); print(next((g for g,e in st.items() if isinstance(e,dict) and os.path.abspath(e.get("workDir",""))==w),""))' "$work" 2>/dev/null || true)"
+      [ -n "$GUID" ] || continue
+      .venv/bin/python pipeline/publish.py --work "$work" --guid "$GUID" --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" >>"$LOG" 2>&1 || { echo "[cloud] FAIL: publish $work failed (see above)" >>"$LOG"; FAIL=1; }
     done
   fi
   .venv/bin/python pipeline/make_site.py work/cloud work/site >>"$LOG" 2>&1 || { echo "[cloud] FAIL: site rebuild failed (see above)" >>"$LOG"; FAIL=1; }

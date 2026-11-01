@@ -41,6 +41,7 @@ there is a recipient for it. The retired apprentice/SAM code is not
 invoked here at all.
 """
 import argparse
+import fcntl
 import json
 import os
 import re
@@ -65,6 +66,22 @@ STALE_DIRS = ("clips", "transcript")
 
 def py():
     return VENV_PY if os.path.exists(VENV_PY) else sys.executable
+
+
+def hold_root_lock(root):
+    """Exclusive non-blocking lock on the work root, held while a
+    --cloud/--fetch run processes videos: a second run (cron or
+    manual) on the same root gets None and skips instead of racing
+    it. Returns the open lock file, released when closed (or on
+    process exit — a crash can never wedge the next run)."""
+    os.makedirs(root, exist_ok=True)
+    fh = open(os.path.join(root, ".lock"), "w")
+    try:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return None
+    return fh
 
 
 def run(cmd, stage, fatal=True):
@@ -519,11 +536,19 @@ def run_cloud_mode(root, max_n=0, retry_failed=False, state_path=""):
 
 def run_fetch_mode(root, max_n=0, retry_failed=False):
     """Claim queued URL jobs and run the full pipeline on each into
-    its own subdir of root. Returns an exit code."""
+    its own subdir of root, then upload each finished lesson to
+    Stream (recorded in the cloud state, so --cloud skips it and the
+    publish loop picks it up for the hub). Returns an exit code."""
     import fetch_jobs  # lazy so local-only runs never touch the queue
+    import cloud_fetch
 
     cfg = fetch_jobs.load_config()
+    # Fail fast before claiming: without the library key no job could
+    # reach the hub, so claiming work would only strand it.
+    upload_cfg = cloud_fetch.require_upload_config()
     os.makedirs(root, exist_ok=True)
+    state_path = os.path.join(root, "cloud_state.json")
+    state = cloud_fetch.load_state(state_path)
     processed = failures = 0
     while True:
         if max_n and max_n > 0 and processed + failures >= max_n:
@@ -534,6 +559,7 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
         job_id = job.get("id", "")
         session = os.path.join(root, fetch_jobs.session_dir_name(job_id))
         os.makedirs(session, exist_ok=True)
+        upload_error = ""
         try:
             lesson = fetch_jobs.existing_media(session)
             title = fetch_jobs.read_source_title(session)
@@ -542,6 +568,27 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
                 fetch_jobs.write_source(session, job, title, lesson)
             work = os.path.join(root, fetch_jobs.job_slug(title, job_id))
             code = _run_one(lesson, work)
+            if code == 0:
+                # Create-once: the video id is stored before the bytes
+                # go up, so a retry reuses it instead of minting a
+                # duplicate Stream object for the same lesson.
+                guid = fetch_jobs.read_upload_guid(session)
+                if not guid:
+                    guid = cloud_fetch.create_video(
+                        upload_cfg, title or "Unwritten lesson")
+                    fetch_jobs.write_upload_guid(session, guid)
+                try:
+                    print("[fetch] uploading %r to Stream as %s"
+                          % (title or job.get("url"), guid[:8]))
+                    cloud_fetch.upload_bytes(upload_cfg, guid, lesson)
+                    cloud_fetch.await_finished(upload_cfg, guid)
+                except Exception as exc:
+                    upload_error = str(exc)
+                    code = 1
+                else:
+                    state[guid] = {"title": title, "lesson": lesson,
+                                   "workDir": work, "result": "done"}
+                    cloud_fetch.save_state(state_path, state)
         except Exception as exc:
             failures += 1
             print("[fetch] failed for %r: %s" % (job.get("url"), exc))
@@ -553,15 +600,18 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
         processed += 1
         if code != 0:
             failures += 1
-            print("[fetch] pipeline failed for %r — recorded as failed; "
-                  "use --retry-failed to retry it." % job.get("url"))
+            print("[fetch] failed for %r (%s) — recorded as failed; "
+                  "use --retry-failed to retry it."
+                  % (job.get("url"),
+                     upload_error or "pipeline failed (see log)"))
         else:
             print("[fetch] done %r -> %s" % (job.get("url"), work))
         try:
             fetch_jobs.finish_job(
                 cfg, job_id, code == 0,
                 session=work if code == 0 else lesson,
-                error="" if code == 0 else "pipeline failed (see log)")
+                error="" if code == 0 else (upload_error
+                                            or "pipeline failed (see log)"))
         except Exception as exc:
             failures += 1
             print("[fetch] could not mark finished: %s — the job comes "
@@ -604,6 +654,10 @@ def main():
         if args.work_dir is not None or not args.session_dir:
             ap.error("--cloud takes exactly one positional: the work root "
                      "(e.g. run_pipeline.py --cloud work/cloud)")
+        lock = hold_root_lock(args.session_dir)
+        if lock is None:
+            print("[cloud] previous run still holds the lock — skipping")
+            sys.exit(0)
         sys.exit(run_cloud_mode(args.session_dir, max_n=args.max,
                                 retry_failed=args.retry_failed,
                                 state_path=args.cloud_state))
@@ -612,6 +666,10 @@ def main():
         if args.work_dir is not None or not args.session_dir:
             ap.error("--fetch takes exactly one positional: the work root "
                      "(e.g. run_pipeline.py --fetch work/cloud)")
+        lock = hold_root_lock(args.session_dir)
+        if lock is None:
+            print("[fetch] previous run still holds the lock — skipping")
+            sys.exit(0)
         sys.exit(run_fetch_mode(args.session_dir, max_n=args.max,
                                 retry_failed=args.retry_failed))
     if not args.session_dir or not args.work_dir:

@@ -99,7 +99,7 @@ link, Retry upload, Save a copy, Delete), or swipe it to delete it from
 the phone *and* its cloud copy (cloud first — if that fails, the local
 lesson is kept). Pasting a link instead queues it to the pipeline
 fetcher (`POST /fetch/jobs`), which downloads YouTube and watch pages
-with yt-dlp and processes them like a take.
+with yt-dlp, processes them like a take, and publishes them to the hub.
 **Export sessions to Downloads** is shown only when Cloud is off
 (offline fallback); it shares every lesson through the share sheet
 (Save to Files, AirDrop, …).

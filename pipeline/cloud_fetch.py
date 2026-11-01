@@ -23,12 +23,17 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 API = "https://video.bunnycdn.com"
 PER_PAGE = 100
 FINISHED = 4  # finished/playable in the library API
+PUT_TIMEOUT = 3600
+POLL_INTERVAL = 30
+POLL_TIMEOUT = 3600
 
 
 class DownloadError(Exception):
@@ -275,6 +280,119 @@ def download_video(cfg, vid, dest_dir):
         raise
     os.replace(part, dest)
     return dest
+
+
+def require_upload_config(env=None):
+    """Library credentials for UPLOADING lesson bytes. Listing can go
+    through the proxy without the key; bytes upload direct, so the key
+    is mandatory — exits naming the fix."""
+    cfg = load_config(env)
+    if not cfg["api_key"]:
+        raise SystemExit("Missing CLOUD_LIBRARY_KEY — paste the library "
+                         "AccessKey in .env (Stream dashboard -> library "
+                         "-> API) to upload fetched lessons.")
+    return cfg
+
+
+def create_video(cfg, title):
+    """Create the library video object; returns its guid."""
+    payload = json.dumps(
+        {"title": title or "Unwritten lesson"}).encode("utf-8")
+    req = urllib.request.Request(
+        "%s/library/%s/videos" % (API, cfg["library_id"]),
+        data=payload,
+        headers={"AccessKey": cfg["api_key"],
+                 "Content-Type": "application/json",
+                 "Accept": "application/json",
+                 "User-Agent": "UnwrittenCraft/1.0"},
+        method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            obj = json.loads(resp.read().decode("utf-8", "replace"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:300]
+        raise RuntimeError("Stream video create refused (%s): %s "
+                           "(check CLOUD_LIBRARY_ID and "
+                           "CLOUD_LIBRARY_KEY)" % (exc.code, body))
+    except (OSError, http.client.HTTPException, ValueError) as exc:
+        raise RuntimeError("Stream video create failed: %s" % exc)
+    guid = obj.get("guid") or obj.get("videoId") or ""
+    if not guid:
+        raise RuntimeError("Stream video create returned no video id: %.80s"
+                           % json.dumps(obj))
+    return guid
+
+
+def upload_bytes(cfg, guid, path, timeout=PUT_TIMEOUT):
+    """PUT one file's bytes to its video object. Streams from disk in
+    chunks — an hour-long lesson never sits whole in RAM. The
+    octet-stream content type is mandatory: without it the vendor
+    answers 400."""
+    try:
+        size = os.path.getsize(path)
+    except OSError as exc:
+        raise RuntimeError("cannot read %s: %s" % (path, exc))
+    parts = urllib.parse.urlsplit(API)
+    conn_cls = http.client.HTTPSConnection \
+        if parts.scheme == "https" else http.client.HTTPConnection
+    try:
+        conn = conn_cls(parts.hostname, parts.port or None,
+                        timeout=timeout)
+        conn.putrequest("PUT", "/library/%s/videos/%s"
+                        % (cfg["library_id"], guid))
+        conn.putheader("AccessKey", cfg["api_key"])
+        conn.putheader("Content-Type", "application/octet-stream")
+        conn.putheader("Content-Length", str(size))
+        conn.endheaders()
+        with open(path, "rb") as fh:
+            while True:
+                chunk = fh.read(1024 * 256)
+                if not chunk:
+                    break
+                conn.send(chunk)
+        resp = conn.getresponse()
+        status, body = resp.status, resp.read().decode("utf-8", "replace")
+        conn.close()
+    except (OSError, http.client.HTTPException) as exc:
+        raise RuntimeError("Stream upload failed for %s: %s" % (guid, exc))
+    if status is None or status < 200 or status >= 300:
+        raise RuntimeError("Stream upload refused for %s (%s): %s"
+                           % (guid, status, body[:300]))
+    return guid
+
+
+def video_status(cfg, guid):
+    """The vendor's integer status for one video (4 = finished)."""
+    data = http_get_json("%s/library/%s/videos/%s"
+                         % (API, cfg["library_id"], guid),
+                         {"AccessKey": cfg["api_key"],
+                          "Accept": "application/json"})
+    try:
+        return int(data.get("status", -1))
+    except (TypeError, ValueError):
+        raise RuntimeError("Stream answered for %s with no status: %.80s"
+                           % (guid, json.dumps(data)))
+
+
+def await_finished(cfg, guid, timeout=POLL_TIMEOUT, interval=POLL_INTERVAL):
+    """Poll until the video is finished/playable. A transcode error or
+    an expired wait raises naming the video — the caller records it
+    failed and a retry reuses the same video id."""
+    deadline = time.time() + timeout
+    while True:
+        status = video_status(cfg, guid)
+        if status == FINISHED:
+            return
+        if status in (5, 6):
+            raise RuntimeError("Stream video %s failed transcoding "
+                               "(status %d) — check the source file, "
+                               "then retry." % (guid, status))
+        if time.time() >= deadline:
+            raise RuntimeError("Stream video %s still not finished "
+                               "after %ds (status %d) — retry later; "
+                               "the same video id is reused."
+                               % (guid, int(timeout), status))
+        time.sleep(interval)
 
 
 def load_state(path):

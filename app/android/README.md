@@ -98,7 +98,8 @@ fails, the local lesson is kept). **Export lessons to Downloads** is
 shown only when Cloud is off (offline fallback); **Share Cloud link**
 only when Cloud is on. Pasting a link instead queues it to the
 pipeline fetcher (`POST /fetch/jobs`), which downloads YouTube and
-watch pages with yt-dlp and processes them like a take.
+watch pages with yt-dlp, processes them like a take, and publishes
+them to the hub.
 
 No typing needed: `build.sh` stamps one random token from the signer
 pool into the APK (`token #N of 10` in the build log), so uploads work

@@ -18,6 +18,7 @@ from unittest import mock
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "pipeline"))
 
+import cloud_fetch as cf
 import fetch_jobs as fj
 import run_pipeline as rp
 
@@ -222,6 +223,18 @@ class TestNaming(unittest.TestCase):
             self.assertEqual(fj.read_source_title(td), "")
 
 
+class TestUploadGuid(unittest.TestCase):
+    def test_round_trip_and_missing(self):
+        # The Stream video id is written once, right after create, so
+        # a retry reuses it instead of minting a duplicate video.
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(fj.read_upload_guid(td), "")
+            fj.write_upload_guid(td, "vid-1")
+            self.assertEqual(fj.read_upload_guid(td), "vid-1")
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(fj.read_upload_guid(td), "")
+
+
 class TestYtdlp(unittest.TestCase):
     def test_missing_binary_names_the_install(self):
         with mock.patch.object(fj.shutil, "which", return_value=None), \
@@ -312,11 +325,17 @@ class TestFetchCli(unittest.TestCase):
             self.assertEqual(fj.main(), 2)
 
 
+UPLOAD_CFG = {"library_id": "7", "api_key": "K", "cdn": "vz-x.b-cdn.net",
+                "proxy": ""}
+
+
 class TestFetchMode(unittest.TestCase):
     def test_empty_queue_is_quiet_success(self):
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(fj, "load_config",
                                    return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
                  mock.patch.object(fj, "claim_job", return_value=None) as claim:
                 code = rp.run_fetch_mode(td)
         self.assertEqual(code, 0)
@@ -328,24 +347,43 @@ class TestFetchMode(unittest.TestCase):
             lesson = os.path.join(td, "fetch_job", "m.mp4")
             with mock.patch.object(fj, "load_config",
                                    return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
                  mock.patch.object(fj, "claim_job",
                                    side_effect=[job, None]), \
                  mock.patch.object(fj, "download_direct",
                                    return_value=lesson) as dl, \
+                 mock.patch.object(cf, "create_video",
+                                   return_value="vid-9") as mk, \
+                 mock.patch.object(cf, "upload_bytes") as up, \
+                 mock.patch.object(cf, "await_finished") as wait, \
                  mock.patch.object(fj, "finish_job") as fin, \
                  mock.patch.object(rp, "_run_one", return_value=0) as one:
                 code = rp.run_fetch_mode(td)
+            state = cf.load_state(os.path.join(td, "cloud_state.json"))
         self.assertEqual(code, 0)
         dl.assert_called_once()
         one.assert_called_once()
         fin.assert_called_with({"queue": "q", "token": ""}, "job_1", True,
                                session=mock.ANY, error="")
+        # The finished lesson is uploaded to Stream and recorded in
+        # the cloud state, so --cloud skips it and the publish loop
+        # picks it up for the hub.
+        mk.assert_called_once()
+        up.assert_called_once()
+        self.assertEqual(up.call_args[0][1], "vid-9")
+        self.assertEqual(up.call_args[0][2], lesson)
+        wait.assert_called_once()
+        self.assertEqual(state["vid-9"]["result"], "done")
+        self.assertEqual(state["vid-9"]["workDir"], one.call_args[0][1])
 
     def test_download_failure_marks_failed(self):
         job = {"id": "job_1", "url": "https://cdn/x/v.mp4"}
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(fj, "load_config",
                                    return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
                  mock.patch.object(fj, "claim_job",
                                    side_effect=[job, None]), \
                  mock.patch.object(fj, "download_direct",
@@ -357,6 +395,95 @@ class TestFetchMode(unittest.TestCase):
         one.assert_not_called()
         self.assertEqual(fin.call_args[0][:3], ({"queue": "q", "token": ""}, "job_1", False))
         self.assertIn("boom", fin.call_args[1]["error"])
+
+    def test_upload_failure_marks_failed(self):
+        # A lesson the pipeline finished but Stream refused stays
+        # failed (never silently hub-less): the bytes and the retry
+        # carry the same video id.
+        job = {"id": "job_1", "url": "https://cdn/x/v.mp4"}
+        with tempfile.TemporaryDirectory() as td:
+            lesson = os.path.join(td, "fetch_job", "m.mp4")
+            with mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
+                 mock.patch.object(fj, "claim_job",
+                                   side_effect=[job, None]), \
+                 mock.patch.object(fj, "download_direct",
+                                   return_value=lesson), \
+                 mock.patch.object(cf, "create_video",
+                                   return_value="vid-9"), \
+                 mock.patch.object(cf, "upload_bytes",
+                                   side_effect=RuntimeError("boom")), \
+                 mock.patch.object(cf, "await_finished") as wait, \
+                 mock.patch.object(fj, "finish_job") as fin, \
+                 mock.patch.object(rp, "_run_one", return_value=0):
+                code = rp.run_fetch_mode(td)
+            state = cf.load_state(os.path.join(td, "cloud_state.json"))
+        self.assertEqual(code, 1)
+        wait.assert_not_called()
+        self.assertEqual(fin.call_args[0][:3], ({"queue": "q", "token": ""}, "job_1", False))
+        self.assertIn("boom", fin.call_args[1]["error"])
+        self.assertNotIn("vid-9", state)
+
+    def test_missing_upload_creds_exits_before_claim(self):
+        # Without the library key no fetch job could reach the hub,
+        # so the run fails fast instead of claiming work it cannot
+        # finish visibly.
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   side_effect=SystemExit("Missing x")), \
+                 mock.patch.object(fj, "claim_job") as claim:
+                with self.assertRaises(SystemExit):
+                    rp.run_fetch_mode(td)
+        claim.assert_not_called()
+
+    def test_retry_reuses_the_stored_video_id(self):
+        # A retry (re-download skipped, pipeline rerun) uploads under
+        # the video id stored by the first attempt — never a second
+        # Stream object for the same lesson.
+        job = {"id": "job_9", "url": "https://cdn/x/v.mp4"}
+        with tempfile.TemporaryDirectory() as td:
+            session = os.path.join(td, "fetch_job_9")
+            os.makedirs(session)
+            with open(os.path.join(session, "unwritten_lesson_x.mp4"),
+                      "wb") as fh:
+                fh.write(b"data")
+            fj.write_upload_guid(session, "vid-old")
+            with mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
+                 mock.patch.object(fj, "claim_job",
+                                   side_effect=[job, None]), \
+                 mock.patch.object(fj, "download_direct") as dl, \
+                 mock.patch.object(cf, "create_video") as mk, \
+                 mock.patch.object(cf, "upload_bytes") as up, \
+                 mock.patch.object(cf, "await_finished"), \
+                 mock.patch.object(fj, "finish_job") as fin, \
+                 mock.patch.object(rp, "_run_one", return_value=0):
+                code = rp.run_fetch_mode(td)
+        self.assertEqual(code, 0)
+        dl.assert_not_called()
+        mk.assert_not_called()
+        self.assertEqual(up.call_args[0][1], "vid-old")
+        self.assertEqual(fin.call_args[0][:3], ({"queue": "q", "token": ""}, "job_9", True))
+
+    def test_download_only_needs_no_library_key(self):
+        # fetch_jobs.py main() downloads without running the pipeline
+        # and without uploading: no library key required.
+        with tempfile.TemporaryDirectory() as td:
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith("CLOUD_")}
+            with mock.patch.object(sys, "argv",
+                                   ["fetch_jobs.py", td]), \
+                 mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(fj, "claim_job", return_value=None), \
+                 mock.patch.dict(os.environ, env, clear=True):
+                self.assertEqual(fj.main(), 0)
 
 
 if __name__ == "__main__":

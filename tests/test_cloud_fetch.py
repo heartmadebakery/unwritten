@@ -4,11 +4,13 @@ One full pipeline run per new finished cloud video; credentials come
 from CLOUD_* env vars; only status-4 videos unseen in the state file
 are processed.
 """
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -141,6 +143,30 @@ class TestRunCloudSh(unittest.TestCase):
         for token in ["FAIL=0", "[cloud] FAIL:", "still holds the lock",
                       "exit 1"]:
             self.assertIn(token, sh, token)
+
+    def test_publish_loop_skips_work_without_a_cloud_video(self):
+        # Fetch-queue sessions finish in work/cloud/*__* with a
+        # writeup.md but map to no Stream video, and publish.py only
+        # publishes Stream-backed lessons (it exits 1 without a
+        # mapping). The loop must resolve the guid from the state's
+        # workDir mapping up front and skip those dirs — otherwise
+        # every cron run ends FAIL on finished fetch sessions.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            sh = fh.read()
+        for token in ["workDir", '[ -n "$GUID" ] || continue',
+                      '--guid "$GUID"']:
+            self.assertIn(token, sh, token)
+
+    def test_publish_loop_skips_partial_work_dirs(self):
+        # A work dir with writeup.md but no corrections.json is a
+        # mid-run or crashed run — publishing it would push partial
+        # artifacts through the hub upsert (or push them at all on a
+        # first publish). The loop must require both files.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            sh = fh.read()
+        self.assertIn('[ -f "$work/corrections.json" ]', sh)
 
 
 class TestState(unittest.TestCase):
@@ -434,6 +460,139 @@ class TestCloudFetchMain(unittest.TestCase):
         argv = ["cloud_fetch.py", "root", "--max", "abc"]
         with mock.patch.object(sys, "argv", argv):
             self.assertEqual(cf.main(), 2)
+
+
+class TestStreamUpload(unittest.TestCase):
+    # Fetch-queue sessions finish on disk with no Stream copy, so the
+    # in-app hub (Stream-backed) can never show them. --fetch uploads
+    # each finished lesson after the pipeline: create the video
+    # object, PUT the bytes, wait for finished/transcoded.
+    CFG = {"library_id": "7", "api_key": "K", "cdn": "vz-x.b-cdn.net",
+           "proxy": ""}
+
+    def test_require_upload_config_needs_the_library_key(self):
+        with self.assertRaises(SystemExit) as ctx:
+            cf.require_upload_config(env={})
+        self.assertIn("CLOUD_LIBRARY", str(ctx.exception))
+        # Proxy mode lists without the key, but bytes upload direct.
+        proxy = {"CLOUD_PROXY_URL": "https://w.example",
+                 "CLOUD_LIBRARY_ID": "7",
+                 "CLOUD_CDN_HOSTNAME": "vz-x.b-cdn.net"}
+        with self.assertRaises(SystemExit) as ctx:
+            cf.require_upload_config(env=proxy)
+        self.assertIn("CLOUD_LIBRARY_KEY", str(ctx.exception))
+        full = dict(proxy, CLOUD_LIBRARY_KEY="K")
+        self.assertEqual(cf.require_upload_config(env=full)["api_key"],
+                         "K")
+
+    def test_create_video_posts_title_and_returns_guid(self):
+        seen = {}
+
+        class Resp:
+            def read(self):
+                return b'{"guid":"g1"}'
+            def __enter__(self):
+                return self
+            def __exit__(self, *a):
+                return False
+
+        def fake_open(req, timeout=None):
+            seen["url"] = req.full_url
+            seen["data"] = req.data
+            seen["headers"] = {k.lower(): v
+                               for k, v in req.header_items()}
+            return Resp()
+
+        with mock.patch("urllib.request.urlopen", fake_open):
+            self.assertEqual(cf.create_video(self.CFG, "My lesson"),
+                             "g1")
+        self.assertTrue(seen["url"].endswith("/library/7/videos"),
+                        seen["url"])
+        self.assertEqual(json.loads(seen["data"])["title"], "My lesson")
+        self.assertEqual(seen["headers"].get("accesskey"), "K")
+
+    def test_create_video_refusal_is_a_clean_error(self):
+        def fake_open(req, timeout=None):
+            raise urllib.error.HTTPError(req.full_url, 403, "denied",
+                                         {}, io.BytesIO(b"bad key"))
+
+        with mock.patch("urllib.request.urlopen", fake_open):
+            with self.assertRaises(RuntimeError) as ctx:
+                cf.create_video(self.CFG, "t")
+        self.assertIn("403", str(ctx.exception))
+
+    def test_upload_bytes_puts_file_as_octet_stream(self):
+        import http.client
+        conn = mock.MagicMock()
+        resp = mock.MagicMock()
+        resp.status = 200
+        resp.read.return_value = b'{"success":true}'
+        conn.getresponse.return_value = resp
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "lesson.mp4")
+            with open(src, "wb") as fh:
+                fh.write(b"v" * 100)
+            with mock.patch.object(http.client, "HTTPSConnection",
+                                   return_value=conn) as cls:
+                cf.upload_bytes(self.CFG, "g1", src)
+        self.assertEqual(cls.call_args[0][0], "video.bunnycdn.com")
+        conn.putrequest.assert_called_once_with(
+            "PUT", "/library/7/videos/g1")
+        sent = {c[0][0]: c[0][1]
+                for c in conn.putheader.call_args_list}
+        self.assertEqual(sent.get("Content-Type"),
+                         "application/octet-stream")
+        self.assertEqual(sent.get("Content-Length"), "100")
+        self.assertEqual(sent.get("AccessKey"), "K")
+        conn.send.assert_called_once_with(b"v" * 100)
+
+    def test_upload_bytes_refusal_names_the_video(self):
+        import http.client
+        conn = mock.MagicMock()
+        resp = mock.MagicMock()
+        resp.status = 400
+        resp.read.return_value = b"nope"
+        conn.getresponse.return_value = resp
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "lesson.mp4")
+            with open(src, "wb") as fh:
+                fh.write(b"v")
+            with mock.patch.object(http.client, "HTTPSConnection",
+                                   return_value=conn):
+                with self.assertRaises(RuntimeError) as ctx:
+                    cf.upload_bytes(self.CFG, "g1", src)
+        self.assertIn("g1", str(ctx.exception))
+        self.assertIn("400", str(ctx.exception))
+
+    def test_upload_bytes_missing_file_is_a_clean_error(self):
+        with self.assertRaises(RuntimeError):
+            cf.upload_bytes(self.CFG, "g1", "/nonexistent/lesson.mp4")
+
+    def test_video_status_reads_the_vendor_object(self):
+        with mock.patch.object(cf, "http_get_json",
+                               return_value={"status": 3}) as get:
+            self.assertEqual(cf.video_status(self.CFG, "g1"), 3)
+        self.assertIn("g1", get.call_args[0][0])
+
+    def test_await_finished_polls_until_playable(self):
+        with mock.patch.object(cf, "video_status",
+                               side_effect=[1, 2, 3, 4]) as st:
+            self.assertIsNone(
+                cf.await_finished(self.CFG, "g1", interval=0))
+        self.assertEqual(st.call_count, 4)
+
+    def test_await_finished_transcode_error_fails_loudly(self):
+        with mock.patch.object(cf, "video_status", return_value=5):
+            with self.assertRaises(RuntimeError) as ctx:
+                cf.await_finished(self.CFG, "g1", interval=0)
+        self.assertIn("g1", str(ctx.exception))
+
+    def test_await_finished_timeout_names_the_video(self):
+        with mock.patch.object(cf, "video_status", return_value=2):
+            with self.assertRaises(RuntimeError) as ctx:
+                cf.await_finished(self.CFG, "g1", timeout=0,
+                                  interval=0)
+        self.assertIn("g1", str(ctx.exception))
 
 
 if __name__ == "__main__":

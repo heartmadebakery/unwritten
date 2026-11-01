@@ -34,7 +34,7 @@ of these places:
 | Secret | Lives in | Get / set it with |
 |---|---|---|
 | `MODEL_API_KEY` (Meta Model API) | `.env` at repo root (git-ignored, `export KEY=value` lines) | Paste your key. Without it the pipeline falls back to local faster-whisper transcription and the keyless `muse`-runner drafting path — slower, fully offline-capable. |
-| `CLOUD_LIBRARY_ID`, `CLOUD_LIBRARY_KEY`, `CLOUD_CDN_HOSTNAME` | `.env` | Stream dashboard → your library → API page. `KEY` may be omitted when `CLOUD_PROXY_URL` is set (listing goes through the signer instead). |
+| `CLOUD_LIBRARY_ID`, `CLOUD_LIBRARY_KEY`, `CLOUD_CDN_HOSTNAME` | `.env` | Stream dashboard → your library → API page. `KEY` may be omitted when `CLOUD_PROXY_URL` is set (listing goes through the signer instead) — except `--fetch`, which needs the key to upload finished lessons. |
 | `CLOUD_PROXY_URL` (optional) | `.env` | The signer worker URL (below). Lets the pipeline list the library without holding the library key. |
 | `FETCH_QUEUE_URL`, `FETCH_QUEUE_TOKEN` (optional) | `.env` | Fetch-queue worker URL (falls back to `CLOUD_PROXY_URL`); token falls back to `CLOUD_PROXY_TOKEN`, then line 1 of `tokens.txt`. |
 | `HUB_SIGNER_URL`, `HUB_SIGNER_TOKEN` (optional) | `.env`, or `run_cloud.sh` defaults | Publish target; the token defaults to line 1 of `tokens.txt`. |
@@ -124,11 +124,22 @@ bash run_cloud.sh   # cron-friendly (flock), logs to work/cloud/cron.log
 adb connect <phone-ip>:<port> && adb install -r app/android/unwritten-craft.apk
 ```
 
-Suggested cron (every minute; `MAILTO` gets failures):
+Suggested cron (every 5 minutes; failures land in
+`work/cloud/cron.log` as `[cloud] FAIL`, and the exit code is
+non-zero so `MAILTO` gets them where mail exists):
 
 ```cron
-* * * * * cd /home/<you>/unwritten && bash run_cloud.sh
+*/5 * * * * cd /home/<you>/unwritten && bash run_cloud.sh
 ```
+
+On this host (BusyBox init + `crond`, no systemd) the schedule
+lives in `/etc/crontabs/<you>` — note the file must be
+**root-owned** (this `crond` silently ignores user-owned crontabs)
+while jobs run as the file's name — and `crond` itself is kept up
+by an inittab respawn line (`::respawn:/usr/sbin/crond -f -L
+/var/log/crond.log`), so the service is back within 5 minutes of a
+reboot with no `@reboot` support needed. Verify with
+`pgrep -a crond` and a fresh timestamp on `work/cloud/cron.log`.
 
 ## 7. What "working" looks like
 

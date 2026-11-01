@@ -73,12 +73,34 @@ pipeline/run_pipeline.py --fetch work/cloud [--max N] [--retry-failed]
 Each job lands in `work/cloud/fetch_<jobid>/` as
 `unwritten_lesson_<stamp>.mp4` plus `source.json` (URL, title, job
 id), then runs into its own `work/cloud/<title>__<jobid>/` dir.
+When the pipeline succeeds, the lesson is uploaded to the Stream
+library (create the video, PUT the bytes, wait for finished) and
+recorded in `cloud_state.json` — so `--cloud` skips it and the
+publish loop picks it up for the in-app hub like any cloud lesson.
+The video id is stored in the session dir (`upload.json`) before
+the bytes go up, so a retry reuses it instead of minting a
+duplicate. Uploads need the direct library key
+(`CLOUD_LIBRARY_ID` + `CLOUD_LIBRARY_KEY` in `.env` — the proxy
+cannot stand in); without it `--fetch` fails fast before claiming.
 Failed jobs stay failed until `--retry-failed` reclaims them, and a
 claim older than two hours counts as a crashed worker and comes
 back. `FETCH_QUEUE_TOKEN` overrides the signer token (else
 `CLOUD_PROXY_TOKEN`, else line 1 of the pool file);
 `CLOUD_PROXY_URL` stands in for the queue URL. `run_cloud.sh` runs
 `--fetch` ahead of `--cloud` whenever the queue is configured.
+
+## Races and reruns
+
+`--cloud` and `--fetch` take an exclusive lock on the work root
+(`.lock`): a second run on the same root — cron or manual — skips
+with a message instead of processing videos twice. (`run_cloud.sh`
+adds its own `flock` so cron never overlaps itself.) Every step is
+idempotent: reruns skip `done`/`ignored` state, resume downloads
+from the `.part` sidecar discipline, reuse stored upload ids, and
+republish through the hub upsert, so a crash loses at most the
+in-flight video. One rule: run `--cloud` on exactly one machine —
+the state file is local, so two machines would each process every
+new video.
 
 Python deps live in `.venv` (faster-whisper); the runner re-invokes
 the transcription stage under it when present. Everything else is

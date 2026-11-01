@@ -302,5 +302,63 @@ class TestParseWriteup(unittest.TestCase):
             self.assertIn("No corrections captured", page)
 
 
+class TestRootLock(unittest.TestCase):
+    def test_second_holder_is_refused_until_released(self):
+        # --cloud/--fetch take an exclusive lock on the work root so
+        # a manual run can never process videos alongside cron (or
+        # another manual run): same-machine races are impossible.
+        with tempfile.TemporaryDirectory() as td:
+            first = rp.hold_root_lock(td)
+            self.assertIsNotNone(first)
+            self.assertIsNone(rp.hold_root_lock(td))
+            first.close()
+            second = rp.hold_root_lock(td)
+            self.assertIsNotNone(second)
+            second.close()
+
+    def test_main_skips_cloud_when_locked(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            held = rp.hold_root_lock(td)
+            try:
+                with mock.patch.object(sys, "argv",
+                                       ["run_pipeline.py", "--cloud", td]), \
+                     mock.patch.object(rp, "run_cloud_mode") as mode:
+                    with self.assertRaises(SystemExit) as ctx:
+                        rp.main()
+            finally:
+                held.close()
+        self.assertEqual(ctx.exception.code, 0)
+        mode.assert_not_called()
+
+    def test_main_skips_fetch_when_locked(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            held = rp.hold_root_lock(td)
+            try:
+                with mock.patch.object(sys, "argv",
+                                       ["run_pipeline.py", "--fetch", td]), \
+                     mock.patch.object(rp, "run_fetch_mode") as mode:
+                    with self.assertRaises(SystemExit) as ctx:
+                        rp.main()
+            finally:
+                held.close()
+        self.assertEqual(ctx.exception.code, 0)
+        mode.assert_not_called()
+
+    def test_main_proceeds_when_free(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(sys, "argv",
+                                   ["run_pipeline.py", "--cloud", td]), \
+                 mock.patch.object(rp, "run_cloud_mode",
+                                   return_value=0) as mode:
+                with self.assertRaises(SystemExit) as ctx:
+                    rp.main()
+        self.assertEqual(ctx.exception.code, 0)
+        mode.assert_called_once_with(td, max_n=0, retry_failed=False,
+                                     state_path="")
+
+
 if __name__ == "__main__":
     unittest.main()

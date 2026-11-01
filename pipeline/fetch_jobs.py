@@ -133,6 +133,22 @@ def read_source_title(session_dir):
         return ""
 
 
+def read_upload_guid(session_dir):
+    """The Stream video id minted for this session ("" when none) —
+    written once, right after create, so a retry reuses it instead of
+    minting a duplicate video."""
+    try:
+        with open(os.path.join(session_dir, "upload.json")) as fh:
+            return json.load(fh).get("videoId", "") or ""
+    except (OSError, ValueError):
+        return ""
+
+
+def write_upload_guid(session_dir, guid):
+    with open(os.path.join(session_dir, "upload.json"), "w") as fh:
+        json.dump({"videoId": guid}, fh, indent=1)
+
+
 def _request(cfg, method, path, body=None):
     url = cfg["queue"] + path
     headers = {"User-Agent": "UnwrittenCraft/1.0", "Accept": "application/json"}

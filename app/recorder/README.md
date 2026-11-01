@@ -17,7 +17,8 @@ session path of a take, so the pipeline picks it up the same way a
 recording is picked up. Pasting a link instead of a file works too:
 direct video files download in the page, while YouTube and
 watch-page links queue to the pipeline (`POST /fetch/jobs`), which
-fetches them with yt-dlp and processes them like a recording.
+fetches them with yt-dlp, processes them like a recording, and
+publishes them to the hub.
 
 The layout mirrors the [native Android app](../android/): the same dark
 palette, the same session rows — newest first, date + length, tap to
