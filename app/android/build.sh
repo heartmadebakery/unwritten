@@ -50,8 +50,10 @@ for ABI in arm64-v8a; do
 done
 
 echo "== resources (aapt2) =="
+"$BT/aapt2" compile --dir "$APP/src/main/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" \
   --manifest "$APP/src/main/AndroidManifest.xml" \
+  -R "$OUT/res.zip" \
   --java "$OUT/gen" --min-sdk-version "$MIN_API" --target-sdk-version 34
 
 echo "== stamp (signer token) =="

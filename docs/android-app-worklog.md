@@ -10,6 +10,37 @@ history, the evidence, and the open items.
 State at this log: app committed in `0c0ed9d` (19 files). Prior repo
 HEAD was `b4f70b7`.
 
+## Update — 2026-11-01: parity sync + Android-at-home redesign
+
+Owner's order: bring Android to feature parity with the web and iOS
+apps, in Android idioms. Parity: hub playback moved out of the
+record viewfinder into its own dialog player (MP4 then HLS, Cloud
+embed last — watching a lesson never opens the camera, like iOS);
+REC + elapsed badge over the viewfinder; zoom row hides with no
+zoom range; ✕ joins the player controls; ⟳ refreshes the hub (no
+SwipeRefreshLayout without AndroidX); "Nothing yet." device empty
+state; permission denial points to Settings. Idioms: `Theme.Material`
+ActionBar with per-screen titles + Up off record (the custom
+"‹ Home" button is deleted); Record is one filled red action;
+session/hub rows ripple; hub detail is an elevated rounded card;
+48dp row targets; adaptive amber-dot launcher icon (`res/`,
+`build.sh` gained the `aapt2 compile` res step — closes the icon
+open item below). Covered by 12 new `AndroidSyncTests` (325/325
+green, 41/41 hub checks); `build.sh` exit 0, token-stamped,
+icon confirmed in badging. On-device shakeout DONE same day (Pixel 4
+`flame` over tailnet wireless adb — 39871 is the connect port, the
+pairing port was separate; the previous install's foreign debug key
+forced an uninstall, so the 4 on-phone takes were pulled to /tmp
+first and pushed back after — prefs wiped, so they show 📱
+device-only until re-uploaded). Verified: launch, live hub rows,
+permissions deferred past entry, 12 s take
+(`unwritten_lesson_20261101-035127-906.mp4`), REC badge + red Stop,
+signer creds + TUS 201 + bytes in logcat, export to
+Downloads/Unwritten with Cloud off, long-press delete removed the
+Stream copy first then the file, restored takes list with real
+durations (8:26 on the 261 MB lesson). One fix from the shakeout:
+zoom row now hides with no camera yet (pre-permission dead UI).
+
 ## Update — 2026-10-29: quiet-minute check, camera toggle, mic banner
 
 - Parity with the web recorder: a `MediaRecorder.getMaxAmplitude()`

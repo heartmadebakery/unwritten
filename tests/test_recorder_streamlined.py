@@ -763,7 +763,12 @@ class AndroidScreensTests(unittest.TestCase):
         for token in ["stopRecording()", "engine.close()", "hasPermissions()",
                       "openPreview()", "refreshClipList()", "loadHub()"]:
             self.assertIn(token, show, token)
-        self.assertIn("‹ Home", self.main)
+        # User-ordered Nov 1 (Android idioms): the custom "‹ Home"
+        # button is gone — the ActionBar Up button and the system Back
+        # button are the ways off the record screen, like iOS's
+        # NavigationStack back.
+        self.assertNotIn('"‹ Home"', self.main)
+        self.assertIn("android.R.id.home", self.main)
         started = self.main.split("protected void onStart", 1)[1] \
                            .split("protected void onDestroy", 1)[0]
         self.assertIn('"record".equals(currentScreen)', started)
@@ -887,6 +892,123 @@ class WebAndroidParityTests(unittest.TestCase):
         for token in ["startSpeechMonitor", "stopSpeechMonitor",
                       "getFloatTimeDomainData", "60000"]:
             self.assertIn(token, self.recordjs, token)
+
+
+class AndroidSyncTests(unittest.TestCase):
+    """Android parity sync (Nov 1, user-ordered): the Android app catches
+    up with the web and iOS apps' behaviors, in Android idioms
+    (ActionBar + Up, dialog players, ripples, launcher icon)."""
+
+    RES = os.path.join(ROOT, "app", "android", "app", "src", "main", "res")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.main = read(MAIN)
+        cls.manifest = read(ANDROID_MANIFEST)
+        cls.build_sh = read(os.path.join(ROOT, "app", "android", "build.sh"))
+        cls.home = cls.main.split("private void buildHomeScreen", 1)[1] \
+                           .split("private void buildRecordScreen", 1)[0]
+        cls.record = cls.main.split("private void buildRecordScreen", 1)[1] \
+                             .split("// ---------- permissions", 1)[0]
+
+    def test_hub_playback_own_player_with_hls(self):
+        # Watching a published lesson never opens the camera (iOS hub
+        # screen, web home player): hub playback gets its own dialog
+        # player, trying mp4 then HLS, with the Cloud embed fallback.
+        play = self.main.split("private void playHubRemote", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("hlsUrl", play)
+        self.assertIn("AlertDialog", play)
+        self.assertNotIn('showScreen("record")', play)
+
+    def test_rec_badge_overlays_viewfinder(self):
+        # iOS and the web badge REC + elapsed over the viewfinder; the
+        # Stop button text alone is not enough.
+        self.assertIn("recBadge", self.main)
+        self.assertIn('"● REC"', self.record)
+        toggle = self.main.split("private void toggleRecord", 1)[1] \
+                          .split("\n    private ", 1)[0]
+        stop = self.main.split("private void stopRecording", 1)[1] \
+                        .split("\n    // ----------", 1)[0]
+        self.assertIn("recBadge", toggle)
+        self.assertIn("recBadge", stop)
+
+    def test_zoom_row_hidden_without_range(self):
+        # iOS and the web hide the zoom row when the camera reports no
+        # zoom range, so it is never dead UI.
+        self.assertIn("zoomRow", self.main)
+        zu = self.main.split("private void refreshZoomUi", 1)[1] \
+                      .split("\n}", 1)[0]
+        self.assertIn("zoomRow", zu)
+        self.assertIn("View.GONE", zu)
+
+    def test_player_controls_close_button(self):
+        # Web and iOS player controls carry ▶ / ⏸ / ✕; Android's Back
+        # button alone hides the close action.
+        self.assertIn('"✕"', self.record)
+
+    def test_hub_refresh_action(self):
+        # iOS pulls to refresh; Android (no SwipeRefreshLayout without
+        # AndroidX) offers a ⟳ action on the hub header instead of
+        # reloading only when home is re-entered.
+        self.assertIn('"⟳"', self.home)
+        self.assertIn("loadHub()", self.home)
+
+    def test_device_empty_state(self):
+        # iOS and the web say "Nothing yet."; an empty device list must
+        # not render as a bare header.
+        rows = self.main.split("private void refreshClipList", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("Nothing yet.", rows)
+
+    def test_denial_points_to_settings(self):
+        # A denied permission that stays denied needs Settings, like
+        # iOS says — not just a repeat of the request.
+        denied = self.main.split("public void onRequestPermissionsResult",
+                                 1)[1].split("\n    // ----------", 1)[0]
+        self.assertIn("Settings", denied)
+
+    def test_action_bar_titles_and_up(self):
+        # Android idiom: the ActionBar carries the screen title and the
+        # Up button off the record screen (iOS's NavigationStack back).
+        self.assertIn('android:theme="@android:style/Theme.Material"',
+                      self.manifest)
+        self.assertIn("setDisplayHomeAsUpEnabled", self.main)
+        self.assertIn("android.R.id.home", self.main)
+        show = self.main.split("private void showScreen", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("setTitle(", show)
+
+    def test_launcher_icon(self):
+        # The worklog's open icon item: an adaptive icon (minSdk 29
+        # needs no legacy PNGs), wired into the manifest and the
+        # manual build's aapt2 resource step.
+        self.assertIn('android:icon="@mipmap/ic_launcher"', self.manifest)
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.RES, "mipmap-anydpi-v26", "ic_launcher.xml")))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.RES, "drawable", "uw_icon_fg.xml")))
+        self.assertIn("compile --dir", self.build_sh)
+
+    def test_record_button_is_the_primary_action(self):
+        # The camera idiom: one filled red Record action, restyled for
+        # both states instead of a plain panel button with new text.
+        self.assertIn("paintRecordButton", self.main)
+        paint = self.main.split("private void paintRecordButton", 1)[1] \
+                         .split("\n    private ", 1)[0]
+        self.assertIn("GradientDrawable", paint)
+        self.assertIn("RED", paint)
+
+    def test_rows_use_ripple(self):
+        # Touch feedback is the Android idiom: session and hub rows
+        # ripple instead of sitting on flat color.
+        self.assertIn("selectableItemBackground", self.main)
+
+    def test_hub_card_has_elevation(self):
+        # The hub detail reads as a Material card, not a flat panel.
+        card = self.main.split("private View hubDetailView", 1)[1] \
+                        .split("\n    private ", 1)[0]
+        self.assertIn("setElevation", card)
 
 
 if __name__ == "__main__":

@@ -23,7 +23,9 @@
     <application
         android:allowBackup="true"
         android:label="Unwritten Craft"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@android:style/Theme.Material">
 
         <activity
             android:name=".MainActivity"

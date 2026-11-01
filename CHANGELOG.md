@@ -8,6 +8,17 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Changed
+- **Android parity sync + at-home redesign (user-ordered).** Hub
+  playback moves to its own dialog player (MP4 then HLS, Cloud embed
+  last — watching never opens the camera); REC badge, auto-hiding
+  zoom, player ✕, hub ⟳ refresh, device empty state, denial→Settings.
+  ActionBar titles + Up replace ‹ Home; red Record action, ripples,
+  elevated hub card, 48dp targets, adaptive launcher icon (`res/` +
+  `aapt2 compile` step). 12 `AndroidSyncTests`; verified on the
+  Pixel 4 over wireless adb (record, upload, export, cloud-first
+  delete, restored takes).
+
 ### Fixed
 - **URL fetcher finds yt-dlp without a PATH binary.** `fetch_jobs.py`
   fell back to `sys.executable -m yt_dlp`, so `--fetch` works under

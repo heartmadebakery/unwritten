@@ -7,6 +7,7 @@ import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
@@ -92,7 +93,8 @@ public class MainActivity extends Activity {
     private static final String CLOUD_PREFS = "unwritten_cloud";
     private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
     private Button cloudToggleButton, exportBtn, camToggle;
-    private TextView zoomLabel, micWarn, speechWarn;
+    private TextView zoomLabel, micWarn, speechWarn, recBadge;
+    private LinearLayout zoomRow;
     private LinearLayout hubContainer;
     private JSONArray hubRows = new JSONArray();
     private JSONObject hubDetail;
@@ -107,7 +109,9 @@ public class MainActivity extends Activity {
         @Override public void run() {
             if (engine != null && engine.isRecording()) {
                 long s = (SystemClock.elapsedRealtime() - recordStartMs) / 1000;
-                recordButton.setText("■ Stop  " + (s / 60) + ":" + String.format(Locale.US, "%02d", s % 60));
+                String t = (s / 60) + ":" + String.format(Locale.US, "%02d", s % 60);
+                recordButton.setText("■ Stop  " + t);
+                if (recBadge != null) recBadge.setText("● REC  " + t);
                 handler.postDelayed(this, 500);
             }
         }
@@ -199,9 +203,8 @@ public class MainActivity extends Activity {
         l.setBackgroundColor(BG);
         l.setPadding(dp(14), dp(14), dp(14), dp(14));
 
-        TextView title = label("Unwritten Craft", 24, TEXT); title.setGravity(Gravity.CENTER);
-        l.addView(title);
-        l.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
+        // The ActionBar carries the app title now (screen titles + Up
+        // in showScreen); the tagline lives on the home screen itself.
 
         // One app, two screens. Home (record/upload actions with the
         // hub last) is the landing; record owns the viewfinder and
@@ -226,6 +229,7 @@ public class MainActivity extends Activity {
     }
 
     private void buildHomeScreen() {
+        homeScreen.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
         Button goRecord = button("● Record");
         try { goRecord.setBackgroundTintList(null); } catch (Throwable ignored) {}
         goRecord.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showScreen("record"); } });
@@ -253,8 +257,26 @@ public class MainActivity extends Activity {
 
         // Hub: published lessons, same stories as the web hub. The hub
         // lives on the signer, so this section only fills when a signer
-        // URL and token are configured and Cloud is on.
-        homeScreen.addView(label("Hub sessions", 17, DIM));
+        // URL and token are configured and Cloud is on. The ⟳ action
+        // is the pull-to-refresh analogue (no SwipeRefreshLayout
+        // without AndroidX): the hub also reloads on return to home.
+        LinearLayout hubHead = new LinearLayout(this);
+        hubHead.setOrientation(LinearLayout.HORIZONTAL);
+        hubHead.setGravity(Gravity.CENTER_VERTICAL);
+        TextView hubTitle = label("Hub sessions", 17, DIM);
+        LinearLayout.LayoutParams hubTitleLp = new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        hubTitle.setLayoutParams(hubTitleLp);
+        hubHead.addView(hubTitle);
+        TextView hubRefresh = new TextView(this);
+        hubRefresh.setText("⟳");
+        hubRefresh.setTextSize(20);
+        hubRefresh.setTextColor(TEXT);
+        hubRefresh.setPadding(dp(12), dp(4), dp(12), dp(4));
+        hubRefresh.setClickable(true);
+        hubRefresh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { loadHub(); } });
+        hubHead.addView(hubRefresh);
+        homeScreen.addView(hubHead);
         hubContainer = new LinearLayout(MainActivity.this);
         hubContainer.setOrientation(LinearLayout.VERTICAL);
         hubContainer.setBackgroundColor(BG);
@@ -262,10 +284,9 @@ public class MainActivity extends Activity {
     }
 
     private void buildRecordScreen() {
-        Button backHome = button("‹ Home");
-        try { backHome.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        backHome.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showScreen("home"); } });
-        recordScreen.addView(backHome);
+        // No custom back button: the ActionBar Up button and the system
+        // Back button are the ways off this screen, like iOS's
+        // NavigationStack back. (User-ordered Nov 1, Android idioms.)
 
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
@@ -289,13 +310,33 @@ public class MainActivity extends Activity {
         vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackgroundColor(PANEL); vfPause.setAllCaps(false);
         try { vfPause.setBackgroundTintList(null); } catch (Throwable ignored) {}
         vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
+        Button vfClose = new Button(this);
+        vfClose.setText("✕"); vfClose.setTextSize(14); vfClose.setTextColor(TEXT); vfClose.setBackgroundColor(PANEL); vfClose.setAllCaps(false);
+        try { vfClose.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        vfClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { stopLocalPlayback(); } });
         LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         vfp.setMargins(dp(4), 0, dp(4), 0);
-        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp);
-        playerControls.addView(vfPlay); playerControls.addView(vfPause);
+        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp); vfClose.setLayoutParams(vfp);
+        playerControls.addView(vfPlay); playerControls.addView(vfPause); playerControls.addView(vfClose);
         android.widget.FrameLayout.LayoutParams ctrlLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ctrlLp.gravity = Gravity.BOTTOM;
         viewfinderBox.addView(playerControls, ctrlLp);
+        // REC badge over the viewfinder, like iOS and the web: the
+        // Stop button text alone is not enough.
+        recBadge = new TextView(this);
+        recBadge.setText("● REC");
+        recBadge.setTextSize(15); recBadge.setTextColor(0xFFFFFFFF);
+        GradientDrawable badgeBg = new GradientDrawable();
+        badgeBg.setShape(GradientDrawable.RECTANGLE);
+        badgeBg.setCornerRadius(dp(20));
+        badgeBg.setColor(Color.parseColor("#AA000000"));
+        recBadge.setBackground(badgeBg);
+        recBadge.setPadding(dp(12), dp(6), dp(12), dp(6));
+        recBadge.setVisibility(View.GONE);
+        android.widget.FrameLayout.LayoutParams badgeLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        badgeLp.gravity = Gravity.TOP | Gravity.START;
+        badgeLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+        viewfinderBox.addView(recBadge, badgeLp);
         recordScreen.addView(viewfinderBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // Warning banners directly below the stage, like the web app.
@@ -309,7 +350,7 @@ public class MainActivity extends Activity {
         recordScreen.addView(speechWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         // Zoom directly below viewfinder
-        LinearLayout zoomRow = new LinearLayout(this);
+        zoomRow = new LinearLayout(this);
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         zoomRow.setGravity(Gravity.CENTER_VERTICAL);
         zoomRow.setPadding(0, dp(6), 0, dp(6));
@@ -341,10 +382,9 @@ public class MainActivity extends Activity {
         });
 
         recordButton = button("● Record");
-        recordButton.setBackgroundColor(PANEL); recordButton.setTextColor(TEXT);
-        try { recordButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
         recordScreen.addView(recordButton);
+        paintRecordButton(false);
 
         camToggle = button(engine != null && engine.isFront() ? "🤳 Front camera" : "📷 Back camera");
         try { camToggle.setBackgroundTintList(null); } catch (Throwable ignored) {}
@@ -397,7 +437,7 @@ public class MainActivity extends Activity {
         for (int r : results) if (r != PackageManager.PERMISSION_GRANTED) granted = false;
         if (req == PERM_RECORD) {
             if (granted) { openPreview(); if (pendingRecord) { pendingRecord = false; toggleRecord(); } }
-            else { pendingRecord = false; showError("Camera and microphone permission denied."); }
+            else { pendingRecord = false; showError("Camera and microphone permission denied — enable them in Settings to record."); }
         }
     }
 
@@ -406,6 +446,15 @@ public class MainActivity extends Activity {
     private void showScreen(String name) {
         currentScreen = name;
         boolean home = "home".equals(name);
+        // Android idiom: the ActionBar carries the screen title and
+        // the Up button off the record screen.
+        try {
+            android.app.ActionBar bar = getActionBar();
+            if (bar != null) {
+                bar.setTitle(home ? "Unwritten Craft" : "Record");
+                bar.setDisplayHomeAsUpEnabled(!home);
+            }
+        } catch (Throwable ignored) {}
         if (homeScreen != null) homeScreen.setVisibility(home ? View.VISIBLE : View.GONE);
         if (recordScreen != null) recordScreen.setVisibility(home ? View.GONE : View.VISIBLE);
         if (!home) {
@@ -525,6 +574,8 @@ public class MainActivity extends Activity {
                         handler.removeCallbacks(timerRunnable);
                         handler.removeCallbacks(speechRunnable);
                         hideSpeechWarn();
+                        paintRecordButton(false);
+                        if (recBadge != null) recBadge.setVisibility(View.GONE);
                         recordButton.setText("● Record");
                     }
                 }
@@ -588,7 +639,9 @@ public class MainActivity extends Activity {
             if (engine.startVideo(f)) {
                 lastLessonFile = f;
                 recordStartMs = SystemClock.elapsedRealtime();
+                paintRecordButton(true);
                 recordButton.setText("■ Stop  0:00");
+                if (recBadge != null) { recBadge.setText("● REC  0:00"); recBadge.setVisibility(View.VISIBLE); }
                 handler.post(timerRunnable);
                 // Fresh mic state, then watch the level.
                 hideMicWarn();
@@ -618,7 +671,22 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(timerRunnable);
         handler.removeCallbacks(speechRunnable);
         hideSpeechWarn();
+        paintRecordButton(false);
+        if (recBadge != null) recBadge.setVisibility(View.GONE);
         recordButton.setText("● Record");
+    }
+
+    // The camera idiom: one filled red Record action, restyled for
+    // both states instead of a plain panel button with new text.
+    private void paintRecordButton(boolean recording) {
+        if (recordButton == null) return;
+        GradientDrawable bg = new GradientDrawable();
+        bg.setShape(GradientDrawable.RECTANGLE);
+        bg.setCornerRadius(dp(12));
+        bg.setColor(recording ? Color.parseColor("#96281B") : RED);
+        recordButton.setBackground(bg);
+        try { recordButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        recordButton.setTextColor(0xFFFFFFFF);
     }
 
     // ---------- clips / files / export ----------
@@ -726,7 +794,7 @@ public class MainActivity extends Activity {
         }
         tv.setGravity(Gravity.CENTER);
         tv.setPadding(dp(6), dp(4), dp(6), dp(4));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
         bp.setMargins(dp(8), 0, 0, 0);
         tv.setLayoutParams(bp);
         tv.setClickable(true);
@@ -734,17 +802,34 @@ public class MainActivity extends Activity {
         row.addView(tv);
     }
 
+    // Touch feedback is the Android idiom: session and hub rows
+    // ripple instead of sitting on flat color.
+    private void rippleRow(View v) {
+        try {
+            android.util.TypedValue tv = new android.util.TypedValue();
+            getTheme().resolveAttribute(android.R.attr.selectableItemBackground, tv, true);
+            v.setBackgroundResource(tv.resourceId);
+        } catch (Throwable ignored) { }
+    }
+
     private void refreshClipList() {
         clipNames.clear();
         for (File f : clipFiles()) clipNames.add(f.getName());
         if (lessonContainer == null) return;
         lessonContainer.removeAllViews();
+        if (clipNames.isEmpty()) {
+            TextView empty = label("Nothing yet.", 15, DIM);
+            empty.setPadding(dp(6), dp(7), dp(6), dp(7));
+            lessonContainer.addView(empty);
+            return;
+        }
         for (final String name : clipNames) {
             File file = new File(clipsDir, name);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setBackgroundColor(BG);
+            rippleRow(row);
             row.setPadding(dp(8), dp(6), dp(8), dp(6));
 
             // left: cloud/device icon
@@ -805,7 +890,7 @@ public class MainActivity extends Activity {
                         try { sh.setBackgroundTintList(null); } catch (Throwable ignored) {}
                         sh.setGravity(Gravity.CENTER);
                         sh.setPadding(dp(6), dp(4), dp(6), dp(4));
-                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                         bp.setMargins(dp(8), 0, 0, 0);
                         sh.setLayoutParams(bp);
                         sh.setClickable(true);
@@ -823,7 +908,7 @@ public class MainActivity extends Activity {
                 } else if ("failed".equals(st)) {
                     TextView stv = label("!", 13, DIM);
                     stv.setPadding(dp(8), 0, 0, 0);
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                     bp.setMargins(dp(8), 0, 0, 0);
                     stv.setGravity(Gravity.CENTER);
                     stv.setLayoutParams(bp);
@@ -1110,6 +1195,15 @@ public class MainActivity extends Activity {
         super.onBackPressed();
     }
 
+    @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
+        // The ActionBar Up button is the way off the record screen.
+        if (item != null && item.getItemId() == android.R.id.home) {
+            if (!"home".equals(currentScreen)) showScreen("home");
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
     private String cloudWatchUrl(String name) {
         JSONObject link = cloudLink(name);
         if (link == null) return null;
@@ -1216,6 +1310,7 @@ public class MainActivity extends Activity {
             LinearLayout r = new LinearLayout(this);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setPadding(dp(6), dp(8), dp(6), dp(8));
+            rippleRow(r);
             TextView left = label("☁", 16, TEXT);
             left.setMinWidth(dp(32));
             r.addView(left);
@@ -1264,7 +1359,12 @@ public class MainActivity extends Activity {
     private View hubDetailView(final JSONObject obj) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(PANEL);
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setShape(GradientDrawable.RECTANGLE);
+        cardBg.setCornerRadius(dp(10));
+        cardBg.setColor(PANEL);
+        card.setBackground(cardBg);
+        try { card.setElevation(dp(4)); } catch (Throwable ignored) {}
         card.setPadding(dp(14), dp(14), dp(14), dp(14));
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -1344,43 +1444,46 @@ public class MainActivity extends Activity {
 
     private void playHubRemote(final JSONObject obj) {
         final String mp4 = obj.optString("mp4Url", "");
+        final String hls = obj.optString("hlsUrl", "");
+        final String src = (mp4 != null && !mp4.isEmpty()) ? mp4
+                : ((hls != null && !hls.isEmpty()) ? hls : "");
         final String embed = hubEmbedUrl(obj);
-        if ((mp4 == null || mp4.isEmpty()) && (embed == null || embed.isEmpty())) {
+        if (src.isEmpty() && (embed == null || embed.isEmpty())) {
             Toast.makeText(this, "No playable stream on this hub session yet.", Toast.LENGTH_LONG).show();
             return;
         }
-        if (engine != null && engine.isRecording()) return;
-        if (localPlayer == null || viewfinderBox == null || preview == null) {
-            openInBrowser(embed);
-            return;
-        }
-        try {
-            if (mp4 != null && !mp4.isEmpty()) {
-                showScreen("record");
-                preview.setVisibility(View.INVISIBLE);
-                localPlayer.setVisibility(View.VISIBLE);
-                if (playerControls != null) playerControls.setVisibility(View.VISIBLE);
-                isViewfinderPlaying = true;
-                localPlayer.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
-                    @Override public void onPrepared(android.media.MediaPlayer mp) { localPlayer.start(); }
+        if (!src.isEmpty()) {
+            // The hub's own player: watching a published lesson never
+            // opens the camera (iOS hub screen, web home player). MP4
+            // first, HLS next, the Cloud embed page last.
+            try {
+                final android.widget.VideoView hubPlayer = new android.widget.VideoView(this);
+                hubPlayer.setMinimumHeight(dp(220));
+                hubPlayer.setMinimumWidth(dp(300));
+                final AlertDialog dlg = new AlertDialog.Builder(this)
+                        .setTitle(obj.optString("title", "Hub session"))
+                        .setView(hubPlayer)
+                        .setPositiveButton("Close", null)
+                        .create();
+                hubPlayer.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
+                    @Override public void onPrepared(android.media.MediaPlayer mp) { hubPlayer.start(); }
                 });
-                localPlayer.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
+                hubPlayer.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
                     @Override public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
+                        try { dlg.dismiss(); } catch (Throwable ignored) {}
+                        Toast.makeText(MainActivity.this, "This device can't play that stream here — opening the Cloud player.", Toast.LENGTH_LONG).show();
                         openInBrowser(embed);
                         return true;
                     }
                 });
-                localPlayer.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
-                    @Override public void onCompletion(android.media.MediaPlayer mp) { stopLocalPlayback(); }
-                });
-                localPlayer.setVideoURI(Uri.parse(mp4));
-                localPlayer.requestFocus();
-            } else {
-                openInBrowser(embed);
+                hubPlayer.setVideoURI(Uri.parse(src));
+                dlg.show();
+                return;
+            } catch (Throwable e) {
+                Toast.makeText(this, "Playback failed (" + e.getMessage() + ") — opening the Cloud player.", Toast.LENGTH_LONG).show();
             }
-        } catch (Throwable e) {
-            Toast.makeText(this, "Playback failed (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
         }
+        openInBrowser(embed);
     }
 
     private void openInBrowser(String url) {
@@ -1742,9 +1845,13 @@ public class MainActivity extends Activity {
         }
     }
     private void refreshZoomUi() {
+        // No camera yet (permissions not granted), no zoom row either.
+        if (zoomRow != null && (engine == null || zoomSeek == null)) zoomRow.setVisibility(View.GONE);
         if (engine == null || zoomSeek == null) return;
         float max = engine.getMaxZoom();
         float cur = engine.getZoom();
+        // No zoom range, no zoom row (iOS, web): never dead UI.
+        if (zoomRow != null) zoomRow.setVisibility(max > 1.01f ? View.VISIBLE : View.GONE);
         syncZoomUi(cur, max);
         zoomSeek.setEnabled(max > 1.0f);
     }

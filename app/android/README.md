@@ -36,9 +36,15 @@ does, including iPhones). Native Android wins where the web cannot:
 
 Managed Java handles what it is good at: the Camera2 state machine and
 the two-screen UI (built programmatically — no layout XML): home
-(record and upload actions with the hub last) and record (preview,
-zoom, one Record/Stop button, in-viewfinder playback, cloud, device
-sessions, advanced link).
+(record and upload actions with the hub last) and record (preview
+with REC badge, auto-hiding zoom, one red Record/Stop action,
+in-viewfinder playback with ▶/⏸/✕, cloud, device sessions,
+advanced link). The ActionBar carries the screen title with Up
+navigation off the record screen; session and hub rows ripple, the
+hub detail is an elevated card, and hub playback runs in its own
+dialog player (MP4 then HLS, Cloud embed last) so watching a
+published lesson never opens the camera. The launcher icon is an
+adaptive amber-record-dot (`res/`, minSdk 29 needs no legacy PNGs).
 
 ## Layout
 
@@ -48,6 +54,7 @@ build.sh                                           (offline route — see below)
 app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
+app/src/main/res/         drawable/uw_icon_fg.xml, mipmap-anydpi-v26/ icons
 app/src/main/java/org/tinio/unwritten/
     MainActivity.java    home + record screens, upload picker + link queue, cloud, hub
     TinyFileProvider.java read-only content:// clips for external players
@@ -108,6 +115,10 @@ Android.
   org.tinio.unwritten/files/clips`) — visible over USB, no permission
   needed. **Export** copies all lessons to `Downloads/Unwritten`.
 - Verified so far: clean build, signature, badging (sdkVersion 29),
-  JNI symbol table. On-device shakeout (Pixel 4) is the next step —
-  Camera2 session combinations and AAudio behavior vary by device and
-  are the two things to watch.
+  JNI symbol table, and the Nov 1 on-device shakeout (Pixel 4, wireless
+  adb): install, launch, live hub rows, 12 s take saved under the
+  contract name, REC badge, cloud upload (signer creds + TUS 201),
+  cloud-off export to Downloads, cloud-first delete of both copies,
+  and four restored takes listed with real durations. Camera2/AAudio
+  stayed healthy throughout; first-take start lags ~2–3 s on a cold
+  camera thread.
