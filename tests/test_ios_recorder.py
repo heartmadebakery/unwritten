@@ -122,6 +122,12 @@ class IOSRecorderTests(unittest.TestCase):
         self.assertIn("UWStartCaptureSession", read(BRIDGE_H))
         self.assertIn("@try", read(BRIDGE_MM))
 
+    def test_session_observers_are_removed(self):
+        # The block-based session observers must be removed when the
+        # engine dies — unstored tokens leak the observers.
+        engine = read(ENGINE)
+        self.assertIn("removeObserver", engine)
+
     def test_hub_lists_detail_plays_and_deletes(self):
         for token in ["HubSession", "hubAvailable", "loadHub",
                       "openHubSession", "hubDetail", "deleteHubSession",
@@ -317,6 +323,24 @@ class IOSPlaybackTests(unittest.TestCase):
                         .split("// ---------- sessions", 1)[0]
         self.assertIn("engine.resumeSession()", stop)
 
+    def test_playback_restores_a_record_capable_session(self):
+        # Both players set .playback and the engine never touches
+        # AVAudioSession, so stopping either player — or starting a
+        # take — must hand record capability back. Without this the
+        # shared session stays output-only after any video, and later
+        # input finds .playback.
+        self.assertIn(".playAndRecord", self.view)
+        regions = [
+            self.view.split("private func stopLocalPlayback", 1)[1]
+                     .split("// ---------- sessions", 1)[0],
+            self.view.split("private func stopHubPlayer", 1)[1]
+                     .split("private func stopLocalPlayback", 1)[0],
+            self.view.split("private func toggleRecord", 1)[1]
+                     .split("// ---------- upload", 1)[0],
+        ]
+        for region in regions:
+            self.assertIn("restoreRecordAudioSession()", region)
+
 
 class IOSBaselineTests(unittest.TestCase):
     """Base device: iPhone (2019-class, like the Pixel 4) — iOS 17+,
@@ -424,6 +448,44 @@ class CloudIOSTests(unittest.TestCase):
     def test_uploads_resume_after_restart(self):
         self.assertIn("cloudResumePending", self.store)
         self.assertIn("onSession", self.uploader)
+
+    def test_configured_needs_a_token_in_signer_mode(self):
+        # The signer URL always has a compiled default, so URL-alone
+        # must not count as configured (same contract as canUpload):
+        # direct mode needs library ID + API key, signer mode needs
+        # its token — otherwise credential-less builds fire doomed
+        # uploads and hide the offline Export fallback.
+        cfg = self.uploader.split("func configured()", 1)[1] \
+                           .split("func useDirect()", 1)[0]
+        self.assertIn("signerToken", cfg)
+        self.assertNotIn("if !signerUrl.isEmpty { return true }", cfg)
+
+    def test_link_writes_are_serialized(self):
+        # TUS progress callbacks persist from background executors
+        # while the main thread writes too: the links blob's
+        # read-modify-write must hold a lock, or a late progress
+        # write clobbers a finished state back to uploading.
+        self.assertIn("NSLock", self.cloud)
+        writes = self.cloud.split("func setCloudLink", 1)[1] \
+                           .split("func delCloudLink", 1)[0]
+        self.assertIn("linksLock.lock()", writes)
+        self.assertIn("linksLock.unlock()", writes)
+        deletes = self.cloud.split("func delCloudLink", 1)[1] \
+                            .split("var lastLink", 1)[0]
+        self.assertIn("linksLock.lock()", deletes)
+
+    def test_progress_observer_is_removed(self):
+        # The block-based progress observer must be removed when the
+        # store dies — an unstored token leaks the observer.
+        self.assertIn("removeObserver", self.store)
+
+    def test_hub_shows_loading_not_empty(self):
+        # While the hub loads, the section must say so — not flash
+        # the "no published sessions" empty text before rows arrive.
+        load = self.store.split("func loadHub()", 1)[1] \
+                         .split("func queueFetchUrl", 1)[0]
+        self.assertIn("hubLoading", load)
+        self.assertIn("Loading hub", self.store)
 
     def test_no_force_unwrapped_request_urls(self):
         # A mistyped signer URL or a corrupt persisted upload URL must

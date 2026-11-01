@@ -14,6 +14,11 @@ final class CloudStore: @unchecked Sendable {
     static let CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev"
 
     private let defaults: UserDefaults
+    // Serializes the links blob's read-modify-write: TUS progress
+    // callbacks persist from background executors while the main
+    // thread writes too, and a late progress write must never clobber
+    // a finished state back to uploading.
+    private let linksLock = NSLock()
     private static let kEnabled = "uw_cloud_enabled"
     private static let kSignerUrl = "uw_cloud_signerUrl"
     private static let kSignerToken = "uw_cloud_signerToken"
@@ -123,6 +128,8 @@ final class CloudStore: @unchecked Sendable {
     /// progress < 0 leaves the progress untouched.
     func setCloudLink(_ name: String, state: String?, videoId: String?,
                       libraryId: String?, uploadUrl: String?, progress: Int) {
+        linksLock.lock()
+        defer { linksLock.unlock() }
         var all = links()
         var cur = all[name] ?? [:]
         if let state { cur["state"] = state }
@@ -135,6 +142,8 @@ final class CloudStore: @unchecked Sendable {
     }
 
     func delCloudLink(_ name: String) {
+        linksLock.lock()
+        defer { linksLock.unlock() }
         var all = links()
         if all.removeValue(forKey: name) != nil { saveLinks(all) }
     }

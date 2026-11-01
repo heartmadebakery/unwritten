@@ -95,25 +95,32 @@ final class CameraEngine: NSObject, ObservableObject {
     }
 
     private var observersInstalled = false
+    private var sessionObservers: [NSObjectProtocol] = []
+
+    deinit {
+        for observer in sessionObservers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
 
     private func installSessionObservers() {
         if observersInstalled { return }
         observersInstalled = true
         let nc = NotificationCenter.default
-        nc.addObserver(forName: .AVCaptureSessionRuntimeError, object: session, queue: nil) { [weak self] note in
+        sessionObservers.append(nc.addObserver(forName: .AVCaptureSessionRuntimeError, object: session, queue: nil) { [weak self] note in
             let err = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
             self?.diag("SESSION RUNTIME ERROR: \(err?.localizedDescription ?? "\(note.userInfo ?? [:])")")
-        }
-        nc.addObserver(forName: .AVCaptureSessionDidStartRunning, object: session, queue: nil) { [weak self] _ in
+        })
+        sessionObservers.append(nc.addObserver(forName: .AVCaptureSessionDidStartRunning, object: session, queue: nil) { [weak self] _ in
             self?.diag("SESSION DID START RUNNING")
-        }
-        nc.addObserver(forName: .AVCaptureSessionWasInterrupted, object: session, queue: nil) { [weak self] note in
+        })
+        sessionObservers.append(nc.addObserver(forName: .AVCaptureSessionWasInterrupted, object: session, queue: nil) { [weak self] note in
             self?.diag("SESSION INTERRUPTED: \(note.userInfo ?? [:])")
-        }
-        nc.addObserver(forName: .AVCaptureSessionInterruptionEnded, object: session, queue: nil) { [weak self] _ in
+        })
+        sessionObservers.append(nc.addObserver(forName: .AVCaptureSessionInterruptionEnded, object: session, queue: nil) { [weak self] _ in
             self?.diag("SESSION INTERRUPTION ENDED")
             self?.resumeSession()
-        }
+        })
     }
 
     private func configureSession() {

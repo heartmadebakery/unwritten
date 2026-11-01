@@ -34,9 +34,12 @@ struct CloudUploader {
         self.signerToken = signerToken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Signer mode needs its token — the URL always has a compiled
+    /// default, so URL-alone must not count (same contract as
+    /// CloudStore.canUpload and the web's cloudCanUpload).
     func configured() -> Bool {
-        if !signerUrl.isEmpty { return true }
-        return !libraryId.isEmpty && !apiKey.isEmpty
+        if useDirect() { return true }
+        return !signerUrl.isEmpty && !signerToken.isEmpty
     }
 
     func useDirect() -> Bool {

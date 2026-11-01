@@ -6,6 +6,15 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Update — 2026-11-01: playback restores a record-capable audio session
+
+Both players set `.playback` and the capture engine never touches
+`AVAudioSession`, so the shared session stayed output-only after any
+video (recording survived only via the running capture session's
+auto-configure). Stopping either player — and starting a take —
+now restores `.playAndRecord`. Contract-test-only (no Xcode here):
+needs a Mac compile + a play-then-record pass on device.
+
 ## Still to do (hub switch-on)
 
 1. `npx wrangler d1 create unwritten-hub` → paste the id into

@@ -9,6 +9,14 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-01
 
 ### Fixed
+- **iOS: audio session, locks, and small leaks fixed.** Playback
+  restores a record-capable session when either player stops or a
+  take starts (both players set `.playback`, nothing restored it);
+  the links blob's read-modify-write holds an `NSLock` (progress
+  callbacks persist off-main); session observers are stored and
+  removed; the hub shows a loading state instead of flashing the
+  empty text; `configured()` needs a token in signer mode.
+  Contract-test-only — needs a Mac compile.
 - **Fetcher robustness: atomic downloads, honest errors.** Direct
   URL downloads land via `.part` + rename, so an interrupted
   download can no longer leave a truncated lesson that a retry

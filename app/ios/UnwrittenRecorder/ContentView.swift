@@ -575,6 +575,9 @@ struct ContentView: View {
             return
         }
         if playingName != nil { stopLocalPlayback() }
+        // A take always ensures a record-capable session (a video left
+        // playing in the background would otherwise leave .playback).
+        restoreRecordAudioSession()
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("capture_\(UUID().uuidString).mov")
         engine.startVideo(to: tempURL)
@@ -679,11 +682,23 @@ struct ContentView: View {
         }
     }
 
+    /// Playback leaves a record-capable session behind: both players
+    /// set .playback and the capture engine never touches
+    /// AVAudioSession, so without this the shared session stays
+    /// output-only after any video. (Recording survives today only
+    /// because a running AVCaptureSession auto-configures
+    /// playAndRecord; any input outside it would find .playback.)
+    private func restoreRecordAudioSession() {
+        try? AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .videoRecording)
+        try? AVAudioSession.sharedInstance().setActive(true)
+    }
+
     private func stopHubPlayer() {
         hubItemObserver?.invalidate()
         hubItemObserver = nil
         hubPlayer?.pause()
         hubPlayer = nil
+        restoreRecordAudioSession()
     }
 
     private func stopLocalPlayback() {
@@ -694,6 +709,7 @@ struct ContentView: View {
         }
         player = nil
         playingName = nil
+        restoreRecordAudioSession()
         // Back from the full-screen player: the camera wakes again (a
         // redundant resume is a no-op; leaving Record parks it itself).
         if onRecordScreen { engine.resumeSession() }

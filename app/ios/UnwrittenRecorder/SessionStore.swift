@@ -72,6 +72,7 @@ final class SessionStore: ObservableObject {
     private var polling: Set<String> = []
     private var uploadTasks: [String: Task<Void, Never>] = [:]
     private var pollTasks: [String: Task<Void, Never>] = [:]
+    private var cloudProgressObserver: NSObjectProtocol?
 
     @MainActor
     init() {
@@ -79,11 +80,17 @@ final class SessionStore: ObservableObject {
         clipsDir = docs.appendingPathComponent("clips", isDirectory: true)
         try? FileManager.default.createDirectory(at: clipsDir, withIntermediateDirectories: true)
         cloudOn = cloud.cloudEnabledCfg()
-        NotificationCenter.default.addObserver(forName: .uwCloudProgress, object: nil, queue: .main) { [weak self] _ in
+        cloudProgressObserver = NotificationCenter.default.addObserver(forName: .uwCloudProgress, object: nil, queue: .main) { [weak self] _ in
             // Delivered on the main queue by construction.
             MainActor.assumeIsolated { self?.refresh() }
         }
         refresh()
+    }
+
+    deinit {
+        if let observer = cloudProgressObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
 
     // ---------- lessons ----------
@@ -601,6 +608,7 @@ final class SessionStore: ObservableObject {
     @Published var hubRows: [HubSession] = []
     @Published var hubDetail: HubSession?
     @Published var hubNotice: String = ""
+    @Published var hubLoading: Bool = false
 
     /// The hub lives on the signer, so it needs a signer URL and token.
     /// Direct (library-key) mode has no hub at all.
@@ -629,6 +637,9 @@ final class SessionStore: ObservableObject {
         if !hubAvailable() {
             return "Hub lives on the signer — add the signer URL and token in Cloud settings."
         }
+        if hubLoading {
+            return "Loading hub sessions…"
+        }
         return hubNotice.isEmpty
             ? "No published sessions yet — run the pipeline's publish step."
             : hubNotice
@@ -641,9 +652,12 @@ final class SessionStore: ObservableObject {
             hubRows = []
             hubDetail = nil
             hubNotice = ""
+            hubLoading = false
             return
         }
+        hubLoading = true
         Task { [weak self] in
+            defer { self?.hubLoading = false }
             var failedStatus = 0
             do {
                 let (data, resp) = try await URLSession.shared.data(for: req)
