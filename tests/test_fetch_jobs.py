@@ -173,10 +173,31 @@ class TestNaming(unittest.TestCase):
 
 class TestYtdlp(unittest.TestCase):
     def test_missing_binary_names_the_install(self):
-        with mock.patch.object(fj.shutil, "which", return_value=None):
+        with mock.patch.object(fj.shutil, "which", return_value=None), \
+             mock.patch("importlib.util.find_spec", return_value=None):
             with self.assertRaises(fj.QueueError) as ctx:
                 fj.ytdlp_download("https://youtube.com/watch?v=x", "/tmp")
         self.assertIn("yt-dlp", str(ctx.exception))
+
+    def test_module_fallback_without_path_binary(self):
+        # Cron has no venv bin on PATH: the running interpreter's
+        # yt-dlp module is the fallback.
+        seen = {}
+
+        def fake_run(cmd, capture_output, text, timeout):
+            seen["cmd"] = cmd
+            return mock.Mock(returncode=0, stderr="")
+
+        with mock.patch.object(fj.shutil, "which", return_value=None), \
+             mock.patch.object(fj.subprocess, "run", fake_run):
+            with tempfile.TemporaryDirectory() as td:
+                with open(os.path.join(td, "video.mp4"), "wb") as fh:
+                    fh.write(b"data")
+                out = fj.ytdlp_download("https://youtube.com/watch?v=x",
+                                        td)
+        self.assertEqual(seen["cmd"][:3],
+                         [sys.executable, "-m", "yt_dlp"])
+        self.assertTrue(out.endswith(".mp4"))
 
     def test_download_command_and_rename(self):
         with tempfile.TemporaryDirectory() as td:
@@ -208,7 +229,8 @@ class TestYtdlp(unittest.TestCase):
         self.assertIn("bang", str(ctx.exception))
 
     def test_title_is_best_effort(self):
-        with mock.patch.object(fj.shutil, "which", return_value=None):
+        with mock.patch.object(fj.shutil, "which", return_value=None), \
+             mock.patch("importlib.util.find_spec", return_value=None):
             self.assertEqual(fj.ytdlp_title("https://x"), "")
 
 

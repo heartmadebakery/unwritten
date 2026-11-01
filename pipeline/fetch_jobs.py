@@ -184,14 +184,30 @@ def download_direct(url, dest):
     return cloud_fetch.http_download(url, dest)
 
 
+def _ytdlp_cmd():
+    """yt-dlp invocation: the binary when on PATH, else the running
+    interpreter's module (cron has no venv bin on PATH)."""
+    exe = shutil.which("yt-dlp")
+    if exe:
+        return [exe]
+    try:
+        import importlib.util
+        if importlib.util.find_spec("yt_dlp") is not None:
+            return [sys.executable, "-m", "yt_dlp"]
+    except Exception:
+        pass
+    return None
+
+
 def ytdlp_title(url):
     """Best-effort video title ('' when anything fails)."""
-    if not shutil.which("yt-dlp"):
+    base = _ytdlp_cmd()
+    if not base:
         return ""
     try:
         proc = subprocess.run(
-            ["yt-dlp", "--no-playlist", "--no-warnings",
-             "--print", "%(title)s", "--skip-download", url],
+            base + ["--no-playlist", "--no-warnings",
+                    "--print", "%(title)s", "--skip-download", url],
             capture_output=True, text=True, timeout=120)
     except subprocess.SubprocessError:
         return ""
@@ -203,13 +219,13 @@ def ytdlp_title(url):
 
 def ytdlp_download(url, session_dir):
     """yt-dlp the URL into the session dir as the lesson file."""
-    exe = shutil.which("yt-dlp")
-    if not exe:
-        raise QueueError("yt-dlp not found on PATH — install it "
+    base = _ytdlp_cmd()
+    if not base:
+        raise QueueError("yt-dlp is not installed — install it "
                          "(pip install yt-dlp) to fetch %s" % url)
     tmpl = os.path.join(session_dir, "video.%(ext)s")
-    cmd = [exe, "--no-playlist", "--no-warnings", "-f", "bv*+ba/b",
-           "--merge-output-format", "mp4", "-o", tmpl, url]
+    cmd = base + ["--no-playlist", "--no-warnings", "-f", "bv*+ba/b",
+                  "--merge-output-format", "mp4", "-o", tmpl, url]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=YTDLP_TIMEOUT)

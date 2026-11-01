@@ -8,6 +8,14 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Fixed
+- **URL fetcher finds yt-dlp without a PATH binary.** `fetch_jobs.py`
+  fell back to `sys.executable -m yt_dlp`, so `--fetch` works under
+  cron/bare environments where only the module is installed; the
+  failure message still names the `uv pip install yt-dlp` fix.
+  Regression test included; end-to-end `--fetch` run green
+  (3 jobs, 0 failed).
+
 ### Changed
 - **Home is actions with the hub last; cloud + device moved to the
   record screen (user-ordered, all three apps).** Cloud settings hide
