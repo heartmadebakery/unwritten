@@ -122,12 +122,14 @@ class WebRecorderTests(unittest.TestCase):
         self.assertIn("Unwritten Craft", manifest)
         self.assertNotIn("Recorder", manifest)
 
-    def test_home_is_hub_with_record_and_upload(self):
-        # One Unwritten Craft app: it opens on the hub sessions, with
-        # Record and Upload above the listing; recording is a screen,
-        # not a separate app, and every screen leads home.
+    def test_home_actions_then_hub_last(self):
+        # One Unwritten Craft app: it opens on Record and Upload with
+        # the hub last; recording is a screen, not a separate app, and
+        # every screen leads home.
         # User-ordered Oct 31: screens are separate pages linked to each
         # other — no showScreen toggles remain anywhere.
+        # User-ordered Nov 1: cloud + device sessions moved from home to
+        # the record page; settings hide behind an advanced link.
         self.assertNotIn("showScreen", self.all)
         self.assertNotIn("screen-record", self.all)
         self.assertNotIn("screen-upload", self.all)
@@ -135,18 +137,28 @@ class WebRecorderTests(unittest.TestCase):
                       'id="goupload"', 'href="upload.html"',
                       'id="hublist"', 'src="common.js"', 'src="home.js"']:
             self.assertIn(token, self.home, token)
+        self.assertLess(self.home.index('id="gorecord"'),
+                        self.home.index('id="hublist"'))
+        self.assertLess(self.home.index('id="goupload"'),
+                        self.home.index('id="hublist"'))
+        for token in ['id="cloudtoggle"', 'id="cloudpanel"',
+                      'id="advancedlink"', 'id="clips"', 'id="exportbtn"',
+                      'id="caps"']:
+            self.assertNotIn(token, self.home, token)
+        for token in ['id="cloudtoggle"', 'id="cloudpanel"',
+                      'id="advancedlink"', 'id="clips"', 'id="exportbtn"',
+                      'id="caps"', 'id="backhome-record"',
+                      'href="index.html"', 'src="common.js"',
+                      'src="record.js"', 'id="status"']:
+            self.assertIn(token, self.record, token)
         self.assertIn("loadHub()", self.homejs)
         self.assertIn("/hub/sessions", self.common)
         self.assertIn('id="uploadinput"', self.upload)
         self.assertIn('id="uploadbtn"', self.upload)
-        self.assertIn('id="backhome-record"', self.record)
-        self.assertIn('href="index.html"', self.record)
         self.assertIn('id="backhome-upload"', self.upload)
         self.assertIn('href="index.html"', self.upload)
         # Every page loads the shared core plus its own script, and
         # carries the status line the shared code reports into.
-        for token in ['src="common.js"', 'src="record.js"', 'id="status"']:
-            self.assertIn(token, self.record, token)
         for token in ['src="common.js"', 'src="upload.js"', 'id="status"']:
             self.assertIn(token, self.upload, token)
         self.assertIn('id="status"', self.home)
@@ -332,6 +344,23 @@ class AndroidRecorderTests(unittest.TestCase):
         for token in ["Fetch from link", "queueFetchJob", "Queued"]:
             self.assertIn(token, self.main, token)
 
+    def test_home_actions_then_hub_last(self):
+        # User-ordered Nov 1: home is actions with the hub last; cloud
+        # + device sessions moved to the record screen, settings behind
+        # an advanced link.
+        home = self.main.split("private void buildHomeScreen", 1)[1] \
+                        .split("private void buildRecordScreen", 1)[0]
+        record = self.main.split("private void buildRecordScreen", 1)[1] \
+                          .split("// ---------- permissions", 1)[0]
+        for token in ['"● Record"', '"⬆ Upload video"', "hubContainer"]:
+            self.assertIn(token, home, token)
+        self.assertLess(home.index('"⬆ Upload video"'),
+                        home.index("hubContainer"))
+        for token in ["cloudToggleButton", "lessonContainer", "exportBtn",
+                      "Advanced settings"]:
+            self.assertNotIn(token, home, token)
+            self.assertIn(token, record, token)
+
     def test_errors_reach_the_user_not_a_hidden_view(self):
         # The status TextView is intentionally hidden; camera, record,
         # and permission failures must surface (Toast) instead of
@@ -445,21 +474,24 @@ class CloudWebTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        # User-ordered Oct 31: one page per screen; cloud settings live
-        # on the home page, cloud logic in the shared core.
+        # User-ordered Oct 31: one page per screen; cloud logic in the
+        # shared core. User-ordered Nov 1: cloud lives on the record
+        # page, settings behind an advanced link.
+        cls.page = read(REC_RECORD)
         cls.home = read(WEB)
         cls.common = read(REC_COMMON)
-        cls.homejs = read(REC_HOME_JS)
+        cls.pagejs = read(REC_RECORD_JS)
 
     def test_cloud_is_opt_in_with_settings(self):
-        self.assertIn('id="cloudtoggle"', self.home)
-        self.assertIn('id="cloudpanel"', self.home)
-        self.assertIn('id="cloudsigner"', self.home)
+        self.assertIn('id="cloudtoggle"', self.page)
+        self.assertIn('id="cloudpanel"', self.page)
+        self.assertIn('id="advancedlink"', self.page)
+        self.assertIn('id="cloudsigner"', self.page)
         self.assertIn("cloudReady()", self.common)
         self.assertIn("CLOUD_SIGNER_DEFAULT", self.common)
         self.assertIn("data-cloud-delete", self.common)
         self.assertIn("cloudDeleteLesson", self.common)
-        self.assertNotIn("a.click()", self.homejs)
+        self.assertNotIn("a.click()", self.pagejs)
 
     def test_build_stamps_the_shared_core(self):
         # User-ordered Oct 31: the signer token placeholder lives in
@@ -467,6 +499,7 @@ class CloudWebTests(unittest.TestCase):
         # served copy. No page carries its own placeholder.
         self.assertIn('var CLOUD_SIGNER_TOKEN_DEFAULT = "";', self.common)
         self.assertNotIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.home)
+        self.assertNotIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.page)
         build = read(os.path.join(ROOT, "app", "recorder", "build.sh"))
         self.assertIn("dist/common.js", build)
 
@@ -500,9 +533,9 @@ class CloudWebTests(unittest.TestCase):
         # Sessions recorded while Cloud was off (or failed) still
         # need their copy when Cloud comes back on — without a sweep
         # they would stay local-only forever, silently.
-        self.assertIn("function sweepBacklog", self.homejs)
-        toggle = self.homejs.split('$("cloudtoggle").onclick', 1)[1] \
-                            .split('$("cloudsettings").onclick', 1)[0]
+        self.assertIn("function sweepBacklog", self.pagejs)
+        toggle = self.pagejs.split('$("cloudtoggle").onclick', 1)[1] \
+                            .split('$("advancedlink").onclick', 1)[0]
         self.assertIn("sweepBacklog()", toggle)
 
     def test_processing_timeout_offers_retry(self):
@@ -680,11 +713,13 @@ class CloudAndroidTests(unittest.TestCase):
 
     def test_cloud_settings_screen_exists(self):
         # Error and hub messages send the user to "Cloud settings" —
-        # the screen must exist, prefilled with stored values (never
+        # the dialog must exist, prefilled with stored values (never
         # effective ones: no override shadowing), saving back to
         # prefs and sweeping the backlog when Cloud is on.
+        # User-ordered Nov 1: it hides behind a small Advanced settings
+        # link instead of a full button.
         self.assertIn("showCloudSettings()", self.main)
-        self.assertIn("⚙ Cloud settings", self.main)
+        self.assertIn("Advanced settings", self.main)
         self.assertIn("EditText", self.main)
         dlg = self.main.split("private void showCloudSettings", 1)[1] \
                        .split("\n    private ", 1)[0]
@@ -714,8 +749,13 @@ class AndroidScreensTests(unittest.TestCase):
         self.assertNotIn("openPreview()", created)
         home = self.main.split("private void buildHomeScreen", 1)[1] \
                         .split("private void buildRecordScreen", 1)[0]
+        record = self.main.split("private void buildRecordScreen", 1)[1] \
+                          .split("// ---------- permissions", 1)[0]
         self.assertLess(home.index("Upload video"), home.index("Hub sessions"))
-        self.assertLess(home.index("Hub sessions"), home.index("This device"))
+        # User-ordered Nov 1: the hub is last on home; cloud + device
+        # sessions moved to the record screen.
+        self.assertNotIn("This device", home)
+        self.assertIn("This device", record)
 
     def test_record_screen_owns_and_releases_the_camera(self):
         show = self.main.split("private void showScreen", 1)[1] \
@@ -795,12 +835,14 @@ class WebAndroidParityTests(unittest.TestCase):
 
     def test_title_and_sessions_wording(self):
         # Post-restructure contract (user-ordered): the app is Unwritten
-        # Craft, landing on the hub with Record/Upload above it; device
-        # sessions sit under "This device", not a recorder "Sessions" list.
+        # Craft, landing on Record/Upload actions with the hub last.
+        # User-ordered Nov 1: device sessions sit on the record page
+        # under "This device", not a recorder "Sessions" list.
         self.assertIn("Record, upload, and revisit craft lessons.", self.home)
         self.assertNotIn("Film mentor session. Record and let it happen.", self.home)
         self.assertIn(">Hub<", self.home)
-        self.assertIn(">This device<", self.home)
+        self.assertIn(">This device<", self.record)
+        self.assertNotIn("This device", self.home)
         self.assertNotIn("Lessons on this device", self.home)
 
     def test_zoom_row_below_viewfinder(self):
@@ -814,16 +856,17 @@ class WebAndroidParityTests(unittest.TestCase):
         self.assertIn('id="playercontrols"', self.record)
         self.assertIn("playInViewfinder", self.common)
         self.assertIn("stopLocalPlayback", self.common)
-        # User-ordered Oct 31: home rows reach the viewfinder by
-        # navigating to the record page with the session named.
-        self.assertIn("record.html?play=", self.homejs)
+        # User-ordered Nov 1: rows live on the record page and play
+        # directly; ?play= still deep-links from a fresh load.
+        self.assertIn("playInViewfinder(row.getAttribute", self.recordjs)
+        self.assertIn("?play=", self.recordjs)
 
     def test_stop_button_carries_timer_like_android(self):
         self.assertIn("■ Stop  ", self.recordjs)
 
     def test_export_visible_only_when_cloud_off(self):
-        self.assertIn('id="exportbtn"', self.home)
-        self.assertIn("Export sessions to Downloads", self.home)
+        self.assertIn('id="exportbtn"', self.record)
+        self.assertIn("Export sessions to Downloads", self.record)
 
     def test_session_rows_newest_first_with_date_and_duration(self):
         for token in ["leftIconFor", "displayDateFor", "durationFor"]:
@@ -831,7 +874,7 @@ class WebAndroidParityTests(unittest.TestCase):
 
     def test_long_press_deletes_like_android(self):
         self.assertIn("confirmDeleteLesson", self.common)
-        self.assertIn("armPress", self.homejs)
+        self.assertIn("armPress", self.recordjs)
 
     def test_share_uses_cloud_link(self):
         self.assertIn("shareCloudLinkFor", self.common)

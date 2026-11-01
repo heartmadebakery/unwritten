@@ -1,8 +1,9 @@
 # Unwritten Craft web app (app/recorder/)
 
-One page per screen sharing a common core: home (`index.html`) lands
-on the hub sessions with Record and Upload above them, `record.html`
-is the viewfinder screen, and `upload.html` takes a video file.
+One page per screen sharing a common core: home (`index.html`) holds
+Record and Upload actions with the published hub last, `record.html`
+is the viewfinder screen with cloud, device sessions, and a debug
+Advanced settings link below, and `upload.html` takes a video file.
 `common.js` holds the vault, cloud, hub (rows open a session's detail
 — write-up, corrections, chapters — with Play, Share, and Delete, as
 on Android and iOS), and session rows;

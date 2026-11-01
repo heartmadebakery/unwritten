@@ -11,7 +11,7 @@ $("uploadbtn").onclick = function(){
      same way a recording is picked up. */
   saveBlob(f, "unwritten_lesson_upload_" + stamp() + "." + extFor(f, "mp4"));
   $("uploadinput").value = "";
-  $("uploadstatus").innerHTML = "✅ <b>Upload started.</b> The video is saved on this device and uploading to Cloud — watch its progress on the home screen.";
+  $("uploadstatus").innerHTML = "✅ <b>Upload started.</b> The video is saved on this device and uploading to Cloud — watch its progress on the record screen.";
 };
 function isDirectMediaUrl(u){
   try{
@@ -35,13 +35,13 @@ $("urlfetchbtn").onclick = async function(){
       if(!blob.size) throw new Error("empty file");
       saveBlob(blob, "unwritten_lesson_upload_" + stamp() + "." + extFor({type: blob.type || "", name: u}, "mp4"));
       $("urlinput").value = "";
-      st.innerHTML = "✅ <b>Downloaded.</b> The video is saved on this device — watch its progress on the home screen.";
+      st.innerHTML = "✅ <b>Downloaded.</b> The video is saved on this device — watch its progress on the record screen.";
     }catch(e){
       st.innerHTML = "⬇ <b>Couldn't download that link</b> (" + escHtml(e.message) + ") The site may block cross-site downloads.";
     }
     return;
   }
-  if(!cloudToken()){ st.innerHTML = "⬇ Queuing needs the signer token — add it in Cloud settings on the home screen."; return; }
+  if(!cloudToken()){ st.innerHTML = "⬇ Queuing needs the signer token — add it in Advanced settings on the record screen."; return; }
   st.textContent = "⬇ Queuing…";
   try{
     var res = await fetch(cloudSignerUrl() + "/fetch/jobs", {

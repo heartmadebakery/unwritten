@@ -485,6 +485,8 @@ class IOSScreensTests(unittest.TestCase):
     def test_home_is_the_landing_with_record_and_upload_above_hub(self):
         home = self.view.split("private var homeView", 1)[1] \
                         .split("private var recordView", 1)[0]
+        record = self.view.split("private var recordView", 1)[1] \
+                          .split("private func showScreen", 1)[0]
         # User-ordered Nov 1 (native iOS idioms): home's actions are
         # SF Symbol labels ("Record" with record.circle) — the record
         # screen's shutter keeps the shared "● Record" text.
@@ -492,7 +494,11 @@ class IOSScreensTests(unittest.TestCase):
         self.assertIn("● Record", self.view)
         self.assertIn("Upload video", home)
         self.assertLess(home.index("Upload video"), home.index('"Hub"'))
-        self.assertLess(home.index('"Hub"'), home.index('"This device"'))
+        # User-ordered Nov 1 (layout): the hub is last on home; cloud
+        # + device sessions moved to the record screen.
+        for token in ["Toggle(isOn:", '"This device"', "sessionRow("]:
+            self.assertNotIn(token, home, token)
+            self.assertIn(token, record, token)
 
     def test_record_screen_owns_the_camera(self):
         appear = self.view.split(".onAppear", 1)[1] \
@@ -535,6 +541,13 @@ class IOSScreensTests(unittest.TestCase):
         changed = self.view.split(".onChange(of: showCloudPanel)", 1)[1] \
                            .split("}", 1)[0]
         self.assertIn("loadHub()", changed)
+        # User-ordered Nov 1 (layout): no toolbar gear — a small
+        # Advanced settings link on the record screen opens the sheet.
+        self.assertNotIn("gearshape", self.view)
+        record = self.view.split("private var recordView", 1)[1] \
+                          .split("private func showScreen", 1)[0]
+        self.assertIn("Advanced settings", record)
+        self.assertIn("showCloudPanel = true", record)
 
     def test_hub_refreshes_by_pull(self):
         self.assertIn(".refreshable", self.view)

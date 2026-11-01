@@ -1,9 +1,9 @@
 "use strict";
 /* Unwritten Craft — shared core, loaded by every page as a plain
    script (no modules, so file:// keeps working). Home is index.html
-   (record/upload actions over the hub, then cloud and device
-   sessions); record is record.html (viewfinder, zoom, record); upload
-   is upload.html. No roles, no steps, nothing performed for the
+   (record/upload actions with the hub last); record is record.html
+   (viewfinder, zoom, record, cloud, device sessions, advanced link);
+   upload is upload.html. No roles, no steps, nothing performed for the
    machine — the pipeline (transcribe -> write-up -> corrections)
    works afterwards on each session, take or upload alike, which it
    picks as the largest media file in the lesson folder.
@@ -577,7 +577,7 @@ function renderHubDetail(){
   box.innerHTML = hubDetail ? hubDetailHTML(hubDetail) : "";
 }
 async function openHubSession(videoId){
-  if(!videoId || !hubAvailable()) return;
+  if(!videoId || !hubAvailable() || !$("hubdetail")) return;
   try{
     var rs = await fetch(cloudSignerUrl() + "/hub/sessions/" + encodeURIComponent(videoId),
                          {headers: {"X-Signer-Token": cloudToken()}});
@@ -667,6 +667,7 @@ function stopHubPlayback(){
 }
 async function loadHub(){
   var box = $("hublist"), st = $("hubstatus");
+  if(!box || !st) return; /* the hub lives on the home page only */
   if(!hubDetail) stopHubPlayback();
   if(!cloudEnabled()){
     st.innerHTML = "Hub lives on the signer — turn Cloud on to see published lessons.";

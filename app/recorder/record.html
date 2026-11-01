@@ -48,11 +48,28 @@
       <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
       <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
     </div>
-    <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list on the home screen.</div>
+    <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list below.</div>
     <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
     <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
     <div class="smallrow">
       <button id="camtoggle">📷 Back camera</button>
+    </div>
+    <button class="bigbtn" id="cloudtoggle">☁ Cloud: on</button>
+    <div class="library"><h3>This device</h3><div id="clips"><div class="sempty">Nothing yet.</div></div></div>
+    <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
+    <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.</p>
+    <p id="caps"></p>
+    <button class="advlink" id="advancedlink">Advanced settings</button>
+    <div id="cloudpanel" class="hidden">
+      <label for="cloudsigner">Signer URL (prefilled by the build; override only to point elsewhere)</label>
+      <input id="cloudsigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-cloud-signer.heartmade.workers.dev">
+      <label for="cloudsignertoken">Signer token (prefilled by the build; override only if rotated)</label>
+      <input id="cloudsignertoken" type="password" autocomplete="off" placeholder="baked into this build">
+      <label for="cloudlib">— or, without a signer: Stream library ID</label>
+      <input id="cloudlib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
+      <label for="cloudkey">Library API key (then lives on this device)</label>
+      <input id="cloudkey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
+      <p class="bnote">Debug overrides only — the build already bakes in the signer URL and token, and every session is saved on this device first regardless.</p>
     </div>
   </div>
 </div>

@@ -8,6 +8,14 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Changed
+- **Home is actions with the hub last; cloud + device moved to the
+  record screen (user-ordered, all three apps).** Cloud settings hide
+  behind a small Advanced settings link (debug overrides only). Web:
+  `index.html` keeps actions + hub, `record.html` gains the toggle,
+  sessions, and link; rows play in place. Android and iOS mirror it
+  (dialog/sheet unchanged, new trigger). Service-worker cache `v8`.
+
 ### Added
 - **URL fetch queue (user-ordered).** Paste a link on any app's
   upload screen: direct video files download in the page (web) while

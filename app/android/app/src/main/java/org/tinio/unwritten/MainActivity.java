@@ -203,11 +203,12 @@ public class MainActivity extends Activity {
         l.addView(title);
         l.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
 
-        // One app, two screens. Home (record/upload actions over the
-        // hub, then cloud and device sessions) is the landing; record
-        // owns the viewfinder and opens it only on entry, so landing
-        // never prompts for the camera. Upload is the system picker —
-        // the picked video rides the exact session path of a take.
+        // One app, two screens. Home (record/upload actions with the
+        // hub last) is the landing; record owns the viewfinder and
+        // opens it only on entry, so landing never prompts for the
+        // camera, with cloud and device sessions below. Upload is the
+        // system picker — the picked video rides the exact session
+        // path of a take.
         homeScreen = new LinearLayout(this);
         homeScreen.setOrientation(LinearLayout.VERTICAL);
         l.addView(homeScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -258,29 +259,6 @@ public class MainActivity extends Activity {
         hubContainer.setOrientation(LinearLayout.VERTICAL);
         hubContainer.setBackgroundColor(BG);
         homeScreen.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        cloudToggleButton = button("☁ Cloud: on");
-        try { cloudToggleButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
-        homeScreen.addView(cloudToggleButton);
-
-        Button cloudSettings = button("⚙ Cloud settings");
-        try { cloudSettings.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        cloudSettings.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showCloudSettings(); } });
-        homeScreen.addView(cloudSettings);
-
-        // This device: left icon (☁/device), middle date+duration, right share/download
-        homeScreen.addView(label("This device", 17, DIM));
-        lessonContainer = new LinearLayout(MainActivity.this);
-        lessonContainer.setOrientation(LinearLayout.VERTICAL);
-        lessonContainer.setBackgroundColor(BG);
-        homeScreen.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        exportBtn = button("Export sessions to Downloads");
-        exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
-        try { exportBtn.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
-        homeScreen.addView(exportBtn);
     }
 
     private void buildRecordScreen() {
@@ -377,6 +355,33 @@ public class MainActivity extends Activity {
             handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); } }, 2500);
         } });
         recordScreen.addView(camToggle);
+
+        cloudToggleButton = button("☁ Cloud: on");
+        try { cloudToggleButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
+        recordScreen.addView(cloudToggleButton);
+
+        // This device: left icon (☁/device), middle date+duration, right share/download
+        recordScreen.addView(label("This device", 17, DIM));
+        lessonContainer = new LinearLayout(MainActivity.this);
+        lessonContainer.setOrientation(LinearLayout.VERTICAL);
+        lessonContainer.setBackgroundColor(BG);
+        recordScreen.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        exportBtn = button("Export sessions to Downloads");
+        exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
+        try { exportBtn.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
+        recordScreen.addView(exportBtn);
+
+        // Debug overrides hide behind a small link at the bottom.
+        Button advancedLink = new Button(this);
+        advancedLink.setText("Advanced settings");
+        advancedLink.setTextSize(14); advancedLink.setTextColor(DIM); advancedLink.setAllCaps(false);
+        advancedLink.setBackgroundColor(Color.TRANSPARENT);
+        try { advancedLink.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        advancedLink.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showCloudSettings(); } });
+        recordScreen.addView(advancedLink);
     }
 
     // ---------- permissions ----------
@@ -405,14 +410,16 @@ public class MainActivity extends Activity {
         if (recordScreen != null) recordScreen.setVisibility(home ? View.GONE : View.VISIBLE);
         if (!home) {
             if (hasPermissions()) openPreview();
+            // Device sessions live on the record screen now: refresh
+            // them on entry so a just-finished take shows immediately.
+            refreshClipList();
         } else {
             // Leaving the record screen stops a live take (kept, like
             // backgrounding) and releases the camera; home refreshes
-            // both lists so a just-finished take shows immediately.
+            // the hub on return.
             try { if (engine != null && engine.isRecording()) stopRecording(); } catch (Throwable ignored) {}
             stopLocalPlayback();
             try { if (engine != null && !engine.isRecording()) { engine.close(); engine = null; } } catch (Throwable ignored) {}
-            refreshClipList();
             loadHub();
         }
     }

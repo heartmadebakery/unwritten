@@ -1,9 +1,10 @@
 "use strict";
 /* Unwritten Craft — record page (record.html): viewfinder, zoom, one
-   Record/Stop button, in-viewfinder playback. Loaded after common.js
-   as a plain script, so file:// keeps working. The camera opens at
-   page boot and releases on exit, so landing on home never prompts
-   for permission. */
+   Record/Stop button, in-viewfinder playback, cloud, device sessions,
+   and the debug Advanced settings link. Loaded after common.js as a
+   plain script, so file:// keeps working. The camera opens at page
+   boot and releases on exit, so landing on home never prompts for
+   permission. */
 
 async function openCamera(){
   stopLocalPlayback();
@@ -150,7 +151,7 @@ function startRec(){
     var blob = new Blob(recChunks, {type: rec.mimeType || "video/webm"});
     if(!blob.size){
       $("status").innerHTML = recErr
-        ? "⚠️ <b>Recording hit a problem</b> — the device may have been interrupted and nothing was captured. Check the home screen, then record again."
+        ? "⚠️ <b>Recording hit a problem</b> — the device may have been interrupted and nothing was captured. Check the list below, then record again."
         : "⚠️ <b>That take was empty</b> — nothing was captured. Record the lesson again.";
       return;
     }
@@ -158,7 +159,7 @@ function startRec(){
     saveBlob(blob, "unwritten_lesson_" + stamp() + "." + ext);
     $("status").innerHTML = recErr
       ? "⚠️ <b>Session saved, but recording hit a problem</b> — the device may have been interrupted, so the take may be cut short. Check it below."
-      : "✅ <b>Session saved</b> — on this device (see the home screen). Hand the file to whoever runs the pipeline.";
+      : "✅ <b>Session saved</b> — on this device (in the list below). Hand the file to whoever runs the pipeline.";
   };
   try{ rec.start(250); }catch(e){ try{ rec.start(); }catch(e2){ showCaptureControls(); return; } }
   state.recording = true;
@@ -192,8 +193,8 @@ $("camtoggle").onclick = async function(){
 };
 $("capvideo").onclick = function(){ $("fileinput").click(); };
 $("capaudio").onclick = function(){ $("audioinput").click(); };
-$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_camera-app_" + stamp() + "." + extFor(f, "mp4")); $("status").innerHTML = "✅ <b>Session saved</b> from the camera app — see the home screen."; } };
-$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_voice-app_" + stamp() + "." + extFor(f, "m4a")); $("status").innerHTML = "✅ <b>Session saved</b> from the voice app — see the home screen."; } };
+$("fileinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_camera-app_" + stamp() + "." + extFor(f, "mp4")); $("status").innerHTML = "✅ <b>Session saved</b> from the camera app — in the list below."; } };
+$("audioinput").onchange = function(){ var f = this.files[0]; this.value = ""; if(f){ saveBlob(f, "unwritten_lesson_voice-app_" + stamp() + "." + extFor(f, "m4a")); $("status").innerHTML = "✅ <b>Session saved</b> from the voice app — in the list below."; } };
 $("zoomout").onclick = function(){ nudgeZoom(-0.1); };
 $("zoomin").onclick = function(){ nudgeZoom(+0.1); };
 $("zoomseek").addEventListener("input", function(){
@@ -209,10 +210,99 @@ document.addEventListener("visibilitychange", function(){
   if(document.hidden && state.recording) stopRec();
   if(!document.hidden) wakeLock();
 });
+/* Bulk export, like Android's Export button: an explicit tap saves a
+   download copy of every session. (Saving a session itself never
+   fires a download — the vault write is the save.) */
+function exportSessions(){
+  if(!state.clips.length){ $("status").textContent = "Exported 0 sessions — nothing recorded yet."; return; }
+  var i = 0, total = state.clips.length;
+  $("status").textContent = "Exporting " + total + " sessions to Downloads…";
+  (function next(){
+    if(i >= total){ $("status").textContent = "Exported " + total + " sessions to Downloads."; return; }
+    var c = state.clips[i++];
+    var link = document.createElement("a");
+    link.href = c.url; link.download = c.name;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(next, 400);
+  })();
+}
+
+$("cloudtoggle").onclick = function(){
+  cloudCfg.enabled = !cloudEnabled(); cloudSaveCfg();
+  $("status").innerHTML = cloudEnabled()
+    ? "☁️ <b>Cloud on.</b> New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
+    : "☁️ <b>Cloud off.</b> Sessions stay on this device only. Export sessions to Downloads below to move them.";
+  if(cloudEnabled()) sweepBacklog();
+  /* The hub lives on another page now; refresh it when present. */
+  if($("hublist")) loadHub();
+};
+/* Sessions recorded while Cloud was off (or failed) still need
+   their copy when Cloud comes back on — without this sweep they
+   would stay local-only forever, silently. */
+function sweepBacklog(){
+  if(!cloudCanUpload()) return;
+  state.clips.forEach(function(c){
+    var l = loadCloudLinks()[c.name];
+    if(isVideoLesson(null, c.name) && (!l || l.state === "failed")) cloudRetry(c.name);
+  });
+}
+/* Debug overrides hide behind a small link at the page bottom. */
+$("advancedlink").onclick = function(){
+  var panel = $("cloudpanel");
+  if(panel.classList.contains("hidden")){
+    $("cloudsigner").value = cloudSignerUrl();
+    $("cloudsignertoken").value = cloudToken();
+    $("cloudlib").value = cloudCfg.libraryId || "";
+    $("cloudkey").value = cloudCfg.apiKey || "";
+    panel.classList.remove("hidden");
+  } else {
+    panel.classList.add("hidden");
+    if($("hublist")) loadHub(); /* new signer settings show in the hub at once */
+  }
+};
+$("cloudsigner").addEventListener("change", function(){ cloudCfg.signerUrl = this.value.trim(); cloudSaveCfg(); });
+$("cloudsignertoken").addEventListener("change", function(){ cloudCfg.signerToken = this.value.trim(); cloudSaveCfg(); });
+$("cloudlib").addEventListener("change", function(){ cloudCfg.libraryId = this.value.trim(); cloudSaveCfg(); });
+$("cloudkey").addEventListener("change", function(){ cloudCfg.apiKey = this.value.trim(); cloudSaveCfg(); });
+$("exportbtn").onclick = exportSessions;
+/* Tap a row to play it; long-press (touch or mouse) to delete it. */
+var pressTimer = null, pressFired = false;
+function armPress(name){
+  cancelPress(); pressFired = false;
+  pressTimer = setTimeout(function(){ pressFired = true; confirmDeleteLesson(name); }, 600);
+}
+function cancelPress(){ if(pressTimer){ clearTimeout(pressTimer); pressTimer = null; } }
+$("clips").addEventListener("click", function(e){
+  if(pressFired){ pressFired = false; e.preventDefault(); return; }
+  if(!e.target.closest) return;
+  var w = e.target.closest("[data-cloud-watch]"), r = e.target.closest("[data-cloud-retry]"), d = e.target.closest("[data-cloud-delete]");
+  if(w){ e.preventDefault(); cloudOpenWatch(w.getAttribute("data-cloud-watch")); }
+  else if(r){ e.preventDefault(); cloudRetry(r.getAttribute("data-cloud-retry")); }
+  else{ var row = e.target.closest("[data-row]"); if(row) playInViewfinder(row.getAttribute("data-row")); }
+});
+$("clips").addEventListener("touchstart", function(e){
+  var row = e.target.closest && e.target.closest("[data-row]");
+  if(row) armPress(row.getAttribute("data-row"));
+}, {passive:true});
+$("clips").addEventListener("touchend", cancelPress);
+$("clips").addEventListener("touchmove", cancelPress);
+$("clips").addEventListener("mousedown", function(e){
+  var row = e.target.closest && e.target.closest("[data-row]");
+  if(row && e.button === 0) armPress(row.getAttribute("data-row"));
+});
+$("clips").addEventListener("mouseup", cancelPress);
 /* Tapping a home session lands here with ?play=<name>: restore the
    vault, then play it in the viewfinder. */
 openCamera();
 wakeLock();
+paintCloudToggle();
+$("caps").textContent = "This device: " +
+  (CAPS.inPageRecording ? "can record in the page ✓" : "no in-page recording — its own camera/voice apps will be used") +
+  " · " + (CAPS.secure ? "secure page ✓" : "⚠️ not a secure page (in-page camera needs https or a local file)") +
+  " · " + (CAPS.idb ? "on-device vault ✓" : "no on-device vault (sessions only last until reload)");
+idbRestore().then(function(){ renderClips(); cloudResumePending(); });
 (function(){
   var m = /[?&]play=([^&]*)/.exec(location.search || "");
   if(!m || !m[1]) return;

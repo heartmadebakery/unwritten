@@ -78,17 +78,6 @@ struct ContentView: View {
         NavigationStack(path: $path) {
             homeView
                 .navigationTitle("Unwritten Craft")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            if !showCloudPanel { loadCloudFields() }
-                            showCloudPanel = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                        }
-                        .accessibilityLabel("Cloud settings")
-                    }
-                }
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .record:
@@ -212,9 +201,9 @@ struct ContentView: View {
         }
     }
 
-    // One app, two screens. Home (record/upload actions over the hub,
-    // then cloud and device sessions) is the landing; record owns the
-    // viewfinder and the camera behind it.
+    // One app, two screens. Home (record/upload actions with the hub
+    // last) is the landing; record owns the viewfinder and the camera
+    // behind it, with cloud and device sessions below.
     private var homeView: some View {
         List {
             Section {
@@ -296,47 +285,6 @@ struct ContentView: View {
                 }
             } header: {
                 Text("Hub").sectionHeader()
-            }
-            .listRowBackground(PANEL)
-
-            // Cloud toggle below the hub.
-            Section {
-                Toggle(isOn: Binding(get: { store.cloudOn },
-                                     set: { _ in store.toggleCloud() })) {
-                    Label("Cloud", systemImage: store.cloudOn ? "icloud" : "icloud.slash")
-                        .foregroundColor(INK)
-                }
-                .tint(DIM)
-                // Export is the offline fallback: only with Cloud off.
-                if !store.cloudOn {
-                    Button {
-                        store.exportSessions()
-                    } label: {
-                        Label("Export sessions to Downloads", systemImage: "square.and.arrow.up")
-                            .foregroundColor(INK)
-                    }
-                }
-            }
-            .listRowBackground(PANEL)
-
-            // This device: left status icon, middle date + duration,
-            // right share/download.
-            Section {
-                if store.rows.isEmpty {
-                    Text("Nothing yet.")
-                        .font(.system(size: 15))
-                        .foregroundColor(DIM)
-                } else {
-                    ForEach(store.rows) { row in
-                        sessionRow(row)
-                    }
-                }
-            } header: {
-                Text("This device").sectionHeader()
-            } footer: {
-                Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; touch and hold (or swipe) to share or delete it from the device and the cloud.")
-                    .font(.system(size: 13))
-                    .foregroundColor(DIM)
             }
             .listRowBackground(PANEL)
         }
@@ -465,6 +413,63 @@ struct ContentView: View {
                         .cornerRadius(12)
                 }
                 .sensoryFeedback(.impact, trigger: engine.isRecording)
+
+                // Cloud + device sessions live on the record screen now.
+                HStack {
+                    Label("Cloud", systemImage: store.cloudOn ? "icloud" : "icloud.slash")
+                        .foregroundColor(INK)
+                    Spacer()
+                    Toggle(isOn: Binding(get: { store.cloudOn },
+                                         set: { _ in store.toggleCloud() })) {
+                    }
+                    .labelsHidden()
+                    .tint(DIM)
+                }
+                .padding(.vertical, 8)
+                // Export is the offline fallback: only with Cloud off.
+                if !store.cloudOn {
+                    Button {
+                        store.exportSessions()
+                    } label: {
+                        Label("Export sessions to Downloads", systemImage: "square.and.arrow.up")
+                            .foregroundColor(INK)
+                    }
+                    .padding(.bottom, 8)
+                }
+
+                // This device: left status icon, middle date + duration,
+                // right share/download. Rows keep their context menu
+                // (swipe actions only fire inside a List, so Delete
+                // here means the context menu, not a swipe).
+                Text("This device")
+                    .font(.system(size: 17))
+                    .foregroundColor(DIM)
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
+                if store.rows.isEmpty {
+                    Text("Nothing yet.")
+                        .font(.system(size: 15))
+                        .foregroundColor(DIM)
+                } else {
+                    ForEach(store.rows) { row in
+                        sessionRow(row)
+                    }
+                }
+                Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; touch and hold to share or delete it from the device and the cloud.")
+                    .font(.system(size: 13))
+                    .foregroundColor(DIM)
+                    .padding(.top, 8)
+
+                // Debug overrides hide behind a small link at the bottom.
+                Button {
+                    if !showCloudPanel { loadCloudFields() }
+                    showCloudPanel = true
+                } label: {
+                    Text("Advanced settings")
+                        .font(.system(size: 14))
+                        .foregroundColor(DIM)
+                }
+                .padding(.vertical, 8)
             }
             .padding(14)
         }

@@ -33,25 +33,6 @@
       <button id="hubclose" class="hidden backbtn" title="Close player">✕ Close</button>
       <div id="hublist"><div class="sempty">Loading…</div></div>
     </div>
-    <button class="bigbtn" id="cloudtoggle">☁ Cloud: on</button>
-    <div class="smallrow">
-      <button id="cloudsettings">⚙ Cloud settings</button>
-    </div>
-    <div id="cloudpanel" class="hidden">
-      <label for="cloudsigner">Signer URL (prefilled by the build; override only to point elsewhere)</label>
-      <input id="cloudsigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-cloud-signer.heartmade.workers.dev">
-      <label for="cloudsignertoken">Signer token (prefilled by the build; override only if rotated)</label>
-      <input id="cloudsignertoken" type="password" autocomplete="off" placeholder="baked into this build">
-      <label for="cloudlib">— or, without a signer: Stream library ID</label>
-      <input id="cloudlib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
-      <label for="cloudkey">Library API key (then lives on this device)</label>
-      <input id="cloudkey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
-      <p class="bnote">On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the ↗ share action on the session offers its link when ready. The signer URL and token arrive baked into this build; these fields are only overrides. As a fallback, a library key pasted below talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only).</p>
-    </div>
-    <div class="library"><h3>This device</h3><div id="clips"><div class="sempty">Nothing yet.</div></div></div>
-    <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
-    <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.</p>
-    <p id="caps"></p>
   </div>
 </div>
 <script src="common.js"></script>

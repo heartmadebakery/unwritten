@@ -36,9 +36,9 @@ does, including iPhones). Native Android wins where the web cannot:
 
 Managed Java handles what it is good at: the Camera2 state machine and
 the two-screen UI (built programmatically — no layout XML): home
-(record and upload actions over the hub, then cloud and device
-sessions) and record (preview, zoom, one Record/Stop button,
-in-viewfinder playback).
+(record and upload actions with the hub last) and record (preview,
+zoom, one Record/Stop button, in-viewfinder playback, cloud, device
+sessions, advanced link).
 
 ## Layout
 

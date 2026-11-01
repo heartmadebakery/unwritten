@@ -1,7 +1,8 @@
 /* Unwritten Craft — shared style. Same dark palette as the native
    apps. One app, three pages: home — index.html (record/upload
-   actions over the hub, then cloud and device sessions); record —
-   record.html (viewfinder, zoom, record); upload — upload.html. */
+   actions with the hub last); record — record.html (viewfinder,
+   zoom, record, cloud, device sessions, advanced link); upload —
+   upload.html. */
 :root{
   --bg:#17130E; --panel:#241C12; --ink:#F5EAD6; --dim:#B8A888;
   --red:#C0392B; --bright:#E74C3C; --line:#2E2213;
@@ -68,6 +69,9 @@ h1{font-size:24px;margin:0 0 4px;font-weight:normal;}
 .note{color:var(--dim);font-size:14px;line-height:1.5;margin-top:14px;}
 .backbtn{background:none;border:none;color:var(--dim);font-size:16px;
   padding:2px 0 8px;text-align:left;}
+/* Debug-only overrides live behind a small link at the page bottom. */
+.advlink{background:none;border:none;color:var(--dim);font-size:14px;
+  padding:8px 0;text-align:left;text-decoration:underline;}
 #hubstatus{color:var(--dim);font-size:15px;padding:4px 0;}
 #hubstatus:empty{display:none;}
 #hubplayer{width:100%;height:280px;object-fit:cover;display:block;background:#000;}
