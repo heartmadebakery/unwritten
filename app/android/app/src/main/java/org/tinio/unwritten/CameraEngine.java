@@ -98,6 +98,7 @@ public final class CameraEngine {
     private volatile boolean cameraOpening;
     private volatile boolean sessionConfiguring;
     private volatile File queuedVideoFile;
+    private volatile File recordingFile;
 
     private PhotoListener pendingPhotoListener;
     private boolean photoInProgress;
@@ -184,7 +185,10 @@ public final class CameraEngine {
                 @Override public void onSurfaceTextureSizeChanged(SurfaceTexture st, int w, int h) {
                     post(gen, new Runnable() {
                         @Override public void run() {
-                            if (camera != null) {
+                            // Never rebuild under a running take (or a
+                            // photo): the next buildSession after it
+                            // picks up the current surface.
+                            if (camera != null && !recording && !recorderStartPending && !photoInProgress) {
                                 releasePreviewSurface();
                                 createPreviewSurface();
                                 buildSession(recorderSurface != null, false);
@@ -212,6 +216,13 @@ public final class CameraEngine {
 
     public void setLumaListener(final LumaListener l) {
         try {
+            // Attaching the luma output rebuilds the session — like
+            // iOS, mid-take changes are refused instead of churning
+            // the take.
+            if (recording || recorderStartPending) {
+                reportError("Luma listener changes are for between takes.");
+                return;
+            }
             lumaListener = l;
             final int gen = generation;
             Handler h = handler();
@@ -433,6 +444,7 @@ public final class CameraEngine {
             recording = false;
             recorderStartPending = false;
             queuedVideoFile = null;
+            recordingFile = null;
             pendingPhotoListener = null;
             photoInProgress = false;
             photoSessionActive = false;
@@ -462,6 +474,14 @@ public final class CameraEngine {
         } catch (Throwable t) {
             try { Log.w(TAG, "close failed: " + t.getMessage()); } catch (Throwable ignored) { }
         }
+    }
+
+    // A start queued while the camera opens must not stick forever
+    // when the open fails: fail it loudly so the next take can start.
+    private void failQueuedStart() {
+        File q = queuedVideoFile;
+        queuedVideoFile = null;
+        if (q != null) reportError("Camera error: could not start the take — try again.");
     }
 
     // ------------------------------------------------------------ camera open
@@ -544,12 +564,12 @@ public final class CameraEngine {
                     }
                 }
                 @Override public void onDisconnected(CameraDevice device) {
-                    if (gen == generation) { cameraOpening = false; reportError("Camera disconnected"); }
+                    if (gen == generation) { cameraOpening = false; reportError("Camera disconnected"); failQueuedStart(); }
                     try { device.close(); } catch (Throwable ignored) { }
                     if (gen == generation && camera == device) { camera = null; closeSessionOnly(); }
                 }
                 @Override public void onError(CameraDevice device, int error) {
-                    if (gen == generation) { cameraOpening = false; reportError("Camera error: " + error); }
+                    if (gen == generation) { cameraOpening = false; reportError("Camera error: " + error); failQueuedStart(); }
                     try { device.close(); } catch (Throwable ignored) { }
                     if (gen == generation && camera == device) { camera = null; closeSessionOnly(); }
                 }
@@ -880,6 +900,7 @@ public final class CameraEngine {
                     try { s.close(); } catch (Throwable ignored) { }
                     if (session == s) session = null;
                     reportError("Capture session configuration failed");
+                    failQueuedStart();
                     if (recorderStartPending || recorder != null) {
                         releaseRecorder();
                         recorderSurface = null;
@@ -1003,6 +1024,7 @@ public final class CameraEngine {
             releaseRecorder();
             return;
         }
+        recordingFile = out;
         recorderStartPending = true;
         buildSession(true, false);
         if (!sessionConfiguring && session == null) {
@@ -1038,6 +1060,12 @@ public final class CameraEngine {
                 } catch (RuntimeException re) {
                     if (elapsed < 700) {
                         try { Log.w(TAG, "recorder.stop() too early; discarding take"); } catch (Throwable ignored) { }
+                        // stop() threw with no valid data: drop the
+                        // partial file so a corrupt take is never
+                        // listed or uploaded as a lesson.
+                        if (recordingFile != null) {
+                            try { recordingFile.delete(); } catch (Throwable ignored) { }
+                        }
                     } else {
                         reportError("MediaRecorder stop failed: " + re.getMessage());
                     }
@@ -1050,6 +1078,7 @@ public final class CameraEngine {
         recorderSurface = null;
         recording = false;
         recorderStartPending = false;
+        recordingFile = null;
         recordStartMs = 0;
         if (camera != null) buildSession(false, false);
     }
@@ -1192,6 +1221,7 @@ public final class CameraEngine {
         recorderSurface = null;
         recording = false;
         recorderStartPending = false;
+        recordingFile = null;
         recordStartMs = 0;
     }
 

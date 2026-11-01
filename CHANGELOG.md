@@ -9,6 +9,14 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-01
 
 ### Fixed
+- **Android: link lock, configured(), engine robustness.** Cloud
+  link writes synchronize (callbacks persist off the UI thread);
+  `configured()` needs a token in signer mode; a sub-700ms
+  stop-throw deletes its partial take instead of listing/uploading
+  a corrupt lesson; camera error/disconnect/configure-failure
+  fails a queued start loudly instead of wedging later takes;
+  surface resizes and luma attach no longer rebuild mid-take.
+  Rebuilt and re-verified on the Pixel 4.
 - **iOS: audio session, locks, and small leaks fixed.** Playback
   restores a record-capable session when either player stops or a
   take starts (both players set `.playback`, nothing restored it);

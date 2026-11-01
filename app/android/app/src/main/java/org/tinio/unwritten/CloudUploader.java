@@ -61,9 +61,12 @@ public final class CloudUploader {
         this.signerToken = signerToken == null ? "" : signerToken.trim();
     }
 
+    // Signer mode needs its token — the URL always has a compiled
+    // default, so URL-alone must not count (same contract as
+    // canUpload and the web's cloudCanUpload).
     public boolean configured() {
-        if (!signerUrl.isEmpty()) return true;
-        return !libraryId.isEmpty() && !apiKey.isEmpty();
+        if (useDirect()) return true;
+        return !signerUrl.isEmpty() && !signerToken.isEmpty();
     }
 
     private boolean useDirect() {

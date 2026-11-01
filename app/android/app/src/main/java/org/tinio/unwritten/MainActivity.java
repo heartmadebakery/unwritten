@@ -1704,6 +1704,7 @@ public class MainActivity extends Activity {
         return l;
     }
     private void delCloudLink(String name) {
+      synchronized (cloudLinkLock) {
         try {
             JSONObject links = cloudLinks();
             if (links.optJSONObject(name) != null) {
@@ -1711,6 +1712,7 @@ public class MainActivity extends Activity {
                 cloudPrefs().edit().putString("links", links.toString()).apply();
             }
         } catch (Throwable ignored) { }
+      }
     }
     private void confirmDeleteLesson(final String name) {
         new AlertDialog.Builder(this)
@@ -1787,8 +1789,15 @@ public class MainActivity extends Activity {
         refreshClipList();
         Toast.makeText(this, doneToast, Toast.LENGTH_SHORT).show();
     }
+    // Serializes the links blob's read-modify-write: upload callbacks
+    // persist from the cloud pool while the UI thread writes too, and
+    // a late progress write must never clobber a finished state back
+    // to uploading.
+    private final Object cloudLinkLock = new Object();
+
     private void setCloudLink(String name, String state, String videoId, String libraryId,
                               String uploadUrl, int progress) {
+      synchronized (cloudLinkLock) {
         try {
             JSONObject links = cloudLinks();
             JSONObject cur = links.optJSONObject(name);
@@ -1801,6 +1810,7 @@ public class MainActivity extends Activity {
             links.put(name, cur);
             cloudPrefs().edit().putString("links", links.toString()).apply();
         } catch (Throwable ignored) { }
+      }
     }
     private String cloudSuffix(String name) {
         JSONObject link = cloudLink(name);

@@ -711,6 +711,29 @@ class CloudAndroidTests(unittest.TestCase):
                         .split("\n    // ----------", 1)[0]
         self.assertIn("activityStopped", stop)
 
+    def test_configured_needs_a_token_in_signer_mode(self):
+        # The signer URL always has a compiled default, so URL-alone
+        # must not count as configured (same contract as canUpload):
+        # direct mode needs library ID + API key, signer mode needs
+        # its token — otherwise credential-less builds fire doomed
+        # uploads and hide the offline Export fallback.
+        cfg = self.uploader.split("public boolean configured()", 1)[1] \
+                           .split("private boolean useDirect()", 1)[0]
+        self.assertIn("signerToken", cfg)
+        self.assertNotIn("if (!signerUrl.isEmpty()) return true;", cfg)
+
+    def test_link_writes_are_serialized(self):
+        # Upload callbacks persist from the cloud pool while the UI
+        # thread writes too: the links blob's read-modify-write must
+        # synchronize, or a late progress write clobbers finished
+        # state back to uploading.
+        writes = self.main.split("private void setCloudLink", 1)[1] \
+                          .split("private String cloudSuffix", 1)[0]
+        self.assertIn("synchronized (cloudLinkLock)", writes)
+        deletes = self.main.split("private void delCloudLink", 1)[1] \
+                           .split("private void confirmDeleteLesson", 1)[0]
+        self.assertIn("synchronized (cloudLinkLock)", deletes)
+
     def test_cloud_settings_screen_exists(self):
         # Error and hub messages send the user to "Cloud settings" —
         # the dialog must exist, prefilled with stored values (never
@@ -1174,6 +1197,50 @@ class WebNativeFeelTests(unittest.TestCase):
 
     def test_service_worker_cache_bumped_for_the_restyle(self):
         self.assertIn("unwritten-recorder-v9", self.sw)
+
+
+class CameraEngineTests(unittest.TestCase):
+    """Device-critical engine paths: partial takes, queued starts,
+    mid-take rebuilds."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.engine = read(ENGINE)
+
+    def test_early_stop_drops_the_partial_take(self):
+        # stop() throwing under ~700ms means no valid data was
+        # written: the partial file must be deleted, never listed or
+        # uploaded as a lesson.
+        stop = self.engine.split("private void stopVideoInternal()", 1)[1] \
+                          .split("private void releaseRecorder()", 1)[0]
+        self.assertIn("recordingFile", stop)
+        self.assertIn("elapsed < 700", stop)
+        self.assertIn(".delete()", stop)
+
+    def test_camera_failure_fails_a_queued_start(self):
+        # A start queued while the camera opens must not stick
+        # forever when the camera errors, disconnects, or fails to
+        # configure — every later take would report "already queued".
+        open_cb = self.engine.split("new CameraDevice.StateCallback()", 1)[1] \
+                             .split("}, handler());", 1)[0]
+        self.assertEqual(open_cb.count("failQueuedStart("), 2)
+        cfg = self.engine.split("public void onConfigureFailed", 1)[1] \
+                         .split("}, handler());", 1)[0]
+        self.assertIn("failQueuedStart(", cfg)
+
+    def test_no_rebuild_while_recording(self):
+        # A surface resize mid-take must not rebuild the capture
+        # session under the running recorder.
+        size = self.engine.split("public void onSurfaceTextureSizeChanged", 1)[1] \
+                          .split("public boolean onSurfaceTextureDestroyed", 1)[0]
+        self.assertIn("recorderStartPending", size)
+
+    def test_luma_changes_are_for_between_takes(self):
+        # Attaching the luma output rebuilds the session — like iOS,
+        # mid-take changes are refused instead of churning the take.
+        luma = self.engine.split("public void setLumaListener", 1)[1] \
+                          .split("public boolean startVideo", 1)[0]
+        self.assertIn("between takes", luma)
 
 
 if __name__ == "__main__":

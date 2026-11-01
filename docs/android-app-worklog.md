@@ -41,6 +41,20 @@ Stream copy first then the file, restored takes list with real
 durations (8:26 on the 261 MB lesson). One fix from the shakeout:
 zoom row now hides with no camera yet (pre-permission dead UI).
 
+## Update — 2026-11-01: bug-hunt fixes (take with the next commit)
+
+Deep review found six, all fixed test-first (`CameraEngineTests`
+is new): cloud link writes synchronize on `cloudLinkLock` (upload
+callbacks persist off the UI thread); `configured()` needs a token
+in signer mode (URL-alone no longer counts, same contract as
+`canUpload`); a sub-700ms stop-throw deletes its partial take
+instead of listing/uploading a corrupt lesson; a camera
+error/disconnect/configure-failure fails a queued start loudly
+instead of wedging later takes on "already queued"; surface
+resizes and luma attach no longer rebuild the session mid-take.
+Rebuilt and re-verified on the Pixel 4 (record, upload,
+cloud-first delete).
+
 Merged the same day with the source-only native-feel pass below:
 its Material foundation (cards, RippleDrawables, Switch, action-bar
 camera menu, primary buttons) stands; this sync's verified behaviors
