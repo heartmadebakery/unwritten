@@ -538,22 +538,141 @@ function escHtml(s){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
   });
 }
+/* Hub rows: the signer answers camelCase and the list carries no
+   playback URLs — a row opens the session's detail, like Android and
+   iOS, and the detail holds Play / Share / Delete. */
 function hubRowHTML(r){
-  var playUrl = r.mp4_url || r.hls_url || "";
-  return "<div class='srow' data-hub-play='" + playUrl + "'>" +
-    "<span class='sleft'>☁</span><span class='smid'>" + escHtml(r.title || "Untitled") +
-    (r.lesson_date ? "  •  " + escHtml(r.lesson_date) : "") + "</span>" +
-    (playUrl ? "<span class='sright box'>▶</span>" : "") + "</div>";
+  return "<div class='srow' data-hub-open='" + escHtml(r.videoId || "") + "'>" +
+    "<span class='sleft'>☁</span><span class='smid'>" + escHtml(r.title || r.videoId || "Untitled") +
+    (r.lessonDate ? "  •  " + escHtml(r.lessonDate) : "") + "</span>" +
+    "<span class='sright dim'>›</span></div>";
+}
+var hubDetail = null;
+function hubEmbedUrl(d){
+  if(!d || !d.videoId) return "";
+  var lib = d.libraryId || cloudLibraryId();
+  return lib ? "https://player.mediadelivery.net/embed/" + lib + "/" + d.videoId : "";
+}
+function hubDetailHTML(d){
+  var h = "<div class='hubcard'><div class='hubtop'><span class='hubtitle'>" +
+    escHtml(d.title || d.videoId) + "</span>" +
+    "<button class='hubbtn' data-hub-act='close' title='Close'>✕</button></div>" +
+    (d.lessonDate ? "<div class='hubdate'>" + escHtml(d.lessonDate) + "</div>" : "") +
+    "<div class='hubacts'><button class='hubbtn' data-hub-act='play'>▶ Play</button>" +
+    "<button class='hubbtn' data-hub-act='share' title='Share session link'>↗</button>" +
+    "<button class='hubbtn' data-hub-act='delete' title='Delete from the hub and the cloud'>🗑</button></div>";
+  if(d.writeupMd) h += "<div class='hubwriteup'>" + escHtml(d.writeupMd) + "</div>";
+  (d.corrections || []).forEach(function(c){
+    h += "<div class='hubline'>• " + escHtml(c.start || "") + "  " + escHtml(c.quote || "") + "</div>";
+    if(c.correcting) h += "<div class='hubline dim'>  → " + escHtml(c.correcting) + "</div>";
+  });
+  (d.chapters || []).forEach(function(c){
+    h += "<div class='hubline dim'>§ " + escHtml(c.start || "") + "  " + escHtml(c.label || "") + "</div>";
+  });
+  return h + "</div>";
+}
+function renderHubDetail(){
+  var box = $("hubdetail");
+  if(!box) return;
+  box.innerHTML = hubDetail ? hubDetailHTML(hubDetail) : "";
+}
+async function openHubSession(videoId){
+  if(!videoId || !hubAvailable()) return;
+  try{
+    var rs = await fetch(cloudSignerUrl() + "/hub/sessions/" + encodeURIComponent(videoId),
+                         {headers: {"X-Signer-Token": cloudToken()}});
+    if(!rs.ok) throw new Error("HTTP " + rs.status);
+    hubDetail = await rs.json();
+    stopHubPlayback();
+    renderHubDetail();
+  }catch(e){
+    $("status").innerHTML = "Couldn't open that hub session — check the connection. (" + escHtml(e.message) + ")";
+  }
+}
+function closeHubSession(){ stopHubPlayback(); hubDetail = null; renderHubDetail(); }
+/* Hub sessions stream in the home page's own player — watching a
+   published lesson never opens the camera. MP4 when the library has
+   the fallback on, else HLS (Safari plays it natively), else the
+   embed page in a new tab. */
+function playHubSession(d){
+  var url = (d && (d.mp4Url || d.hlsUrl)) || "";
+  if(!url){
+    var embed = hubEmbedUrl(d);
+    if(embed){ window.open(embed, "_blank"); return; }
+    $("status").textContent = "No playable stream on this hub session yet.";
+    return;
+  }
+  var p = $("hubplayer");
+  /* HLS-only sessions can't play in a plain <video> outside Safari:
+     a player error opens the Cloud embed page and says so. */
+  p.onerror = function(){
+    var embed = hubEmbedUrl(d);
+    stopHubPlayback();
+    if(embed){
+      $("status").textContent = "This browser can't play that stream here — opening the Cloud player.";
+      window.open(embed, "_blank");
+    } else {
+      $("status").textContent = "Couldn't play that hub session.";
+    }
+  };
+  p.src = url;
+  p.classList.remove("hidden"); $("hubclose").classList.remove("hidden");
+  p.play().catch(function(){});
+}
+async function shareHubSession(d){
+  var url = hubEmbedUrl(d);
+  if(!url){ $("status").innerHTML = "☁️ <b>No Cloud link yet</b> for this session."; return; }
+  try{ if(navigator.clipboard) await navigator.clipboard.writeText(url); }catch(e){}
+  if(navigator.share){
+    try{ await navigator.share({title: d.title || "hub session", url: url}); }catch(e){}
+    return;
+  }
+  $("status").innerHTML = "☁️ Session link copied: " + escHtml(url);
+}
+function confirmDeleteHub(d){
+  if(!d || !d.videoId) return;
+  if(!confirm("Delete hub session?\n\nDelete '" + (d.title || d.videoId) + "' from the cloud and the hub?")) return;
+  deleteHubSession(d.videoId);
+}
+/* Hub record first, then the Stream video: a failure between the two
+   leaves the bytes orphaned in Stream (still playable, still
+   re-publishable) instead of a hub row pointing at a dead video, and
+   the partial outcome is reported as partial. */
+async function deleteHubSession(videoId){
+  try{
+    var rs = await fetch(cloudSignerUrl() + "/hub/sessions/" + encodeURIComponent(videoId),
+                         {method: "DELETE", headers: {"X-Signer-Token": cloudToken()}});
+    if(!rs.ok) throw new Error("hub delete failed (" + rs.status + ")");
+  }catch(e){
+    $("status").innerHTML = "☁️ <b>Couldn't delete the hub entry</b> (" + escHtml(e.message) + ") Keeping everything so nothing is lost.";
+    return;
+  }
+  if(hubDetail && hubDetail.videoId === videoId) closeHubSession();
+  try{ await cloudDeleteVideo(videoId); }
+  catch(e){
+    loadHub();
+    $("status").innerHTML = "☁️ <b>Hub entry removed, but the cloud copy remains</b> (" + escHtml(e.message) + ") Delete it from the Stream dashboard.";
+    return;
+  }
+  loadHub();
+  $("status").innerHTML = "🗑 Session deleted from the hub and the cloud.";
 }
 function stopHubPlayback(){
   var p = $("hubplayer");
+  if(!p) return;
+  p.onerror = null; /* clearing src must not trigger the fallback */
   try{ p.pause(); }catch(e){}
   p.removeAttribute("src"); p.load();
   p.classList.add("hidden"); $("hubclose").classList.add("hidden");
 }
 async function loadHub(){
   var box = $("hublist"), st = $("hubstatus");
-  stopHubPlayback();
+  if(!hubDetail) stopHubPlayback();
+  if(!cloudEnabled()){
+    st.innerHTML = "Hub lives on the signer — turn Cloud on to see published lessons.";
+    box.innerHTML = ""; hubDetail = null; renderHubDetail();
+    return;
+  }
   if(!hubAvailable()){
     st.innerHTML = cloudUseDirect()
       ? "The hub lives on the signer — direct library-key mode has no hub."
@@ -571,6 +690,7 @@ async function loadHub(){
     if(!rows || !rows.length){ st.innerHTML = ""; box.innerHTML = '<div class="sempty">Nothing published yet.</div>'; return; }
     st.innerHTML = "";
     box.innerHTML = rows.map(hubRowHTML).join("");
+    if(hubDetail && !rows.some(function(r){ return r.videoId === hubDetail.videoId; })) closeHubSession();
   }catch(e){
     st.innerHTML = "Hub couldn't load — check the connection and Cloud settings. (" + escHtml(e.message) + ")";
     box.innerHTML = "";

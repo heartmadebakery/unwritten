@@ -36,10 +36,17 @@ does). Native iOS wins where the web cannot:
   stays Android-only — it drives an API with no iOS equivalent.
 
 Swift handles what it is good at: the capture-session wrapper and the
-two-screen UI (built programmatically — no storyboards): home (record
-and upload actions over the hub, then cloud and device sessions) and
-record (preview, zoom, one Record/Stop button, in-viewfinder
-playback).
+UI (built programmatically — no storyboards). It is the same design
+as the web and Android apps, built from iOS parts: a `NavigationStack`
+home (a grouped list with Record and Upload over the hub, then the
+Cloud toggle and the device sessions, pull to refresh, ⚙ in the
+toolbar opens the Cloud settings sheet) that pushes Record (preview,
+zoom, one Record/Stop button, in-viewfinder playback, camera switch in
+the toolbar) and hub sessions (their own player, never the camera,
+plus the write-up, corrections and chapters, with Share/Delete in the
+toolbar). The system back button and edge swipe leave Record exactly
+like the old ‹ Home did: a live take stops and is kept, and the camera
+parks. Upload offers the Photos picker and Files.
 
 ## Layout
 
@@ -81,12 +88,14 @@ run `build.sh` first and build from the same checkout.
 
 Lessons are always saved on-device first — with Cloud on, a copy then
 uploads (resumable TUS, retries on flaky links, resumes after the app
-restarts) and the lesson gains a ☁ marker; tapping ↗ copies the
+restarts) and the lesson gains a ☁ marker; its share button copies the
 streamed-playback (HLS) link and offers it through the share sheet.
 Cloud has **no live ingest** — this is store-then-stream, not live
-broadcast. **☁ Cloud** toggles saving off (lessons stay on-device
-only). Long-press a lesson to delete it from the phone *and* its cloud
-copy (cloud first — if that fails, the local lesson is kept).
+broadcast. The **Cloud** toggle turns saving off (lessons stay on-device
+only). Touch and hold a lesson for its context menu (Play, Share Cloud
+link, Retry upload, Save a copy, Delete), or swipe it to delete it from
+the phone *and* its cloud copy (cloud first — if that fails, the local
+lesson is kept).
 **Export sessions to Downloads** is shown only when Cloud is off
 (offline fallback); it shares every lesson through the share sheet
 (Save to Files, AirDrop, …).

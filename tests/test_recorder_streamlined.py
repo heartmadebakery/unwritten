@@ -169,6 +169,52 @@ class WebRecorderTests(unittest.TestCase):
                          .split("function loadHub", 1)[0]
         self.assertIn("escHtml(r.title", row)
 
+    def test_hub_rows_read_the_signer_field_names(self):
+        # The signer answers camelCase (videoId, lessonDate); the list
+        # route carries no playback URLs. Reading snake_case left every
+        # web hub row dateless and unplayable.
+        row = self.common.split("function hubRowHTML", 1)[1] \
+                         .split("function ", 1)[0]
+        self.assertIn("r.lessonDate", row)
+        self.assertIn("r.videoId", row)
+        for bad in ["lesson_date", "mp4_url", "hls_url"]:
+            self.assertNotIn(bad, row, bad)
+
+    def test_hub_opens_detail_plays_shares_and_deletes(self):
+        # Parity with Android and iOS (Nov 1): a hub row opens the
+        # session's detail — write-up, corrections, chapters — with
+        # Play, Share, and Delete. Server text is always escaped.
+        self.assertIn('id="hubdetail"', self.home)
+        for token in ["function openHubSession", "function hubDetailHTML",
+                      "function playHubSession", "function shareHubSession",
+                      "function deleteHubSession", "function hubEmbedUrl",
+                      '"/hub/sessions/" + encodeURIComponent(']:
+            self.assertIn(token, self.common, token)
+        detail = self.common.split("function hubDetailHTML", 1)[1] \
+                            .split("\nfunction ", 1)[0]
+        for token in ["d.writeupMd", "d.corrections", "d.chapters",
+                      "escHtml(", "data-hub-act"]:
+            self.assertIn(token, detail, token)
+        self.assertIn("openHubSession(", self.homejs)
+
+    def test_web_hub_playback_falls_back_to_embed(self):
+        # An HLS-only session can't play in a plain <video> on Chrome:
+        # a player error opens the Cloud embed page and says so.
+        play = self.common.split("function playHubSession", 1)[1] \
+                          .split("\nfunction ", 1)[0]
+        self.assertIn("onerror", play)
+        self.assertIn("hubEmbedUrl(", play)
+
+    def test_web_hub_delete_removes_record_before_video(self):
+        body = self.common.split("async function deleteHubSession", 1)[1] \
+                          .split("\nfunction ", 1)[0]
+        self.assertIn('method: "DELETE"', body)
+        self.assertLess(body.index('"/hub/sessions/"'),
+                        body.index("cloudDeleteVideo("))
+        self.assertIn("but the cloud copy remains", body)
+        self.assertIn("confirm(", self.common.split(
+            "function confirmDeleteHub", 1)[1].split("\nfunction ", 1)[0])
+
     def test_camera_runs_only_on_record_screen(self):
         # Home-first means no permission prompt on landing: the camera
         # opens when the record screen shows and releases when it hides.

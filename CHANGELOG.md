@@ -6,6 +6,55 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-01
+
+### Changed
+- **iOS feels at home on iOS (user-ordered), same design as web and
+  Android.** `ContentView.swift` now uses a `NavigationStack`: home is
+  a grouped list (Record and Upload, then Hub, the Cloud toggle, and
+  This device) with pull to refresh and a ⚙ toolbar button that opens
+  Cloud settings as a sheet `Form`. Record is pushed, and the system
+  back button and edge swipe replace ‹ Home. The path drives
+  `showScreen`, so leaving Record still stops and keeps a live take
+  and parks the camera, and foregrounding resumes the camera only when
+  Record is on top. Session rows use SF Symbols, a context menu (Play,
+  Share Cloud link, Retry upload, Save a copy, Delete), and
+  swipe-to-delete. Upload offers the Photos picker as well as Files.
+  Hub sessions open their own screen with an inline `VideoPlayer`, the
+  write-up rendered as Markdown, corrections and chapters, and
+  Share/Delete in the toolbar.
+  Contract tests in `tests/test_ios_recorder.py` were rewritten where
+  they pinned the old widgets (each one is commented as user-ordered),
+  and new ones were added for the navigation, sheet, Photos, refresh,
+  and hub playback.
+
+### Fixed
+- **iOS hub playback no longer opens the camera.** It used to route
+  through the record screen, so watching a published lesson could
+  trigger the camera permission prompt.
+- **Web hub rows were dateless and could not play.** `hubRowHTML`
+  read snake_case fields (`lesson_date`, `mp4_url`), but the signer
+  answers in camelCase and its list route carries no playback URLs.
+  Rows now open the session's detail (`GET /hub/sessions/<id>`) with
+  the write-up, corrections, chapters, ▶ Play (home's own player),
+  ↗ Share, and 🗑 Delete. Delete removes the hub record before the
+  video and reports a partial outcome honestly. This brings the web to
+  parity with Android and iOS. The hub also explains when Cloud is off
+  and reloads after toggling Cloud or closing settings. Service-worker
+  cache bumped to `v7`.
+- **Hub Play is never a dead button.** If a session has no stream URL,
+  iOS opens the Cloud embed page. On the web, a player error (HLS
+  outside Safari) opens the embed page and says so. Outcomes now show
+  on the iOS hub screen itself.
+
+### Open
+- **Android hub playback still opens the camera.** It still routes
+  through `showScreen("record")`, and its hub header still says "Hub
+  sessions" where web and iOS say "Hub". It is unchanged because this
+  Mac has no Android SDK, so editing the source would leave the
+  prebuilt APK stale. Fix it on a machine that can rebuild and install
+  the APK.
+
 ## 2026-10-31
 
 ### Changed

@@ -3,7 +3,9 @@
 One page per screen sharing a common core: home (`index.html`) lands
 on the hub sessions with Record and Upload above them, `record.html`
 is the viewfinder screen, and `upload.html` takes a video file.
-`common.js` holds the vault, cloud, hub, and session rows;
+`common.js` holds the vault, cloud, hub (rows open a session's detail
+— write-up, corrections, chapters — with Play, Share, and Delete, as
+on Android and iOS), and session rows;
 `home.js` / `record.js` / `upload.js` wire each page; `app.css` holds
 the dark palette. Plain HTML/CSS/JS — no dependencies, no modules
 (`file://` keeps working); one tiny build step stamps a signer token

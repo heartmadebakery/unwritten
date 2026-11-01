@@ -2,7 +2,7 @@
    Pages are network-first so design updates arrive when online; the
    cache only answers when the network is gone. Clips never pass
    through here — they live in IndexedDB and downloads, as before. */
-var CACHE = "unwritten-recorder-v6";
+var CACHE = "unwritten-recorder-v7";
 var ASSETS = ["./", "index.html", "record.html", "upload.html",
               "app.css", "common.js", "home.js", "record.js",
               "upload.js", "manifest.webmanifest",

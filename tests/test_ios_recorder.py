@@ -390,11 +390,14 @@ class IOSParityTests(unittest.TestCase):
         self.assertIn('"This device"', self.view)
 
     def test_cloud_toggle_below_record_and_export_when_off(self):
-        self.assertIn("☁ Cloud: on", self.view)
-        self.assertIn("☁ Cloud: off", self.view)
+        # User-ordered Nov 1 (native iOS idioms): the "☁ Cloud: on/off"
+        # button became a system Toggle bound to the same store state;
+        # Export still follows it and still shows only with Cloud off.
+        self.assertIn("Toggle(isOn:", self.view)
+        self.assertIn("store.toggleCloud()", self.view)
         self.assertIn("Export sessions to Downloads", self.view)
         self.assertIn("if !store.cloudOn", self.view)
-        self.assertLess(self.view.index("☁ Cloud: on"),
+        self.assertLess(self.view.index("Toggle(isOn:"),
                         self.view.index("Export sessions to Downloads"))
 
     def test_zoom_row_below_viewfinder(self):
@@ -451,7 +454,14 @@ class IOSParityTests(unittest.TestCase):
         self.assertIn("MMM d, yyyy HH:mm", self.store)
 
     def test_long_press_deletes_like_android(self):
-        self.assertIn("onLongPressGesture", self.view)
+        # User-ordered Nov 1 (native iOS idioms): long-press opens the
+        # system context menu (Delete among its actions) and a trailing
+        # swipe deletes too — both route through the same confirm.
+        row = self.view.split("private func sessionRow", 1)[1] \
+                       .split("private func rightAction", 1)[0]
+        self.assertIn(".contextMenu", row)
+        self.assertIn(".swipeActions", row)
+        self.assertGreaterEqual(row.count("confirmDeleteLesson"), 2)
 
     def test_share_uses_cloud_link(self):
         self.assertIn("shareCloudLinkFor", self.view)
@@ -475,7 +485,11 @@ class IOSScreensTests(unittest.TestCase):
     def test_home_is_the_landing_with_record_and_upload_above_hub(self):
         home = self.view.split("private var homeView", 1)[1] \
                         .split("private var recordView", 1)[0]
-        self.assertIn("● Record", home)
+        # User-ordered Nov 1 (native iOS idioms): home's actions are
+        # SF Symbol labels ("Record" with record.circle) — the record
+        # screen's shutter keeps the shared "● Record" text.
+        self.assertIn('Text("Record")', home)
+        self.assertIn("● Record", self.view)
         self.assertIn("Upload video", home)
         self.assertLess(home.index("Upload video"), home.index('"Hub"'))
         self.assertLess(home.index('"Hub"'), home.index('"This device"'))
@@ -490,11 +504,50 @@ class IOSScreensTests(unittest.TestCase):
                       "requestAccessAndConfigure()", "resumeSession()",
                       "refresh()", "loadHub()"]:
             self.assertIn(token, show, token)
-        self.assertIn("‹ Home", self.view)
+        # User-ordered Nov 1 (native iOS idioms): Record is pushed on a
+        # NavigationStack and left with the system back button / edge
+        # swipe instead of a custom "‹ Home" button. Every way off the
+        # record screen changes the path, and the path drives
+        # showScreen — so a pop still stops the take and parks the
+        # camera.
+        self.assertIn("NavigationStack(path:", self.view)
+        self.assertIn(".navigationDestination(for: Route.self)", self.view)
+        self.assertNotIn("‹ Home", self.view)
+        self.assertNotIn('@State private var screen = "home"', self.view)
+        path = self.view.split(".onChange(of: path)", 1)[1] \
+                        .split("\n        }", 1)[0]
+        self.assertIn("showScreen(", path)
+
+    def test_scene_phase_knows_record_is_on_top(self):
+        # With no screen string left, foregrounding must still resume
+        # the camera only when Record is the top screen.
+        phase = self.view.split(".onChange(of: scenePhase)", 1)[1] \
+                         .split(".alert(", 1)[0]
+        self.assertIn("onRecordScreen", phase)
+        self.assertIn("path.last == .record", self.view)
+
+    def test_cloud_settings_is_a_sheet_form(self):
+        # User-ordered Nov 1: settings are a system sheet with a Form
+        # (Android uses a dialog; web an inline panel). Closing it
+        # still reloads the hub.
+        self.assertIn(".sheet(isPresented: $showCloudPanel)", self.view)
+        self.assertIn("Form {", self.view)
+        changed = self.view.split(".onChange(of: showCloudPanel)", 1)[1] \
+                           .split("}", 1)[0]
+        self.assertIn("loadHub()", changed)
+
+    def test_hub_refreshes_by_pull(self):
+        self.assertIn(".refreshable", self.view)
 
     def test_upload_picker_saves_like_a_take(self):
         for token in ["UIDocumentPickerViewController", ".movie",
                       "showUploadPicker", "registerUpload"]:
+            self.assertIn(token, self.view, token)
+        # User-ordered Nov 1: lesson videos on an iPhone live in Photos,
+        # so Upload offers the Photos picker alongside Files (Android's
+        # system picker reaches the gallery the same way).
+        for token in ["import PhotosUI", ".photosPicker(",
+                      "matching: .videos", "loadTransferable"]:
             self.assertIn(token, self.view, token)
         self.assertIn("uploadName", self.names)
         self.assertIn("unwritten_lesson_upload_", self.names)
@@ -506,9 +559,26 @@ class IOSScreensTests(unittest.TestCase):
                         save.index("registerLesson(url:"))
 
     def test_home_playback_moves_to_record_screen(self):
+        # Device sessions still play inside the viewfinder (shared
+        # design); user-ordered Nov 1 the route there is a push.
         play = self.view.split("private func playInViewfinder", 1)[1] \
                         .split("private func playHubSession", 1)[0]
-        self.assertIn('showScreen("record")', play)
+        self.assertIn("path.append(.record)", play)
+
+    def test_hub_playback_never_opens_the_camera(self):
+        # Watching a published lesson must not prompt for the camera:
+        # hub sessions play in the hub detail screen's own player.
+        play = self.view.split("private func playHubSession", 1)[1] \
+                        .split("private func stopLocalPlayback", 1)[0]
+        self.assertNotIn(".record", play)
+        self.assertNotIn("requestAccessAndConfigure", play)
+        self.assertIn("hubPlayer", play)
+        self.assertIn("VideoPlayer(player:", self.view)
+        # No stream URL must never be a dead button: fall back to the
+        # Cloud embed page, like Android's openInBrowser.
+        self.assertIn("openURL(", play)
+        self.assertIn("hubEmbedUrl(", play)
+        self.assertIn("import AVKit", self.view)
 
 
 if __name__ == "__main__":

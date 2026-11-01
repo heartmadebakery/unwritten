@@ -72,6 +72,18 @@ h1{font-size:24px;margin:0 0 4px;font-weight:normal;}
 #hubstatus:empty{display:none;}
 #hubplayer{width:100%;height:280px;object-fit:cover;display:block;background:#000;}
 #hubclose{margin-bottom:6px;}
+.hubcard{background:var(--panel);border:1px solid var(--line);border-radius:4px;
+  padding:14px;margin:8px 0;}
+.hubtop{display:flex;align-items:center;gap:8px;}
+.hubtitle{flex:1;font-size:17px;}
+.hubdate{color:var(--dim);font-size:14px;padding:2px 0 6px;}
+.hubacts{display:flex;gap:8px;padding-bottom:8px;}
+.hubacts .hubbtn{flex:1;}
+.hubbtn{background:var(--bg);color:var(--ink);border:1px solid var(--line);
+  border-radius:4px;font-size:15px;padding:8px 10px;}
+.hubwriteup{white-space:pre-wrap;font-size:15px;line-height:1.5;padding-bottom:8px;}
+.hubline{font-size:15px;line-height:1.5;}
+.hubline.dim{color:var(--dim);font-size:14px;}
 #uploadinput{width:100%;margin:6px 0 2px;color:var(--ink);font-size:15px;}
 #uploadstatus{color:var(--dim);font-size:15px;line-height:1.5;padding:8px 4px;}
 #uploadstatus:empty{display:none;}

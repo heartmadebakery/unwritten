@@ -28,6 +28,7 @@ $("cloudtoggle").onclick = function(){
     ? "☁️ <b>Cloud on.</b> New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
     : "☁️ <b>Cloud off.</b> Sessions stay on this device only. Export sessions to Downloads below to move them.";
   if(cloudEnabled()) sweepBacklog();
+  loadHub();
 };
 /* Sessions recorded while Cloud was off (or failed) still need
    their copy when Cloud comes back on — without this sweep they
@@ -49,6 +50,7 @@ $("cloudsettings").onclick = function(){
     panel.classList.remove("hidden");
   } else {
     panel.classList.add("hidden");
+    loadHub(); /* new signer settings show in the hub at once */
   }
 };
 $("cloudsigner").addEventListener("change", function(){ cloudCfg.signerUrl = this.value.trim(); cloudSaveCfg(); });
@@ -84,14 +86,20 @@ $("clips").addEventListener("mousedown", function(e){
 });
 $("clips").addEventListener("mouseup", cancelPress);
 $("hubclose").onclick = function(){ stopHubPlayback(); };
+/* A hub row opens its detail (write-up, corrections, chapters) with
+   Play / Share / Delete, like Android and iOS. */
 $("hublist").onclick = function(e){
-  var row = e.target.closest ? e.target.closest("[data-hub-play]") : null;
-  var url = row ? row.getAttribute("data-hub-play") : "";
-  if(!url) return;
-  var p = $("hubplayer");
-  p.src = url;
-  p.classList.remove("hidden"); $("hubclose").classList.remove("hidden");
-  p.play().catch(function(){});
+  var row = e.target.closest ? e.target.closest("[data-hub-open]") : null;
+  if(row) openHubSession(row.getAttribute("data-hub-open"));
+};
+$("hubdetail").onclick = function(e){
+  var b = e.target.closest ? e.target.closest("[data-hub-act]") : null;
+  if(!b || !hubDetail) return;
+  var act = b.getAttribute("data-hub-act");
+  if(act === "close") closeHubSession();
+  else if(act === "play") playHubSession(hubDetail);
+  else if(act === "share") shareHubSession(hubDetail);
+  else if(act === "delete") confirmDeleteHub(hubDetail);
 };
 paintCloudToggle();
 $("caps").textContent = "This device: " +
