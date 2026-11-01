@@ -188,7 +188,8 @@ $("recbtn").onclick = function(){ state.recording ? stopRec() : startRec(); };
 $("camtoggle").onclick = async function(){
   if(state.recording) return;
   state.facing = state.facing === "environment" ? "user" : "environment";
-  this.textContent = state.facing === "environment" ? "📷 Back camera" : "🤳 Front camera";
+  this.setAttribute("aria-label", state.facing === "environment"
+    ? "Back camera — switch to front" : "Front camera — switch to back");
   await openCamera();
 };
 $("capvideo").onclick = function(){ $("fileinput").click(); };

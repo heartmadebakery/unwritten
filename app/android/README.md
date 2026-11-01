@@ -40,6 +40,16 @@ the two-screen UI (built programmatically — no layout XML): home
 zoom, one Record/Stop button, in-viewfinder playback, cloud, device
 sessions, advanced link).
 
+It is drawn in Material idioms without AndroidX: `Theme.Material` with
+an ActionBar (the title, the up arrow on Record, and the camera switch
+as a menu action), dark status and navigation bars, rounded ripple
+buttons (Record is the one filled primary action), a real `Switch` for
+Cloud, card-style lists with ripple rows and 48dp touch targets.
+**These UI changes (Nov 1) are source-only — this host had no Android
+SDK, so they are not compiled and `unwritten-craft.apk` was not
+rebuilt: run `bash build.sh` on a machine with the SDK and shake out on
+the Pixel 4 before trusting them.**
+
 ## Layout
 
 ```

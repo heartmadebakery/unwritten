@@ -66,6 +66,10 @@ public class MainActivity extends Activity {
     private static final int DIM = Color.parseColor("#B8A888");
     private static final int AMBER = Color.parseColor("#E8A13A"); // retained for compat, not used
     private static final int RED = Color.parseColor("#C0392B"); // retained for compat, not used
+    private static final int BRIGHT = Color.parseColor("#E74C3C");
+    private static final int LINE = Color.parseColor("#2E2213");
+    private static final int PRESSED = Color.parseColor("#33281A");
+    private static final int MENU_CAMERA = 1;
     private static final int PERM_RECORD = 7;
     private static final int REQ_UPLOAD = 8;
 
@@ -91,7 +95,16 @@ public class MainActivity extends Activity {
     // Cloud streaming (on by default, prefilled at build time): per-lesson link state.
     private static final String CLOUD_PREFS = "unwritten_cloud";
     private static final String CLOUD_SIGNER_DEFAULT = "https://unwritten-cloud-signer.heartmade.workers.dev";
-    private Button cloudToggleButton, exportBtn, camToggle;
+    private Button exportBtn;
+    private android.widget.Switch cloudToggleButton;
+    // The Switch acts only on a real change: toggleCloudEnabled() flips
+    // persisted state, so a programmatic setChecked must never flip it.
+    private final android.widget.CompoundButton.OnCheckedChangeListener cloudSwitchListener =
+        new android.widget.CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(android.widget.CompoundButton b, boolean isChecked) {
+                if (isChecked != cloudEnabledCfg()) toggleCloudEnabled();
+            }
+        };
     private TextView zoomLabel, micWarn, speechWarn;
     private LinearLayout hubContainer;
     private JSONArray hubRows = new JSONArray();
@@ -124,15 +137,67 @@ public class MainActivity extends Activity {
         return t;
     }
 
+    /** A rounded, flat fill (no ripple) — card and field backgrounds. */
+    private android.graphics.drawable.Drawable rounded(int fill, int radiusDp) {
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(radiusDp));
+        return g;
+    }
+
+    /** A rounded fill with the Material ripple a flat setBackgroundColor
+     *  lacks — every tappable surface gets touch feedback. */
+    private android.graphics.drawable.Drawable ripple(int fill, int radiusDp) {
+        return new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+            rounded(fill, radiusDp), rounded(Color.WHITE, radiusDp));
+    }
+
+    /** Ripple for a row inside a card (the card clips the corners). */
+    private android.graphics.drawable.Drawable rowRipple() {
+        return new android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(0x22FFFFFF), null,
+            new android.graphics.drawable.ColorDrawable(Color.WHITE));
+    }
+
+    /** A card: rounded PANEL that clips its rows to the corners. */
+    private void cardStyle(View v) {
+        v.setBackground(rounded(PANEL, 16));
+        v.setClipToOutline(true);
+    }
+
+    /** Small dim section header, like the other apps' "Hub" / "This device". */
+    private TextView sectionHeader(String text) {
+        TextView t = label(text, 14, DIM);
+        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        t.setPadding(dp(8), dp(20), dp(8), dp(6));
+        return t;
+    }
+
+    /** Tonal button: rounded PANEL fill, ripple, 52dp tall. */
     private Button button(String text) {
+        return styledButton(text, PANEL, TEXT);
+    }
+
+    /** The one primary action on a screen: filled, bold. */
+    private Button primaryButton(String text, int fill) {
+        Button b = styledButton(text, fill, 0xFFFFFFFF);
+        b.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        b.setMinHeight(dp(56)); b.setMinimumHeight(dp(56));
+        return b;
+    }
+
+    private Button styledButton(String text, int fill, int textColor) {
         Button b = new Button(this);
-        b.setText(text); b.setTextSize(18); b.setTextColor(TEXT);
-        b.setBackgroundColor(PANEL); b.setAllCaps(false);
-        try { b.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        b.setPadding(dp(12), dp(10), dp(12), dp(10));
+        b.setText(text); b.setTextSize(17); b.setTextColor(textColor);
+        b.setAllCaps(false);
+        b.setBackground(ripple(fill, 26));
+        b.setStateListAnimator(null);
+        b.setMinHeight(dp(52)); b.setMinimumHeight(dp(52));
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, dp(4), 0, dp(4));
+        lp.setMargins(0, dp(6), 0, dp(6));
         b.setLayoutParams(lp);
         return b;
     }
@@ -145,6 +210,14 @@ public class MainActivity extends Activity {
         // with a read grant) — file:// intents arrive unreadable on
         // Android 7+, so there is no StrictMode bypass here.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        // System bars and the action bar wear the app's own dark palette.
+        getWindow().setStatusBarColor(BG);
+        getWindow().setNavigationBarColor(BG);
+        android.app.ActionBar bar = getActionBar();
+        if (bar != null) {
+            bar.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BG));
+            bar.setElevation(0);
+        }
         java.io.File extRoot = getExternalFilesDir(null);
         clipsDir = new File(extRoot != null ? extRoot : getFilesDir(), "clips");
         //noinspection ResultOfMethodCallIgnored
@@ -197,11 +270,7 @@ public class MainActivity extends Activity {
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL);
         l.setBackgroundColor(BG);
-        l.setPadding(dp(14), dp(14), dp(14), dp(14));
-
-        TextView title = label("Unwritten Craft", 24, TEXT); title.setGravity(Gravity.CENTER);
-        l.addView(title);
-        l.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
+        l.setPadding(dp(16), dp(8), dp(16), dp(24));
 
         // One app, two screens. Home (record/upload actions with the
         // hub last) is the landing; record owns the viewfinder and
@@ -226,13 +295,12 @@ public class MainActivity extends Activity {
     }
 
     private void buildHomeScreen() {
-        Button goRecord = button("● Record");
-        try { goRecord.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        homeScreen.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
+        Button goRecord = primaryButton("● Record", BRIGHT);
         goRecord.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showScreen("record"); } });
         homeScreen.addView(goRecord);
 
         Button upload = button("⬆ Upload video");
-        try { upload.setBackgroundTintList(null); } catch (Throwable ignored) {}
         upload.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
         homeScreen.addView(upload);
 
@@ -243,32 +311,36 @@ public class MainActivity extends Activity {
         urlInput.setTextSize(16);
         urlInput.setTextColor(TEXT);
         urlInput.setHintTextColor(DIM);
+        urlInput.setSingleLine(true);
+        urlInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        urlInput.setBackground(rounded(PANEL, 12));
+        urlInput.setPadding(dp(16), dp(12), dp(16), dp(12));
         urlInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        homeScreen.addView(urlInput);
+        LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        urlLp.setMargins(0, dp(14), 0, dp(6));
+        homeScreen.addView(urlInput, urlLp);
         Button urlFetch = button("⬇ Fetch from link");
-        try { urlFetch.setBackgroundTintList(null); } catch (Throwable ignored) {}
         urlFetch.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { queueFetchUrl(urlInput.getText().toString().trim()); } });
         homeScreen.addView(urlFetch);
 
         // Hub: published lessons, same stories as the web hub. The hub
         // lives on the signer, so this section only fills when a signer
         // URL and token are configured and Cloud is on.
-        homeScreen.addView(label("Hub sessions", 17, DIM));
+        homeScreen.addView(sectionHeader("Hub sessions"));
         hubContainer = new LinearLayout(MainActivity.this);
         hubContainer.setOrientation(LinearLayout.VERTICAL);
-        hubContainer.setBackgroundColor(BG);
+        hubContainer.setBackground(rounded(PANEL, 16));
+        hubContainer.setClipToOutline(true);
         homeScreen.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
     }
 
     private void buildRecordScreen() {
-        Button backHome = button("‹ Home");
-        try { backHome.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        backHome.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showScreen("home"); } });
-        recordScreen.addView(backHome);
-
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
+        viewfinderBox.setBackground(rounded(Color.BLACK, 16));
+        viewfinderBox.setClipToOutline(true);
         preview = new TextureView(this);
         viewfinderBox.addView(preview, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)));
         localPlayer = new android.widget.VideoView(this);
@@ -282,16 +354,19 @@ public class MainActivity extends Activity {
         playerControls.setVisibility(View.GONE);
         playerControls.setPadding(dp(6), dp(4), dp(6), dp(4));
         Button vfPlay = new Button(this);
-        vfPlay.setText("▶"); vfPlay.setTextSize(14); vfPlay.setTextColor(TEXT); vfPlay.setBackgroundColor(PANEL); vfPlay.setAllCaps(false);
-        try { vfPlay.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        vfPlay.setText("▶"); vfPlay.setTextSize(14); vfPlay.setTextColor(TEXT); vfPlay.setBackground(ripple(PRESSED, 20)); vfPlay.setAllCaps(false);
+        vfPlay.setStateListAnimator(null);
         vfPlay.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null && isViewfinderPlaying) localPlayer.start(); } });
         Button vfPause = new Button(this);
-        vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackgroundColor(PANEL); vfPause.setAllCaps(false);
-        try { vfPause.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackground(ripple(PRESSED, 20)); vfPause.setAllCaps(false);
+        vfPause.setStateListAnimator(null);
         vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
-        LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, dp(40), 1f);
         vfp.setMargins(dp(4), 0, dp(4), 0);
-        vfPlay.setLayoutParams(vfp); vfPause.setLayoutParams(vfp);
+        vfPlay.setLayoutParams(vfp);
+        LinearLayout.LayoutParams vfp2 = new LinearLayout.LayoutParams(0, dp(40), 1f);
+        vfp2.setMargins(dp(4), 0, dp(4), 0);
+        vfPause.setLayoutParams(vfp2);
         playerControls.addView(vfPlay); playerControls.addView(vfPause);
         android.widget.FrameLayout.LayoutParams ctrlLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ctrlLp.gravity = Gravity.BOTTOM;
@@ -300,11 +375,13 @@ public class MainActivity extends Activity {
 
         // Warning banners directly below the stage, like the web app.
         micWarn = label("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings to re-enable it.", 15, 0xFFFFFFFF);
-        micWarn.setBackgroundColor(RED);
+        micWarn.setBackground(rounded(RED, 12));
+        micWarn.setPadding(dp(14), dp(12), dp(14), dp(12));
         micWarn.setVisibility(View.GONE);
         recordScreen.addView(micWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         speechWarn = label("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, TEXT);
-        speechWarn.setBackgroundColor(PANEL);
+        speechWarn.setBackground(rounded(PANEL, 12));
+        speechWarn.setPadding(dp(14), dp(12), dp(14), dp(12));
         speechWarn.setVisibility(View.GONE);
         recordScreen.addView(speechWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -313,17 +390,12 @@ public class MainActivity extends Activity {
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         zoomRow.setGravity(Gravity.CENTER_VERTICAL);
         zoomRow.setPadding(0, dp(6), 0, dp(6));
-        Button zoomOut = button("−");
-        zoomOut.setTextSize(18);
-        LinearLayout.LayoutParams zp = new LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.WRAP_CONTENT);
-        zoomOut.setLayoutParams(zp);
+        Button zoomOut = zoomButton("−");
         zoomSeek = new SeekBar(this);
         zoomSeek.setMax(100);
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         zoomSeek.setLayoutParams(sp);
-        Button zoomIn = button("+");
-        zoomIn.setTextSize(18);
-        zoomIn.setLayoutParams(zp);
+        Button zoomIn = zoomButton("+");
         zoomLabel = label("1.0×", 14, DIM);
         zoomLabel.setMinWidth(dp(48));
         zoomLabel.setGravity(Gravity.CENTER);
@@ -340,37 +412,48 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar s) {}
         });
 
-        recordButton = button("● Record");
-        recordButton.setBackgroundColor(PANEL); recordButton.setTextColor(TEXT);
-        try { recordButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        recordButton = primaryButton("● Record", BRIGHT);
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
         recordScreen.addView(recordButton);
 
-        camToggle = button(engine != null && engine.isFront() ? "🤳 Front camera" : "📷 Back camera");
-        try { camToggle.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        camToggle.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
-            if (engine == null || engine.isRecording()) return;
-            engine.switchCamera();
-            handler.postDelayed(new Runnable() { @Override public void run() { paintCamToggle(); refreshZoomUi(); } }, 1200);
-            handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); } }, 2500);
-        } });
-        recordScreen.addView(camToggle);
-
-        cloudToggleButton = button("☁ Cloud: on");
-        try { cloudToggleButton.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        cloudToggleButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleCloudEnabled(); } });
-        recordScreen.addView(cloudToggleButton);
+        // Cloud: a real Switch row in a card (the camera switch lives in
+        // the action bar menu, like a camera app's toolbar).
+        LinearLayout cloudRow = new LinearLayout(this);
+        cloudRow.setOrientation(LinearLayout.HORIZONTAL);
+        cloudRow.setGravity(Gravity.CENTER_VERTICAL);
+        cloudRow.setPadding(dp(16), dp(8), dp(16), dp(8));
+        cardStyle(cloudRow);
+        LinearLayout cloudText = new LinearLayout(this);
+        cloudText.setOrientation(LinearLayout.VERTICAL);
+        cloudText.addView(label("Cloud", 17, TEXT));
+        cloudText.addView(label("Upload a copy for streamed playback", 13, DIM));
+        cloudRow.addView(cloudText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        // Kept under its old name: the contract tests and the other
+        // paint/sweep paths still call it the cloud toggle.
+        cloudToggleButton = new android.widget.Switch(this);
+        cloudToggleButton.setThumbTintList(new android.content.res.ColorStateList(
+            new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+            new int[] { TEXT, DIM }));
+        cloudToggleButton.setTrackTintList(new android.content.res.ColorStateList(
+            new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
+            new int[] { Color.parseColor("#7A6A45"), Color.parseColor("#3A2F1E") }));
+        cloudToggleButton.setMinimumHeight(dp(48));
+        cloudToggleButton.setOnCheckedChangeListener(cloudSwitchListener);
+        cloudRow.addView(cloudToggleButton);
+        LinearLayout.LayoutParams cloudLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cloudLp.setMargins(0, dp(10), 0, 0);
+        recordScreen.addView(cloudRow, cloudLp);
 
         // This device: left icon (☁/device), middle date+duration, right share/download
-        recordScreen.addView(label("This device", 17, DIM));
+        recordScreen.addView(sectionHeader("This device"));
         lessonContainer = new LinearLayout(MainActivity.this);
         lessonContainer.setOrientation(LinearLayout.VERTICAL);
-        lessonContainer.setBackgroundColor(BG);
+        lessonContainer.setBackground(rounded(PANEL, 16));
+        lessonContainer.setClipToOutline(true);
         recordScreen.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         exportBtn = button("Export sessions to Downloads");
-        exportBtn.setBackgroundColor(PANEL); exportBtn.setTextColor(TEXT);
-        try { exportBtn.setBackgroundTintList(null); } catch (Throwable ignored) {}
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         recordScreen.addView(exportBtn);
 
@@ -378,8 +461,9 @@ public class MainActivity extends Activity {
         Button advancedLink = new Button(this);
         advancedLink.setText("Advanced settings");
         advancedLink.setTextSize(14); advancedLink.setTextColor(DIM); advancedLink.setAllCaps(false);
-        advancedLink.setBackgroundColor(Color.TRANSPARENT);
-        try { advancedLink.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        advancedLink.setBackground(ripple(Color.TRANSPARENT, 12));
+        advancedLink.setStateListAnimator(null);
+        advancedLink.setMinHeight(dp(48)); advancedLink.setMinimumHeight(dp(48));
         advancedLink.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showCloudSettings(); } });
         recordScreen.addView(advancedLink);
     }
@@ -406,6 +490,12 @@ public class MainActivity extends Activity {
     private void showScreen(String name) {
         currentScreen = name;
         boolean home = "home".equals(name);
+        android.app.ActionBar bar = getActionBar();
+        if (bar != null) {
+            bar.setTitle(home ? "Unwritten Craft" : "Record");
+            bar.setDisplayHomeAsUpEnabled(!home);
+        }
+        invalidateOptionsMenu();
         if (homeScreen != null) homeScreen.setVisibility(home ? View.VISIBLE : View.GONE);
         if (recordScreen != null) recordScreen.setVisibility(home ? View.GONE : View.VISIBLE);
         if (!home) {
@@ -525,7 +615,7 @@ public class MainActivity extends Activity {
                         handler.removeCallbacks(timerRunnable);
                         handler.removeCallbacks(speechRunnable);
                         hideSpeechWarn();
-                        recordButton.setText("● Record");
+                        recordButton.setText("● Record"); paintRecordButton(false);
                     }
                 }
                 @Override public void onMicUnavailable() {
@@ -540,11 +630,66 @@ public class MainActivity extends Activity {
         } catch (Throwable e) { showError("Camera error: " + e.getMessage()); }
     }
 
+    /** Idle: filled red "● Record". Recording: a quiet dark "■ Stop" so
+     *  the live state reads at a glance. */
+    private void paintRecordButton(boolean recording) {
+        if (recordButton == null) return;
+        recordButton.setBackground(ripple(recording ? PANEL : BRIGHT, 28));
+        recordButton.setTextColor(recording ? BRIGHT : 0xFFFFFFFF);
+    }
+
     private void showMicWarn() { if (micWarn != null) micWarn.setVisibility(View.VISIBLE); }
     private void hideMicWarn() { if (micWarn != null) micWarn.setVisibility(View.GONE); }
     private void showSpeechWarn() { if (speechWarn != null) speechWarn.setVisibility(View.VISIBLE); }
     private void hideSpeechWarn() { if (speechWarn != null) speechWarn.setVisibility(View.GONE); }
-    private void paintCamToggle() { if (camToggle != null) camToggle.setText(engine != null && engine.isFront() ? "🤳 Front camera" : "📷 Back camera"); }
+    /** The action-bar camera item names the camera it would switch TO. */
+    private void paintCamToggle() { invalidateOptionsMenu(); }
+
+    private void switchCamera() {
+        if (engine == null || engine.isRecording()) return;
+        engine.switchCamera();
+        handler.postDelayed(new Runnable() { @Override public void run() { paintCamToggle(); refreshZoomUi(); } }, 1200);
+        handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); } }, 2500);
+    }
+
+    /** A round 48dp − / + zoom button. */
+    private Button zoomButton(String text) {
+        Button b = new Button(this);
+        b.setText(text); b.setTextSize(22); b.setTextColor(TEXT);
+        b.setAllCaps(false);
+        b.setBackground(ripple(PANEL, 24));
+        b.setStateListAnimator(null);
+        b.setMinWidth(0); b.setMinimumWidth(0);
+        b.setMinHeight(0); b.setMinimumHeight(0);
+        b.setPadding(0, 0, 0, 0);
+        b.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(48)));
+        return b;
+    }
+
+    // ---------- action bar ----------
+
+    @Override public boolean onCreateOptionsMenu(android.view.Menu menu) {
+        android.view.MenuItem cam = menu.add(0, MENU_CAMERA, 0, "Back camera");
+        cam.setIcon(android.R.drawable.ic_menu_camera);
+        cam.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
+        return true;
+    }
+
+    @Override public boolean onPrepareOptionsMenu(android.view.Menu menu) {
+        android.view.MenuItem cam = menu.findItem(MENU_CAMERA);
+        if (cam != null) {
+            cam.setVisible("record".equals(currentScreen));
+            cam.setTitle(engine != null && engine.isFront()
+                    ? "Front camera — switch to back" : "Back camera — switch to front");
+        }
+        return true;
+    }
+
+    @Override public boolean onOptionsItemSelected(android.view.MenuItem item) {
+        if (item.getItemId() == android.R.id.home) { onBackPressed(); return true; }
+        if (item.getItemId() == MENU_CAMERA) { switchCamera(); return true; }
+        return super.onOptionsItemSelected(item);
+    }
 
     // The status TextView is intentionally hidden (list icons carry
     // state); errors must surface as a Toast instead of dying in it.
@@ -588,7 +733,7 @@ public class MainActivity extends Activity {
             if (engine.startVideo(f)) {
                 lastLessonFile = f;
                 recordStartMs = SystemClock.elapsedRealtime();
-                recordButton.setText("■ Stop  0:00");
+                recordButton.setText("■ Stop  0:00"); paintRecordButton(true);
                 handler.post(timerRunnable);
                 // Fresh mic state, then watch the level.
                 hideMicWarn();
@@ -606,7 +751,7 @@ public class MainActivity extends Activity {
                 // now is the file complete and safe to list and upload.
                 refreshClipList();
                 if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);
-                // A stop that finishes off the record screen (‹ Home
+                // A stop that finishes off the record screen (the up arrow
                 // mid-take, or backgrounded) releases the camera with
                 // it; a plain stop on the record screen keeps it.
                 if ((activityStopped || !"record".equals(currentScreen)) && engine != null) {
@@ -618,7 +763,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(timerRunnable);
         handler.removeCallbacks(speechRunnable);
         hideSpeechWarn();
-        recordButton.setText("● Record");
+        recordButton.setText("● Record"); paintRecordButton(false);
     }
 
     // ---------- clips / files / export ----------
@@ -720,14 +865,12 @@ public class MainActivity extends Activity {
         tv.setText(text);
         tv.setTextSize(sp);
         tv.setTextColor(color);
-        if (bg != null) {
-            tv.setBackgroundColor(bg);
-            try { tv.setBackgroundTintList(null); } catch (Throwable ignored) {}
-        }
+        // Every right-hand action is a 48dp-class round target with a ripple.
+        tv.setBackground(ripple(bg != null ? bg : Color.TRANSPARENT, 24));
         tv.setGravity(Gravity.CENTER);
         tv.setPadding(dp(6), dp(4), dp(6), dp(4));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
-        bp.setMargins(dp(8), 0, 0, 0);
+        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        bp.setMargins(dp(4), 0, 0, 0);
         tv.setLayoutParams(bp);
         tv.setClickable(true);
         tv.setOnClickListener(onClick);
@@ -739,13 +882,21 @@ public class MainActivity extends Activity {
         for (File f : clipFiles()) clipNames.add(f.getName());
         if (lessonContainer == null) return;
         lessonContainer.removeAllViews();
+        if (clipNames.isEmpty()) {
+            TextView empty = label("Nothing yet.", 15, DIM);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(16), dp(20), dp(16), dp(20));
+            lessonContainer.addView(empty);
+            return;
+        }
         for (final String name : clipNames) {
             File file = new File(clipsDir, name);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            row.setBackgroundColor(BG);
-            row.setPadding(dp(8), dp(6), dp(8), dp(6));
+            row.setBackground(rowRipple());
+            row.setMinimumHeight(dp(56));
+            row.setPadding(dp(12), dp(4), dp(4), dp(4));
 
             // left: cloud/device icon
             TextView left = label(leftIconFor(name), 16, TEXT);
@@ -789,7 +940,7 @@ public class MainActivity extends Activity {
                     String badge = link.optInt("progress", 0) + "%";
                     TextView stv = label(badge, 13, DIM);
                     stv.setPadding(dp(8), 0, 0, 0);
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                     bp.setMargins(dp(8), 0, 0, 0);
                     stv.setGravity(Gravity.CENTER);
                     stv.setLayoutParams(bp);
@@ -801,11 +952,10 @@ public class MainActivity extends Activity {
                         sh.setText("\u2197");
                         sh.setTextSize(20);
                         sh.setTextColor(DIM);
-                        sh.setBackgroundColor(PANEL);
-                        try { sh.setBackgroundTintList(null); } catch (Throwable ignored) {}
+                        sh.setBackground(ripple(PANEL, 24));
                         sh.setGravity(Gravity.CENTER);
                         sh.setPadding(dp(6), dp(4), dp(6), dp(4));
-                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                         bp.setMargins(dp(8), 0, 0, 0);
                         sh.setLayoutParams(bp);
                         sh.setClickable(true);
@@ -814,7 +964,7 @@ public class MainActivity extends Activity {
                     } else {
                         TextView stv = label("\u2026", 13, DIM);
                         stv.setPadding(dp(8), 0, 0, 0);
-                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                         bp.setMargins(dp(8), 0, 0, 0);
                         stv.setGravity(Gravity.CENTER);
                         stv.setLayoutParams(bp);
@@ -823,10 +973,11 @@ public class MainActivity extends Activity {
                 } else if ("failed".equals(st)) {
                     TextView stv = label("!", 13, DIM);
                     stv.setPadding(dp(8), 0, 0, 0);
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(36));
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
                     bp.setMargins(dp(8), 0, 0, 0);
                     stv.setGravity(Gravity.CENTER);
                     stv.setLayoutParams(bp);
+                    stv.setBackground(ripple(Color.TRANSPARENT, 24));
                     stv.setClickable(true);
                     stv.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { retryCloud(name); } });
                     row.addView(stv);
@@ -843,8 +994,10 @@ public class MainActivity extends Activity {
 
             lessonContainer.addView(row);
             View divider = new View(this);
-            divider.setBackgroundColor(Color.parseColor("#2E2213"));
-            lessonContainer.addView(divider, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1));
+            divider.setBackgroundColor(LINE);
+            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
+            dl.setMargins(dp(52), 0, 0, 0);
+            lessonContainer.addView(divider, dl);
         }
     }
 
@@ -1040,7 +1193,10 @@ public class MainActivity extends Activity {
 
     private void paintCloudToggle() {
         if (cloudToggleButton == null) return;
-        cloudToggleButton.setText(cloudEnabledCfg() ? "☁ Cloud: on" : "☁ Cloud: off");
+        // Set the switch without firing its listener (no echo toggle).
+        cloudToggleButton.setOnCheckedChangeListener(null);
+        cloudToggleButton.setChecked(cloudEnabledCfg());
+        cloudToggleButton.setOnCheckedChangeListener(cloudSwitchListener);
         applyCloudDependentVisibility();
     }
 
@@ -1206,7 +1362,8 @@ public class MainActivity extends Activity {
         if (hubDetail != null) hubContainer.addView(hubDetailView(hubDetail));
         if (hubRows == null || hubRows.length() == 0) {
             TextView empty = label(hubStatusText(), 15, DIM);
-            empty.setPadding(dp(6), dp(7), dp(6), dp(7));
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(16), dp(20), dp(16), dp(20));
             hubContainer.addView(empty);
             return;
         }
@@ -1215,8 +1372,11 @@ public class MainActivity extends Activity {
             if (row == null) continue;
             LinearLayout r = new LinearLayout(this);
             r.setOrientation(LinearLayout.HORIZONTAL);
-            r.setPadding(dp(6), dp(8), dp(6), dp(8));
-            TextView left = label("☁", 16, TEXT);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setBackground(rowRipple());
+            r.setMinimumHeight(dp(56));
+            r.setPadding(dp(12), dp(6), dp(4), dp(6));
+            TextView left = label("☁", 16, DIM);
             left.setMinWidth(dp(32));
             r.addView(left);
             String title = row.optString("title", row.optString("videoId", ""));
@@ -1229,7 +1389,7 @@ public class MainActivity extends Activity {
             mid.setEllipsize(android.text.TextUtils.TruncateAt.END);
             r.addView(mid);
             TextView go = label("›", 20, DIM);
-            go.setMinWidth(dp(40));
+            go.setMinWidth(dp(48));
             go.setGravity(Gravity.CENTER);
             r.addView(go);
             r.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { openHubSession(row.optString("videoId", "")); } });
@@ -1252,20 +1412,26 @@ public class MainActivity extends Activity {
         } });
     }
 
+    /** A 44dp-tall ripple button that shares a row (weight 1). */
     private Button smallHubButton(String text) {
-        Button b = button(text);
-        try { b.setTextSize(14); } catch (Throwable ignored) {}
-        b.setTextColor(TEXT);
-        b.setBackgroundColor(PANEL);
-        try { b.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        Button b = styledButton(text, PRESSED, TEXT);
+        b.setTextSize(15);
+        b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        lp.setMargins(dp(3), dp(6), dp(3), dp(6));
+        b.setLayoutParams(lp);
         return b;
     }
 
     private View hubDetailView(final JSONObject obj) {
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackgroundColor(PANEL);
+        card.setBackground(rounded(PRESSED, 14));
         card.setPadding(dp(14), dp(14), dp(14), dp(14));
+        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardLp.setMargins(dp(8), dp(8), dp(8), dp(8));
+        card.setLayoutParams(cardLp);
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         TextView t = label(obj.optString("title", obj.optString("videoId", "")), 17, TEXT);
@@ -1273,6 +1439,7 @@ public class MainActivity extends Activity {
         t.setLayoutParams(tp);
         top.addView(t);
         Button close = smallHubButton("✕");
+        close.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(44)));
         close.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
             hubDetail = null;
             if (isViewfinderPlaying) stopLocalPlayback();

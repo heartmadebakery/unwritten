@@ -204,6 +204,57 @@ class IOSRecorderTests(unittest.TestCase):
             self.assertIn(token, phase, token)
 
 
+class IOSNativeFeelTests(unittest.TestCase):
+    """User-ordered Nov 1 (goal: apps feel native and intuitive).
+
+    Record is an inset-grouped List like home, so its swipe actions
+    really fire (they are no-ops inside a ScrollView); the shutter is
+    a camera-style ring and disc; an empty device list is a system
+    empty state; Fetch from link waits for a link."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.view = read(VIEW)
+        cls.record = cls.view.split("private var recordView", 1)[1] \
+                             .split("private func showScreen", 1)[0]
+        cls.home = cls.view.split("private var homeView", 1)[1] \
+                           .split("private var recordView", 1)[0]
+
+    def test_record_is_an_inset_grouped_list_so_swipe_deletes_work(self):
+        self.assertIn("List {", self.record)
+        self.assertIn(".listStyle(.insetGrouped)", self.record)
+        self.assertNotIn("ScrollView", self.record)
+        self.assertIn(".swipeActions", self.view)
+
+    def test_shutter_is_a_ring_and_disc_with_shared_labels(self):
+        self.assertIn("shutterButton", self.record)
+        shutter = self.view.split("private var shutterButton", 1)[1] \
+                           .split("// ---------- screens", 1)[0]
+        self.assertIn("Circle()", shutter)
+        self.assertIn(".stroke(", shutter)
+        self.assertIn("■ Stop  ", shutter)
+        self.assertIn("● Record", shutter)
+        self.assertIn(".accessibilityLabel", shutter)
+        self.assertIn(".sensoryFeedback", shutter)
+
+    def test_empty_device_list_is_a_system_empty_state(self):
+        self.assertIn("ContentUnavailableView", self.record)
+
+    def test_cloud_is_a_native_toggle_row(self):
+        self.assertIn("Toggle(isOn:", self.record)
+        self.assertIn('"Cloud"', self.record)
+        # toggleCloud() flips persisted state; the binding must only act
+        # on a real change, so a redundant set can never flip Cloud.
+        self.assertIn("set: { on in if on != store.cloudOn", self.record)
+        self.assertNotIn("set: { _ in store.toggleCloud() }", self.record)
+
+    def test_fetch_waits_for_a_link_and_submits_from_keyboard(self):
+        self.assertIn(".keyboardType(.URL)", self.home)
+        self.assertIn(".submitLabel(.go)", self.home)
+        self.assertIn(".onSubmit", self.home)
+        self.assertIn(".disabled(", self.home)
+
+
 class IOSBaselineTests(unittest.TestCase):
     """Base device: iPhone (2019-class, like the Pixel 4) — iOS 17+,
     iPhone-only, no storyboards, programmatic SwiftUI like Android's

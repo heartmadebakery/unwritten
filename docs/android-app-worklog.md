@@ -10,6 +10,21 @@ history, the evidence, and the open items.
 State at this log: app committed in `0c0ed9d` (19 files). Prior repo
 HEAD was `b4f70b7`.
 
+## Update — 2026-11-01: native-feel UI pass (source-only)
+
+- Goal "apps feel native": `Theme.Material` + ActionBar (title, up
+  arrow, camera-switch menu action), themed system bars, rounded
+  ripple buttons, a Record primary button, a `Switch` for Cloud, card
+  lists with ripple rows, 48dp targets, empty states. The `‹ Home`
+  button and `📷/🤳` toggle are gone (up arrow / menu item replace them).
+- **Not compiled, not built, not run:** no Android SDK on the machine
+  that did this (this Mac has no JDK either, so not even a `javac`
+  syntax pass — only the contract tests in `AndroidNativeFeelTests`
+  and a manual read-through). `unwritten-craft.apk` is
+  therefore STALE relative to the source. First job for the next
+  machine with the SDK: `bash app/android/build.sh`, install on the
+  Pixel 4, look at every screen, fix what the compiler/device finds.
+
 ## Update — 2026-10-29: quiet-minute check, camera toggle, mic banner
 
 - Parity with the web recorder: a `MediaRecorder.getMaxAmplitude()`

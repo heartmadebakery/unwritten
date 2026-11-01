@@ -18,32 +18,34 @@
 </head>
 <body>
 <div id="app">
-  <header>
-    <h1>Unwritten Craft</h1>
-    <p class="sub">Record, upload, and revisit craft lessons.</p>
+  <header class="topbar">
+    <a class="backbtn" id="backhome-record" href="index.html" aria-label="Back to Home"><span class="bl">Home</span></a>
+    <h1>Record</h1>
+    <div class="baraction">
+      <button class="iconbtn" id="camtoggle" aria-label="Back camera — switch to front" title="Switch camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><path d="M9 13.5a3 3 0 0 1 5.2-2M15 13.5a3 3 0 0 1-5.2 2M14.4 10.4l.1 1.6-1.6-.1M9.6 16.6l-.1-1.6 1.6.1"/></svg></button>
+    </div>
   </header>
   <div id="status">Record a new lesson — teach the way you'd teach anyway.</div>
   <div>
-    <a class="backbtn" id="backhome-record" href="index.html">‹ Home</a>
     <div id="stage">
       <video id="view" autoplay playsinline muted></video>
       <video id="player" class="hidden" playsinline preload="metadata"></video>
       <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
       <div id="playercontrols" class="hidden">
-        <button id="vfplay" title="Play">▶</button>
-        <button id="vfpause" title="Pause">⏸</button>
-        <button id="vfclose" title="Close">✕</button>
+        <button id="vfplay" title="Play" aria-label="Play">▶</button>
+        <button id="vfpause" title="Pause" aria-label="Pause">⏸</button>
+        <button id="vfclose" title="Close" aria-label="Close player">✕</button>
       </div>
     </div>
     <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
     <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
     <div id="zoomrow" class="hidden">
-      <button id="zoomout" title="Zoom out">−</button>
+      <button id="zoomout" title="Zoom out" aria-label="Zoom out">−</button>
       <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
-      <button id="zoomin" title="Zoom in">+</button>
+      <button id="zoomin" title="Zoom in" aria-label="Zoom in">+</button>
       <span id="zoomlabel">1.0×</span>
     </div>
-    <button class="bigbtn" id="recbtn">● Record</button>
+    <div class="shutterrow"><button id="recbtn">● Record</button></div>
     <div class="hidden" id="capcontrols">
       <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
       <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
@@ -51,11 +53,14 @@
     <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list below.</div>
     <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
     <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
-    <div class="smallrow">
-      <button id="camtoggle">📷 Back camera</button>
+    <div class="group">
+      <button class="grow" id="cloudtoggle" role="switch" aria-checked="true">
+        <span class="gicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 0 8.5z"/></svg></span>
+        <span class="glabel">Cloud<small>Upload a copy for streamed playback</small></span>
+        <span class="switch" aria-hidden="true"></span>
+      </button>
     </div>
-    <button class="bigbtn" id="cloudtoggle">☁ Cloud: on</button>
-    <div class="library"><h3>This device</h3><div id="clips"><div class="sempty">Nothing yet.</div></div></div>
+    <div class="library"><h3>This device</h3><div id="clips" class="group"><div class="sempty">Nothing yet.</div></div></div>
     <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
     <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.</p>
     <p id="caps"></p>

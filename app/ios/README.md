@@ -39,10 +39,11 @@ Swift handles what it is good at: the capture-session wrapper and the
 UI (built programmatically — no storyboards). It is the same design
 as the web and Android apps, built from iOS parts: a `NavigationStack`
 home (a grouped list with Record and Upload over the hub last, pull
-to refresh) that pushes Record (preview, zoom, one Record/Stop
-button, in-viewfinder playback, camera switch in the toolbar, cloud,
-device sessions, an Advanced settings link opening the Cloud settings
-sheet) and hub sessions (their own player, never the camera,
+to refresh) that pushes Record (an inset-grouped list: the
+viewfinder card with zoom, a round camera-style shutter, the Cloud
+switch, and the device sessions — a swipe deletes — plus in-viewfinder
+playback, camera switch in the toolbar, and an Advanced settings link
+opening the Cloud settings sheet) and hub sessions (their own player, never the camera,
 plus the write-up, corrections and chapters, with Share/Delete in the
 toolbar). The system back button and edge swipe leave Record exactly
 like the old ‹ Home did: a live take stops and is kept, and the camera

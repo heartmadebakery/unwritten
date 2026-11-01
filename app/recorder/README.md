@@ -24,6 +24,13 @@ palette, the same session rows — newest first, date + length, tap to
 play inside the viewfinder, ↓ to download one file, long-press to
 delete it from the device and the cloud.
 
+It is drawn as a phone app, not a web page: a large title on home, a
+top bar with a back chevron on Record and Upload (camera switch on the
+right), grouped inset lists, a real **Cloud** switch, and a round
+shutter for Record. `common.js` tags the page `ios` or `android` so the
+CSS can nudge radii, type and the header per platform; touch targets
+are 48px and keyboard focus is visible.
+
 There are no roles, steps, prompts, or session codes. The mentor
 teaches the way they would anyway; afterwards the pipeline transcribes
 the take, drafts the write-up in the mentor's words, and surfaces the
@@ -38,8 +45,8 @@ and adapts on its own:
 
 - **In-page recording available:** the record screen shows a camera
   preview, a zoom row below it (hidden when the camera reports no
-  zoom range), and one **● Record** / **■ Stop** button carrying the
-  running timer; saved takes list on the home screen. If the stream
+  zoom range), and one round shutter-style Record / Stop button (the running
+  timer rides the REC badge); saved takes list on the home screen. If the stream
   ends up video-only, a red **No
   microphone** banner says so — the mentor's words are the whole point.
   While recording, a local mic-level monitor warns after a quiet
@@ -56,8 +63,8 @@ after the local save, and the session's **↗** action shares its
 streaming (adaptive HLS player) link once Cloud finishes encoding —
 the link is also copied to the clipboard. Uploads are
 resumable (TUS), resume after reloads, and never delay or endanger the
-local take. **☁️ Cloud** toggles saving off (lessons stay on-device
-only); **⚙️ Cloud settings** holds overrides; **Export sessions to
+local take. the **Cloud** switch turns saving off (lessons stay on-device
+only); **Advanced settings** holds overrides; **Export sessions to
 Downloads** appears only with Cloud off, as the offline fallback.
 Long-pressing a session removes it from the device vault *and* the
 cloud copy (cloud first — if that fails, the local lesson is kept).
@@ -71,7 +78,7 @@ cd app/recorder && bash build.sh        # stamps token #N of 10 into dist/
 cd ../.. && .venv/bin/python -m http.server 8765 --directory app/recorder/dist
 ```
 
-As a fallback, a library ID + API key pasted in ⚙️ settings
+As a fallback, a library ID + API key pasted in Advanced settings
 talks to the library directly instead of the signer. The key can manage
 that one library only; it is stored in `localStorage` and sent only to
 `video.bunnycdn.com`. Fine for the mentor's own device.

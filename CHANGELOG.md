@@ -15,6 +15,29 @@ history (30 commits) and is maintained in the open from then on.
   contract test added.
 
 ### Changed
+- **Native-feel UI pass on all three apps (user-ordered goal: they
+  should feel native to their platforms and be intuitive).**
+  - *Web:* drawn as a phone app — large title on home, top bar with a
+    back chevron and the camera switch on Record/Upload, grouped inset
+    lists, a real `role="switch"` Cloud row, a round shutter-style
+    Record button, 48px targets, visible keyboard focus, per-platform
+    nudges (`html.ios` / `html.android`). Same element IDs; service
+    worker cache `v9`.
+  - *iOS:* Record is an inset-grouped List (viewfinder card with zoom,
+    a ring-and-disc shutter, the system Cloud toggle, and session rows
+    whose swipe now really deletes — it was a no-op in the old
+    ScrollView); empty state is a `ContentUnavailableView`; Fetch from
+    link waits for a link and submits from the keyboard's Go. The Cloud
+    toggle's binding now acts only on a real change.
+  - *Android (source-only — no SDK on the machine that wrote it, so
+    **not compiled and the APK is NOT rebuilt**):* `Theme.Material`
+    with an ActionBar (up arrow replaces the `‹ Home` button, camera
+    switch is a menu action), themed system bars, rounded ripple
+    buttons, a primary Record button, a `Switch` for Cloud, card lists
+    with ripple rows and empty states, 48dp targets. Rebuild and
+    shake out on the Pixel 4 before trusting it.
+  - Contract tests added per platform; the Android `‹ Home` assertion
+    was rewritten (up arrow) — user-ordered, noted in the test.
 - **Home is actions with the hub last; cloud + device moved to the
   record screen (user-ordered, all three apps).** Cloud settings hide
   behind a small Advanced settings link (debug overrides only). Web:

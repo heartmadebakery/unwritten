@@ -18,21 +18,29 @@
 </head>
 <body>
 <div id="app">
-  <header>
+  <header class="largetitle">
     <h1>Unwritten Craft</h1>
     <p class="sub">Record, upload, and revisit craft lessons.</p>
   </header>
-  <div id="status">Record a new lesson, upload a video, or open a published session below.</div>
-  <div>
-    <a class="bigbtn" id="gorecord" href="record.html">● Record</a>
-    <a class="bigbtn" id="goupload" href="upload.html">⬆ Upload video</a>
-    <div class="library"><h3>Hub</h3>
-      <div id="hubstatus"></div>
-      <div id="hubdetail"></div>
-      <video id="hubplayer" class="hidden" controls playsinline preload="metadata"></video>
-      <button id="hubclose" class="hidden backbtn" title="Close player">✕ Close</button>
-      <div id="hublist"><div class="sempty">Loading…</div></div>
-    </div>
+  <div id="status"></div>
+  <div class="group">
+    <a class="grow" id="gorecord" href="record.html">
+      <span class="gicon rec" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg></span>
+      <span class="glabel">Record<small>Film a lesson, the way you'd teach anyway</small></span>
+      <span class="chev" aria-hidden="true"></span>
+    </a>
+    <a class="grow" id="goupload" href="upload.html">
+      <span class="gicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span>
+      <span class="glabel">Upload video<small>From your library, Files, or a link</small></span>
+      <span class="chev" aria-hidden="true"></span>
+    </a>
+  </div>
+  <div class="library"><h3>Hub</h3>
+    <div id="hubstatus"></div>
+    <div id="hubdetail"></div>
+    <video id="hubplayer" class="hidden" controls playsinline preload="metadata"></video>
+    <button id="hubclose" class="hidden bigbtn" title="Close player">Close player</button>
+    <div id="hublist" class="group"><div class="sempty">Loading…</div></div>
   </div>
 </div>
 <script src="common.js"></script>

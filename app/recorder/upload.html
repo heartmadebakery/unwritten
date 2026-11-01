@@ -18,23 +18,23 @@
 </head>
 <body>
 <div id="app">
-  <header>
-    <h1>Unwritten Craft</h1>
-    <p class="sub">Record, upload, and revisit craft lessons.</p>
+  <header class="topbar">
+    <a class="backbtn" id="backhome-upload" href="index.html" aria-label="Back to Home"><span class="bl">Home</span></a>
+    <h1>Upload</h1>
+    <div class="baraction"></div>
   </header>
-  <div id="status">Upload a lesson video — it is saved on this device like a recording.</div>
+  <div id="status"></div>
   <div>
-    <a class="backbtn" id="backhome-upload" href="index.html">‹ Home</a>
     <div class="library"><h3>Upload a lesson video</h3></div>
     <p class="note">Pick a video file: it is saved as a session on this device and uploaded to Cloud, and the pipeline picks it up exactly like a recording.</p>
     <input type="file" id="uploadinput" accept="video/*">
-    <button class="bigbtn" id="uploadbtn">⬆ Upload</button>
+    <button class="bigbtn primary" id="uploadbtn">Upload</button>
     <div id="uploadstatus"></div>
     <div class="library"><h3>Or paste a link</h3></div>
     <p class="note">A direct video file downloads right here; a YouTube or watch-page link queues to the pipeline, which fetches and processes it like a recording.</p>
     <label for="urlinput" class="vh">Video link</label>
     <input type="url" id="urlinput" inputmode="url" autocomplete="off" placeholder="https://…">
-    <button class="bigbtn" id="urlfetchbtn">⬇ Fetch from link</button>
+    <button class="bigbtn" id="urlfetchbtn">Fetch from link</button>
     <div id="urlstatus"></div>
   </div>
 </div>

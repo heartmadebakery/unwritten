@@ -132,6 +132,27 @@ README; the notable porting decisions:
   so the granted/denied branches past the prompt are verified by
   code path + regression test, not by tapping — see open items.
 
+## Update — 2026-11-01: native-feel pass
+
+- Record is now an inset-grouped `List` (viewfinder card + zoom, a
+  ring-and-disc shutter, the system Cloud `Toggle`, device sessions,
+  Advanced settings). Swipe-to-delete on session rows now really
+  works (`.swipeActions` is a no-op inside a `ScrollView`, which is
+  what Record was). Empty device list is a `ContentUnavailableView`;
+  Fetch from link is dimmed until a link is pasted and the keyboard's
+  Go submits it. The Cloud toggle's binding acts only on a real change
+  (`toggleCloud()` flips persisted state).
+- Evidence: iPhone 14 Pro (device build via `devicectl`, screenshots
+  with `devicectl device capture screenshot`) — home, Record with the
+  live front camera, Cloud switch, empty/non-empty device list. The
+  simulator runtime is not installed on this Mac, so no simulator
+  captures. A black viewfinder seen mid-session was the phone lying
+  lens-down on a charger (unchanged HEAD was equally black); a
+  face-up capture shows a live picture.
+- Not yet observed: swipe-to-delete and the long-press menu by hand
+  (no remote touch), a take recorded from the new shutter, banners on
+  the small-screen layout (iPhone SE-class height).
+
 ## Open items
 
 1. **On-device shakeout (real iPhone)** — partly done (Oct 29):
