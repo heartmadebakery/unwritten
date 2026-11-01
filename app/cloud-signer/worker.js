@@ -107,7 +107,10 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
     if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
-    if (pool.length && !pool.includes(request.headers.get("X-Signer-Token") || "")) {
+    // No pool configured fails LOUD, never open: an unset
+    // SIGNER_TOKENS must not silently serve the library to the world.
+    if (!pool.length) return json({ error: "signer tokens not configured" }, 500);
+    if (!pool.includes(request.headers.get("X-Signer-Token") || "")) {
       return json({ error: "unauthorized" }, 401);
     }
     // Clients paste signer URLs with or without a trailing slash;
@@ -187,7 +190,9 @@ export default {
         const store = hubStore(env);
         if (!store) return json({ error: "fetch store not configured" }, 503);
         if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
-        const id = decodeURIComponent(m[1]), verb = m[2];
+        let id;
+        try { id = decodeURIComponent(m[1]); } catch { return json({ error: "bad job id" }, 400); }
+        const verb = m[2];
         const job = await store.prepare(`SELECT * FROM fetch_jobs WHERE id = ?`).bind(id).first();
         if (!job) return json({ error: "not found" }, 404);
         if (job.status !== "claimed")
@@ -272,7 +277,8 @@ export default {
         if (m) {
           const store = hubStore(env);
           if (!store) return json({ error: "hub store not configured" }, 503);
-          const videoId = decodeURIComponent(m[1]);
+          let videoId;
+          try { videoId = decodeURIComponent(m[1]); } catch { return json({ error: "bad video id" }, 400); }
           if (request.method === "GET") {
             const row = await store
               .prepare(`SELECT * FROM sessions WHERE video_id = ?`)
@@ -303,6 +309,10 @@ export default {
           return json({ error: "method not allowed" }, 405);
         }
       }
+      // Only / mints videos and proxies status/delete: any other
+      // path 404s instead of falling into the trio below (a typo'd
+      // client must never mint or delete a video by accident).
+      if (normPath !== "/") return json({ error: "not found" }, 404);
       if (request.method === "POST") {
         const body = await request.json().catch(() => ({}));
         let videoId = body.videoId || null;

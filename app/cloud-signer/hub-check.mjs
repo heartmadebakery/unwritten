@@ -119,6 +119,29 @@ const VID = "vid-123";
   const r = await call(authed, "PUT", `/hub/sessions/${VID}`, {}, TOKEN);
   check(r.status === 405, "unknown hub method rejected");
 }
+// Only / mints videos and proxies status/delete: any other path must
+// 404 instead of falling into the create/status/delete trio.
+{
+  const p = await call(authed, "POST", "/hub/sessions", { title: "x" }, TOKEN);
+  check(p.status === 404, "unknown POST path 404s instead of minting a video");
+  const g = await call(authed, "GET", "/nope?videoId=x", undefined, TOKEN);
+  check(g.status === 404, "unknown GET path 404s instead of proxying status");
+  const d = await call(authed, "DELETE", "/nope?videoId=x", undefined, TOKEN);
+  check(d.status === 404, "unknown DELETE path 404s instead of deleting");
+}
+// A malformed id answers 400, never an uncaught 500.
+{
+  const f = await call(authed, "POST", "/fetch/jobs/%/done", {}, TOKEN);
+  check(f.status === 400, "malformed fetch job id is a 400");
+  const h = await call(authed, "GET", "/hub/sessions/%", undefined, TOKEN);
+  check(h.status === 400, "malformed hub video id is a 400");
+}
+// No token pool configured fails LOUD, never open: unset
+// SIGNER_TOKENS must not silently serve the library to the world.
+{
+  const r = await call(open, "GET", "/hub/sessions", undefined, TOKEN);
+  check(r.status === 500, "empty token pool fails closed");
+}
 // Pipeline proxy needs the token like every other route: an open
 // proxy would leak the library listing to anyone.
 {

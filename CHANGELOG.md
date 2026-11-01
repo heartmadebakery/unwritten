@@ -9,6 +9,12 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-01
 
 ### Fixed
+- **Signer routing hardened, auth fails closed.** Only `/` mints
+  videos and proxies status/delete now — any other path 404s instead
+  of falling into the trio (a typo'd client could mint or delete a
+  video); malformed job/video ids answer 400 instead of an uncaught
+  500; and an empty token pool fails loud (500) instead of silently
+  serving the library. 6 new hub checks (47 green).
 - **iOS playback was broken for hub sessions and device recordings.**
   *Hub:* the Cloud CDN's hotlink protection 403s any request without
   the player page as `Referer` (the pipeline fetcher already sends it),
