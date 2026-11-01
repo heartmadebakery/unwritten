@@ -9,6 +9,14 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-01
 
 ### Fixed
+- **Fetcher robustness: atomic downloads, honest errors.** Direct
+  URL downloads land via `.part` + rename, so an interrupted
+  download can no longer leave a truncated lesson that a retry
+  would process as real; non-JSON 200s surface as wrapped errors
+  instead of raw tracebacks; non-object state files fail loudly
+  instead of silently reprocessing everything; the token-auth hint
+  moved onto remux failures only (it misdirected ffmpeg-missing
+  cases); both `--max` flags answer clean 2s.
 - **Signer routing hardened, auth fails closed.** Only `/` mints
   videos and proxies status/delete now — any other path 404s instead
   of falling into the trio (a typo'd client could mint or delete a

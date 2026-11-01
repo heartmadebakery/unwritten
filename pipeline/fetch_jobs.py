@@ -147,7 +147,14 @@ def _request(cfg, method, path, body=None):
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read().decode("utf-8")
-            return json.loads(raw) if raw.strip() else {}
+            if not raw.strip():
+                return {}
+            try:
+                return json.loads(raw)
+            except ValueError:
+                raise QueueError("fetch queue answered %s with not JSON "
+                                 "(edge error page?): %.80s"
+                                 % (path, raw.strip()))
     except urllib.error.HTTPError as exc:
         eb = exc.read().decode("utf-8", "replace")[:300]
         if exc.code == 401:
@@ -180,8 +187,22 @@ def finish_job(cfg, job_id, ok, session="", error=""):
 
 
 def download_direct(url, dest):
-    """Plain-HTTPS download; .part sidecar + resume come with it."""
-    return cloud_fetch.http_download(url, dest)
+    """Plain-HTTPS download into a .part sidecar, renamed only on
+    success — the cloud path's discipline: an interrupted download
+    must never leave a truncated lesson that a retry would process
+    as real."""
+    part = dest + ".part"
+    try:
+        cloud_fetch.http_download(url, part)
+    except Exception:
+        try:
+            if os.path.exists(part):
+                os.unlink(part)
+        except OSError:
+            pass
+        raise
+    os.replace(part, dest)
+    return dest
 
 
 def _ytdlp_cmd():
@@ -275,7 +296,11 @@ def main():
     while args:
         flag = args.pop(0)
         if flag == "--max" and args:
-            max_n = int(args.pop(0))
+            try:
+                max_n = int(args.pop(0))
+            except ValueError:
+                print("invalid --max value (want an integer)")
+                return 2
         elif flag == "--retry-failed":
             retry_failed = True
         else:

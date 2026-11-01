@@ -118,6 +118,17 @@ class TestListVideos(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     cf.http_get_json("https://x/y", {})
 
+    def test_non_json_body_wrapped_as_runtime(self):
+        # A 200 with a non-JSON body (edge error page) must surface
+        # as RuntimeError like every other transport failure, not a
+        # raw traceback mid-run.
+        resp = mock.MagicMock()
+        resp.read.return_value = b"<html>edge exploded</html>"
+        resp.__enter__.return_value = resp
+        with mock.patch("urllib.request.urlopen", return_value=resp):
+            with self.assertRaises(RuntimeError):
+                cf.http_get_json("https://x/y", {})
+
 
 class TestRunCloudSh(unittest.TestCase):
     def test_failures_are_loud_and_counted(self):
@@ -146,6 +157,17 @@ class TestState(unittest.TestCase):
             path = os.path.join(td, "state.json")
             with open(path, "w") as fh:
                 fh.write("{nope")
+            with self.assertRaises(SystemExit):
+                cf.load_state(path)
+
+    def test_non_dict_state_fails_loudly(self):
+        # Valid JSON that is not an object (e.g. []) is as corrupt as
+        # garbage: silently treating it as empty would reprocess
+        # every cloud video.
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(td, "state.json")
+            with open(path, "w") as fh:
+                fh.write("[]")
             with self.assertRaises(SystemExit):
                 cf.load_state(path)
 
@@ -330,6 +352,34 @@ class TestDownloadReferer(unittest.TestCase):
                     cf.download_video(cfg, vid, td)
             self.assertEqual(os.listdir(td), [])
 
+    def test_remux_failure_names_token_auth(self):
+        # A failed remux (auth-blocked playlist) points at Stream ->
+        # Security, wherever the failure surfaces.
+        with mock.patch.object(cf.shutil, "which",
+                               return_value="/bin/ffmpeg"), \
+                mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=1,
+                                         stderr="403 Forbidden")
+            with self.assertRaises(RuntimeError) as ctx:
+                cf.remux_hls("https://cdn/pl.m3u8", "/tmp/x.mp4", "REF")
+        self.assertIn("token-authenticated", str(ctx.exception))
+
+    def test_missing_ffmpeg_names_only_the_install(self):
+        # A missing ffmpeg names the install — never the token-auth
+        # hint, which would send the operator to the wrong fix.
+        cfg = {"library_id": "7", "cdn": "vz-x.b-cdn.net"}
+        vid = {"guid": "guid-99", "title": "t",
+               "availableResolutions": ""}
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(
+                    cf, "remux_hls",
+                    side_effect=RuntimeError(
+                        "ffmpeg not found on PATH — needed to fetch u")):
+                with self.assertRaises(RuntimeError) as ctx:
+                    cf.download_video(cfg, vid, td)
+        self.assertIn("ffmpeg not found", str(ctx.exception))
+        self.assertNotIn("token-authenticated", str(ctx.exception))
+
     def test_main_marks_failure_and_continues(self):
         # One failing video is recorded as failed; later videos in
         # the same batch still fetch instead of being skipped.
@@ -375,6 +425,15 @@ class TestCloudCli(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     rp.main()
             self.assertNotEqual(ctx.exception.code, 0)
+
+
+class TestCloudFetchMain(unittest.TestCase):
+    def test_bad_max_flag_is_a_clean_error(self):
+        # A non-integer --max answers 2 with a message, not a raw
+        # ValueError traceback.
+        argv = ["cloud_fetch.py", "root", "--max", "abc"]
+        with mock.patch.object(sys, "argv", argv):
+            self.assertEqual(cf.main(), 2)
 
 
 if __name__ == "__main__":

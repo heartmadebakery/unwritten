@@ -72,7 +72,7 @@ def http_get_json(url, headers):
     req = urllib.request.Request(url, headers=hdrs)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            raw = resp.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", "replace")[:300]
         raise RuntimeError("Cloud library API %s for %s: %s"
@@ -83,6 +83,11 @@ def http_get_json(url, headers):
     except (OSError, http.client.HTTPException) as exc:
         raise RuntimeError("Cloud library request failed for %s: %s"
                            % (url, exc))
+    try:
+        return json.loads(raw)
+    except ValueError:
+        raise RuntimeError("Cloud library API answered %s with not JSON "
+                           "(edge error page?): %.80s" % (url, raw.strip()))
 
 
 def http_download(url, dest, referer=""):
@@ -219,7 +224,10 @@ def remux_hls(url, dest, referer=""):
         raise RuntimeError("ffmpeg remux timed out for %s: %s" % (url, exc))
     if proc.returncode != 0 or not os.path.exists(dest):
         tail = (proc.stderr or "").strip().splitlines()
-        raise RuntimeError("ffmpeg remux failed for %s: %s"
+        raise RuntimeError("ffmpeg remux failed for %s: %s "
+                           "(token-authenticated libraries block direct "
+                           "downloads — check Stream -> Security in the "
+                           "library dashboard)"
                            % (url, tail[-1] if tail else proc.returncode))
     return dest
 
@@ -258,14 +266,13 @@ def download_video(cfg, vid, dest_dir):
         os.replace(part, dest)
         return dest
     # No MP4 rendition served (or none listed): remux the HLS playlist.
+    # (A failed remux names the token-auth hint itself; anything else —
+    # a missing ffmpeg, a timeout — passes through naming its own fix.)
     try:
         remux_hls(playlist_url(cfg["cdn"], guid), part, referer)
-    except RuntimeError as exc:
+    except RuntimeError:
         _drop(part)
-        raise RuntimeError(
-            "%s (token-authenticated libraries block direct "
-            "downloads — check Stream -> Security in the library dashboard)"
-            % exc)
+        raise
     os.replace(part, dest)
     return dest
 
@@ -280,7 +287,12 @@ def load_state(path):
         raise SystemExit("Unreadable cloud state %s: %s "
                          "(fix or move it aside — deleting it would "
                          "reprocess every cloud video)." % (path, exc))
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        raise SystemExit("Unreadable cloud state %s: valid JSON but not "
+                         "an object (fix or move it aside — treating it "
+                         "as empty would reprocess every cloud video)."
+                         % path)
+    return data
 
 
 def save_state(path, state):
@@ -303,7 +315,11 @@ def main():
         if flag == "--state" and args:
             state_path = args.pop(0)
         elif flag == "--max" and args:
-            max_n = int(args.pop(0))
+            try:
+                max_n = int(args.pop(0))
+            except ValueError:
+                print("invalid --max value (want an integer)")
+                return 2
         else:
             print("unknown flag: %s" % flag)
             return 2

@@ -135,6 +135,21 @@ class TestQueueClient(unittest.TestCase):
                 fj.claim_job(self.cfg)
         self.assertIn("FETCH_QUEUE_URL", str(ctx.exception))
 
+    def test_non_json_success_raises_queue_error(self):
+        # A 200 with a non-JSON body (edge error page) must surface
+        # as QueueError, not a raw traceback mid-run.
+        resp = mock.MagicMock()
+        resp.read.return_value = b"<html>edge exploded</html>"
+        resp.__enter__.return_value = resp
+
+        def fake_open(req, timeout=30):
+            return resp
+
+        with mock.patch.object(fj.urllib.request, "urlopen", fake_open):
+            with self.assertRaises(fj.QueueError) as ctx:
+                fj.claim_job(self.cfg)
+        self.assertIn("not JSON", str(ctx.exception))
+
 
 class TestNaming(unittest.TestCase):
     def test_media_name_matches_the_filename_contract(self):
@@ -158,6 +173,42 @@ class TestNaming(unittest.TestCase):
             with open(dest, "wb") as fh:
                 fh.write(b"data")
             self.assertEqual(fj.existing_media(td), dest)
+
+    def test_failed_direct_leaves_no_lesson_file(self):
+        # Mirror of the cloud path's .part discipline: an interrupted
+        # direct download must leave neither the lesson file (a
+        # truncated lesson would be processed as real on retry) nor
+        # its sidecar.
+        def flaky(url, dest, referer=""):
+            with open(dest, "wb") as fh:
+                fh.write(b"x" * 8)
+            raise fj.cloud_fetch.DownloadError(-1, "request failed")
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = os.path.join(td, "unwritten_lesson_x.mp4")
+            with mock.patch.object(fj.cloud_fetch, "http_download",
+                                   side_effect=flaky):
+                with self.assertRaises(fj.cloud_fetch.DownloadError):
+                    fj.download_direct("https://cdn/x/v.mp4", dest)
+            self.assertEqual(os.listdir(td), [])
+
+    def test_direct_download_lands_atomically(self):
+        # A successful direct download lands at the lesson path with
+        # no sidecar left behind.
+        def fake_dl(url, dest, referer=""):
+            with open(dest, "wb") as fh:
+                fh.write(b"x" * 8)
+            return dest
+
+        with tempfile.TemporaryDirectory() as td:
+            dest = os.path.join(td, "unwritten_lesson_x.mp4")
+            with mock.patch.object(fj.cloud_fetch, "http_download",
+                                   side_effect=fake_dl):
+                got = fj.download_direct("https://cdn/x/v.mp4", dest)
+            self.assertEqual(got, dest)
+            self.assertTrue(os.path.exists(dest))
+            self.assertEqual(
+                [n for n in os.listdir(td) if n.endswith(".part")], [])
 
     def test_source_round_trip(self):
         with tempfile.TemporaryDirectory() as td:
@@ -252,6 +303,13 @@ class TestFetchCli(unittest.TestCase):
                 with self.assertRaises(SystemExit) as ctx:
                     rp.main()
             self.assertNotEqual(ctx.exception.code, 0)
+
+    def test_bad_max_flag_is_a_clean_error(self):
+        # A non-integer --max answers 2 with a message, not a raw
+        # ValueError traceback.
+        argv = ["fetch_jobs.py", "root", "--max", "abc"]
+        with mock.patch.object(sys, "argv", argv):
+            self.assertEqual(fj.main(), 2)
 
 
 class TestFetchMode(unittest.TestCase):
