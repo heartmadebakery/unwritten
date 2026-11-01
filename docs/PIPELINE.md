@@ -57,6 +57,29 @@ dashboard's library API page — and both stay on this machine only
 (same trust as the apps' direct mode). Without `--cloud` the pipeline
 never touches the network: same single-lesson flow as before.
 
+## Fetched URL jobs
+
+Pasting a link (YouTube, watch pages, direct media files) in any
+app's upload screen queues it at the signer (`POST /fetch/jobs`, D1
+table `fetch_jobs`); the pipeline claims jobs oldest-first,
+downloads each (yt-dlp for watch pages, plain HTTPS for direct
+files), and runs it like a session:
+
+```
+export FETCH_QUEUE_URL=https://unwritten-cloud-signer.heartmade.workers.dev
+pipeline/run_pipeline.py --fetch work/cloud [--max N] [--retry-failed]
+```
+
+Each job lands in `work/cloud/fetch_<jobid>/` as
+`unwritten_lesson_<stamp>.mp4` plus `source.json` (URL, title, job
+id), then runs into its own `work/cloud/<title>__<jobid>/` dir.
+Failed jobs stay failed until `--retry-failed` reclaims them, and a
+claim older than two hours counts as a crashed worker and comes
+back. `FETCH_QUEUE_TOKEN` overrides the signer token (else
+`CLOUD_PROXY_TOKEN`, else line 1 of the pool file);
+`CLOUD_PROXY_URL` stands in for the queue URL. `run_cloud.sh` runs
+`--fetch` ahead of `--cloud` whenever the queue is configured.
+
 Python deps live in `.venv` (faster-whisper); the runner re-invokes
 the transcription stage under it when present. Everything else is
 stdlib + ffmpeg + Muse calls.

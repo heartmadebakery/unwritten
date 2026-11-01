@@ -8,6 +8,18 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Added
+- **URL fetch queue (user-ordered).** Paste a link on any app's
+  upload screen: direct video files download in the page (web) while
+  YouTube/watch links queue at the signer (`POST /fetch/jobs`, D1
+  table `fetch_jobs`) for the pipeline, which claims them
+  oldest-first, downloads with yt-dlp or plain HTTPS, and runs each
+  like a session (`run_pipeline.py --fetch`, also in `run_cloud.sh`
+  when configured). Failed jobs stay failed until `--retry-failed`;
+  claims older than two hours come back. Natives queue every link
+  server-side. Needs `migrations/0002_fetch_jobs.sql` applied + a
+  worker redeploy (service gate: 41 hub checks).
+
 ### Changed
 - **iOS feels at home on iOS (user-ordered), same design as web and
   Android.** `ContentView.swift` now uses a `NavigationStack`: home is

@@ -235,6 +235,21 @@ public class MainActivity extends Activity {
         upload.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
         homeScreen.addView(upload);
 
+        // Or paste a link: YouTube/watch pages queue to the pipeline
+        // fetcher, which downloads and processes them like a take.
+        final EditText urlInput = new EditText(this);
+        urlInput.setHint("Paste a video link…");
+        urlInput.setTextSize(16);
+        urlInput.setTextColor(TEXT);
+        urlInput.setHintTextColor(DIM);
+        urlInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        homeScreen.addView(urlInput);
+        Button urlFetch = button("⬇ Fetch from link");
+        try { urlFetch.setBackgroundTintList(null); } catch (Throwable ignored) {}
+        urlFetch.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { queueFetchUrl(urlInput.getText().toString().trim()); } });
+        homeScreen.addView(urlFetch);
+
         // Hub: published lessons, same stories as the web hub. The hub
         // lives on the signer, so this section only fills when a signer
         // URL and token are configured and Cloud is on.
@@ -411,6 +426,32 @@ public class MainActivity extends Activity {
         } catch (Throwable e) {
             Toast.makeText(this, "No file picker on this device.", Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void queueFetchUrl(final String url) {
+        if (url.isEmpty()) {
+            Toast.makeText(this, "Paste a link first.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) {
+            Toast.makeText(this, "Queuing needs the signer token — add it in Cloud settings.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Toast.makeText(this, "⬇ Queuing…", Toast.LENGTH_SHORT).show();
+        final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                new HubClient(surl, stok).queueFetchJob(url);
+            } catch (final Exception e) {
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    Toast.makeText(MainActivity.this, "Couldn't queue that link (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
+                } });
+                return;
+            }
+            runOnUiThread(new Runnable() { @Override public void run() {
+                Toast.makeText(MainActivity.this, "✅ Queued — the pipeline will fetch the video.", Toast.LENGTH_LONG).show();
+            } });
+        } });
     }
 
     @Override protected void onActivityResult(int req, int result, Intent data) {

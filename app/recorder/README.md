@@ -13,7 +13,10 @@ into a servable copy. Every take is saved to the on-device vault
 (IndexedDB) with no download prompt, and with Cloud on (a default) a
 copy is also uploaded for streamed playback. An upload rides the exact
 session path of a take, so the pipeline picks it up the same way a
-recording is picked up.
+recording is picked up. Pasting a link instead of a file works too:
+direct video files download in the page, while YouTube and
+watch-page links queue to the pipeline (`POST /fetch/jobs`), which
+fetches them with yt-dlp and processes them like a recording.
 
 The layout mirrors the [native Android app](../android/): the same dark
 palette, the same session rows — newest first, date + length, tap to

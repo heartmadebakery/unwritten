@@ -36,11 +36,12 @@ of these places:
 | `MODEL_API_KEY` (Meta Model API) | `.env` at repo root (git-ignored, `export KEY=value` lines) | Paste your key. Without it the pipeline falls back to local faster-whisper transcription and the keyless `muse`-runner drafting path — slower, fully offline-capable. |
 | `CLOUD_LIBRARY_ID`, `CLOUD_LIBRARY_KEY`, `CLOUD_CDN_HOSTNAME` | `.env` | Stream dashboard → your library → API page. `KEY` may be omitted when `CLOUD_PROXY_URL` is set (listing goes through the signer instead). |
 | `CLOUD_PROXY_URL` (optional) | `.env` | The signer worker URL (below). Lets the pipeline list the library without holding the library key. |
+| `FETCH_QUEUE_URL`, `FETCH_QUEUE_TOKEN` (optional) | `.env` | Fetch-queue worker URL (falls back to `CLOUD_PROXY_URL`); token falls back to `CLOUD_PROXY_TOKEN`, then line 1 of `tokens.txt`. |
 | `HUB_SIGNER_URL`, `HUB_SIGNER_TOKEN` (optional) | `.env`, or `run_cloud.sh` defaults | Publish target; the token defaults to line 1 of `tokens.txt`. |
 | `UNWRITTEN_TRANSCRIBE`, `UNWRITTEN_WHISPER_MODEL`, `UNWRITTEN_ASR_KEYWORDS`, `UNWRITTEN_ASR_LANGUAGES`, `MUSE_BIN` (all optional) | `.env` / environment | Transcription backend + hints; `muse` CLI override (default: `muse` on `PATH`, else `~/.local/bin/muse`). |
 | Signer token pool, 10 lines | `app/cloud-signer/tokens.txt` (git-ignored, `chmod 600`) | **Either** copy the existing file over securely (preferred — keeps every shipped build valid), **or** mint a fresh pool: `bash app/cloud-signer/mint-tokens.sh`, then set it on the worker (step 3). Never print a token; builds log only `token #N of 10`. |
 | `CLOUD_API_KEY`, `SIGNER_TOKENS` | Cloudflare Worker secrets (never a file) | `npx wrangler secret put CLOUD_API_KEY`, and `paste -sd, tokens.txt \| npx wrangler secret put SIGNER_TOKENS` (comma-joins without printing). |
-| Worker D1 binding | `wrangler.toml` (`database_id`, committed) | Reuse the existing worker: keep as is. Fresh worker: `npx wrangler d1 create unwritten-hub`, paste the printed id, apply `migrations/0001_sessions.sql`. |
+| Worker D1 binding | `wrangler.toml` (`database_id`, committed) | Reuse the existing worker: keep as is, but apply `migrations/0002_fetch_jobs.sql` + redeploy for the URL queue. Fresh worker: `npx wrangler d1 create unwritten-hub`, paste the printed id, apply `migrations/0001_sessions.sql` and `0002_fetch_jobs.sql`. |
 | Android signing | `app/android/debug.keystore` (auto-generated, git-ignored) | `build.sh` creates it on first run. Release signing is an open item. |
 | LAN HTTPS certs | `.certs/` (git-ignored, `mkcert`) | Only for serving the web app to a phone camera (step 6). |
 
@@ -51,7 +52,7 @@ Copy order on a new machine: `.env` first (repo root), then
 
 ```sh
 .venv/bin/python -m unittest discover -s tests   # ~270 tests, contract-only
-node app/cloud-signer/hub-check.mjs              # 23 checks against a local D1
+node app/cloud-signer/hub-check.mjs              # 41 checks against a local D1
 ```
 
 Both must be green before you build anything.

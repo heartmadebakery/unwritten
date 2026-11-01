@@ -84,9 +84,11 @@ h1{font-size:24px;margin:0 0 4px;font-weight:normal;}
 .hubwriteup{white-space:pre-wrap;font-size:15px;line-height:1.5;padding-bottom:8px;}
 .hubline{font-size:15px;line-height:1.5;}
 .hubline.dim{color:var(--dim);font-size:14px;}
-#uploadinput{width:100%;margin:6px 0 2px;color:var(--ink);font-size:15px;}
-#uploadstatus{color:var(--dim);font-size:15px;line-height:1.5;padding:8px 4px;}
-#uploadstatus:empty{display:none;}
+#uploadinput,#urlinput{width:100%;margin:6px 0 2px;color:var(--ink);font-size:15px;}
+#urlinput{background:var(--bg);border:1px solid var(--line);border-radius:4px;
+  padding:9px 10px;font-family:inherit;}
+#uploadstatus,#urlstatus{color:var(--dim);font-size:15px;line-height:1.5;padding:8px 4px;}
+#uploadstatus:empty,#urlstatus:empty{display:none;}
 #caps{color:var(--dim);font-size:13px;line-height:1.55;}
 @media (min-width:700px){
   #view,#player,#hubplayer{height:340px;}

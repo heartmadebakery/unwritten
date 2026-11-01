@@ -5,6 +5,8 @@
       [--lesson FILE] [--transcript FILE]
   python3 pipeline/run_pipeline.py --cloud <work_root> [--max N]
       [--retry-failed] [--cloud-state FILE]
+  python3 pipeline/run_pipeline.py --fetch <work_root> [--max N]
+      [--retry-failed]
 
 A session is one ordinary lesson filmed on a phone — no recorder
 protocol, no step names, nothing performed for the machine. Stages:
@@ -515,6 +517,63 @@ def run_cloud_mode(root, max_n=0, retry_failed=False, state_path=""):
     return 1 if failures else 0
 
 
+def run_fetch_mode(root, max_n=0, retry_failed=False):
+    """Claim queued URL jobs and run the full pipeline on each into
+    its own subdir of root. Returns an exit code."""
+    import fetch_jobs  # lazy so local-only runs never touch the queue
+
+    cfg = fetch_jobs.load_config()
+    os.makedirs(root, exist_ok=True)
+    processed = failures = 0
+    while True:
+        if max_n and max_n > 0 and processed + failures >= max_n:
+            break
+        job = fetch_jobs.claim_job(cfg, include_failed=retry_failed)
+        if not job:
+            break
+        job_id = job.get("id", "")
+        session = os.path.join(root, fetch_jobs.session_dir_name(job_id))
+        os.makedirs(session, exist_ok=True)
+        try:
+            lesson = fetch_jobs.existing_media(session)
+            title = fetch_jobs.read_source_title(session)
+            if not lesson:
+                lesson, title = fetch_jobs.download_job(job, session)
+                fetch_jobs.write_source(session, job, title, lesson)
+            work = os.path.join(root, fetch_jobs.job_slug(title, job_id))
+            code = _run_one(lesson, work)
+        except Exception as exc:
+            failures += 1
+            print("[fetch] failed for %r: %s" % (job.get("url"), exc))
+            try:
+                fetch_jobs.finish_job(cfg, job_id, False, error=str(exc))
+            except Exception as exc2:
+                print("[fetch] could not mark failed: %s" % exc2)
+            continue
+        processed += 1
+        if code != 0:
+            failures += 1
+            print("[fetch] pipeline failed for %r — recorded as failed; "
+                  "use --retry-failed to retry it." % job.get("url"))
+        else:
+            print("[fetch] done %r -> %s" % (job.get("url"), work))
+        try:
+            fetch_jobs.finish_job(
+                cfg, job_id, code == 0,
+                session=work if code == 0 else lesson,
+                error="" if code == 0 else "pipeline failed (see log)")
+        except Exception as exc:
+            failures += 1
+            print("[fetch] could not mark finished: %s — the job comes "
+                  "back as an abandoned claim." % exc)
+    if not processed and not failures:
+        print("[fetch] no pending URL jobs.")
+        return 0
+    print("[fetch] %d job(s) processed, %d failed."
+          % (processed, failures))
+    return 1 if failures else 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("session_dir", nargs="?",
@@ -528,10 +587,13 @@ def main():
     ap.add_argument("--cloud", action="store_true",
                     help="fetch new finished Cloud lessons and run one "
                          "pipeline per video into subdirs of the work root")
+    ap.add_argument("--fetch", action="store_true",
+                    help="claim queued URL jobs (YouTube/direct) and run "
+                         "one pipeline per video into subdirs of the work root")
     ap.add_argument("--max", type=int, default=0,
-                    help="max cloud videos per --cloud run (0 = no cap)")
+                    help="max items per --cloud/--fetch run (0 = no cap)")
     ap.add_argument("--retry-failed", action="store_true",
-                    help="retry cloud videos recorded as failed")
+                    help="retry items recorded as failed")
     ap.add_argument("--cloud-state", default="",
                     help="state file for --cloud "
                          "(default <work_root>/cloud_state.json)")
@@ -545,6 +607,13 @@ def main():
         sys.exit(run_cloud_mode(args.session_dir, max_n=args.max,
                                 retry_failed=args.retry_failed,
                                 state_path=args.cloud_state))
+    if args.fetch:
+        # The single positional lands in session_dir; that IS the root.
+        if args.work_dir is not None or not args.session_dir:
+            ap.error("--fetch takes exactly one positional: the work root "
+                     "(e.g. run_pipeline.py --fetch work/cloud)")
+        sys.exit(run_fetch_mode(args.session_dir, max_n=args.max,
+                                retry_failed=args.retry_failed))
     if not args.session_dir or not args.work_dir:
         ap.error("the following arguments are required: "
                  "session_dir, work_dir")

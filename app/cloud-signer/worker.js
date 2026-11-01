@@ -54,6 +54,23 @@
  *
  * Env: DB (d1_databases binding, see wrangler.toml + migrations/).
  * Without it the /hub/* routes answer 503 — uploads keep working.
+ *
+ * URL fetch queue (D1 table fetch_jobs): the apps queue video URLs
+ * the browser cannot download itself (YouTube/watch pages); the
+ * pipeline machine claims them one at a time, downloads each
+ * (yt-dlp or direct), and runs it like any session.
+ *
+ *   POST /fetch/jobs  {url} -> {id, status} (resubmitting a queued
+ *                       URL returns the existing job)
+ *   GET  /fetch/jobs   -> the 50 most recent jobs, newest first
+ *   GET  /fetch/jobs?claim=1&by=<worker>[&includeFailed=1]
+ *                     -> {job: {id, url, attempts, session} | null}
+ *                     (oldest pending first; failed stays failed
+ *                     unless includeFailed=1, like --retry-failed;
+ *                     claims older than two hours count as abandoned
+ *                     and come back)
+ *   POST /fetch/jobs/<id>/done   {session?} -> {ok: true}
+ *   POST /fetch/jobs/<id>/failed {error?}   -> {ok: true}
  */
 
 const CLOUD_API = "https://video.bunnycdn.com";
@@ -108,6 +125,83 @@ export default {
           headers: { AccessKey: env.CLOUD_API_KEY, Accept: "application/json" }
         });
         return new Response(await br.text(), { status: br.status, headers: Object.assign({ "Content-Type": "application/json" }, cors) });
+      }
+    }
+    // URL fetch queue: needs only the token gate above plus D1 — no
+    // cloud credentials — so it lives ahead of the CLOUD check below
+    // and keeps queueing while cloud creds rotate.
+    if (normPath === "/fetch/jobs") {
+      const store = hubStore(env);
+      if (!store) return json({ error: "fetch store not configured" }, 503);
+      if (request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const url = String(body.url || "").trim();
+        if (!url) return json({ error: "url required" }, 400);
+        if (url.length > 2000 || !/^https?:\/\/.+\..+/.test(url))
+          return json({ error: "url must be an http(s) URL" }, 400);
+        const now = Math.floor(Date.now() / 1000);
+        const dup = await store
+          .prepare("SELECT id, status FROM fetch_jobs WHERE url = ? AND status IN ('pending','claimed')")
+          .bind(url).first();
+        if (dup) return json({ id: dup.id, status: dup.status });
+        const id = "job_" + crypto.randomUUID().replace(/-/g, "");
+        await store
+          .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at)
+                    VALUES (?, ?, 'pending', 0, ?, ?)`)
+          .bind(id, url, now, now).run();
+        return json({ id, status: "pending" });
+      }
+      if (request.method === "GET") {
+        const qs = new URL(request.url).searchParams;
+        if (qs.get("claim") === "1") {
+          const by = (qs.get("by") || "").trim();
+          if (!by) return json({ error: "by (worker name) required" }, 400);
+          const states = qs.get("includeFailed") === "1" ? "('pending','failed')" : "('pending')";
+          const now = Math.floor(Date.now() / 1000);
+          // A claim older than two hours is a crashed worker, not a
+          // running one: hand the job out again instead of sticking it
+          // in claimed forever. One pipeline machine claims (cron
+          // flock); no fencing beyond that.
+          const job = await store
+            .prepare(`SELECT * FROM fetch_jobs WHERE status IN ${states} OR (status='claimed' AND updated_at < ?) ORDER BY created_at ASC, id ASC LIMIT 1`)
+            .bind(now - 7200).first();
+          if (!job) return json({ job: null });
+          await store
+            .prepare(`UPDATE fetch_jobs SET status='claimed', claimed_by=?, updated_at=? WHERE id=?`)
+            .bind(by, now, job.id).run();
+          return json({ job: { id: job.id, url: job.url, attempts: job.attempts || 0, session: job.session || "" } });
+        }
+        const rows = await store
+          .prepare(`SELECT * FROM fetch_jobs ORDER BY created_at DESC, id ASC LIMIT 50`).all();
+        return json((rows.results || []).map((r) => ({
+          id: r.id, url: r.url, status: r.status, attempts: r.attempts,
+          claimedBy: r.claimed_by, error: r.error, session: r.session,
+          createdAt: r.created_at, updatedAt: r.updated_at,
+        })));
+      }
+      return json({ error: "method not allowed" }, 405);
+    }
+    {
+      const m = normPath.match(/^\/fetch\/jobs\/([^/]+)\/(done|failed)$/);
+      if (m) {
+        const store = hubStore(env);
+        if (!store) return json({ error: "fetch store not configured" }, 503);
+        if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+        const id = decodeURIComponent(m[1]), verb = m[2];
+        const job = await store.prepare(`SELECT * FROM fetch_jobs WHERE id = ?`).bind(id).first();
+        if (!job) return json({ error: "not found" }, 404);
+        if (job.status !== "claimed")
+          return json({ error: "job is " + job.status + ", only a claimed job can finish" }, 409);
+        const now = Math.floor(Date.now() / 1000);
+        const body = await request.json().catch(() => ({}));
+        if (verb === "done") {
+          await store.prepare(`UPDATE fetch_jobs SET status='done', session=?, updated_at=? WHERE id=?`)
+            .bind(String(body.session || "").slice(0, 500), now, id).run();
+        } else {
+          await store.prepare(`UPDATE fetch_jobs SET status='failed', attempts=attempts+1, error=?, updated_at=? WHERE id=?`)
+            .bind(String(body.error || "").slice(0, 500), now, id).run();
+        }
+        return json({ ok: true });
       }
     }
     if (!env.CLOUD_LIBRARY_ID || !env.CLOUD_API_KEY) {

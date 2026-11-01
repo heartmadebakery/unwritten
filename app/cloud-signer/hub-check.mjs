@@ -13,6 +13,7 @@ const { default: worker } = await import("./worker.js");
 
 const db = new DatabaseSync(":memory:");
 db.exec(readFileSync(join(dir, "migrations", "0001_sessions.sql"), "utf8"));
+db.exec(readFileSync(join(dir, "migrations", "0002_fetch_jobs.sql"), "utf8"));
 
 // D1-compatible stub over the real database: prepare/bind/first/all/run
 // (bind is optional on real D1 when the query takes no parameters).
@@ -178,5 +179,76 @@ const VID = "vid-123";
   } finally {
     globalThis.fetch = realFetch;
   }
+}
+// Fetch queue: same token gate as every other route.
+{
+  const r = await call(authed, "POST", "/fetch/jobs", { url: "https://x/y.mp4" }, "nope");
+  check(r.status === 401, "fetch submit rejects a bad token");
+  const r2 = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe");
+  check(r2.status === 401, "fetch claim rejects a missing token");
+}
+// 503 without the D1 binding.
+{
+  const r = await call(noDb, "POST", "/fetch/jobs", { url: "https://x/y.mp4" }, TOKEN);
+  check(r.status === 503, "fetch answers 503 with no store");
+}
+// URL required, and it must be an http(s) URL.
+{
+  const r = await call(authed, "POST", "/fetch/jobs", {}, TOKEN);
+  check(r.status === 400, "fetch submit requires a url");
+  const r2 = await call(authed, "POST", "/fetch/jobs", { url: "notaurl" }, TOKEN);
+  const r3 = await call(authed, "POST", "/fetch/jobs", { url: "ftp://x/y.mp4" }, TOKEN);
+  check(r2.status === 400 && r3.status === 400, "fetch submit rejects non-http urls");
+}
+// Submit, then claim exactly once; a second claim finds nothing.
+{
+  const s = await call(authed, "POST", "/fetch/jobs",
+    { url: "https://www.youtube.com/watch?v=abc123" }, TOKEN);
+  check(s.status === 200 && s.data.status === "pending" && typeof s.data.id === "string",
+    "fetch submit queues a job");
+  const again = await call(authed, "POST", "/fetch/jobs",
+    { url: "https://www.youtube.com/watch?v=abc123" }, TOKEN);
+  check(again.data.id === s.data.id, "resubmitting a queued url returns the same job");
+  const nob = await call(authed, "GET", "/fetch/jobs?claim=1", undefined, TOKEN);
+  check(nob.status === 400, "fetch claim requires a worker name");
+  const c = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  check(c.status === 200 && c.data.job && c.data.job.id === s.data.id, "fetch claim hands out the job");
+  const c2 = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  check(c2.status === 200 && c2.data.job === null, "a claimed job is not handed out twice");
+  const d = await call(authed, "POST", `/fetch/jobs/${s.data.id}/done`, { session: "w/1" }, TOKEN);
+  check(d.status === 200 && d.data.ok === true, "fetch done closes the job");
+  const list = await call(authed, "GET", "/fetch/jobs", undefined, TOKEN);
+  const row = list.data.find((j) => j.id === s.data.id);
+  check(list.status === 200 && row && row.status === "done" && row.session === "w/1",
+    "fetch list shows the finished job");
+}
+// Failed jobs stay failed until explicitly reclaimed, like --retry-failed.
+{
+  const s = await call(authed, "POST", "/fetch/jobs", { url: "https://x/broken.mp4" }, TOKEN);
+  await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  const f = await call(authed, "POST", `/fetch/jobs/${s.data.id}/failed`, { error: "boom" }, TOKEN);
+  check(f.status === 200 && f.data.ok === true, "fetch failed records the error");
+  const c = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  check(c.status === 200 && c.data.job === null, "a failed job is not reclaimed by default");
+  const r = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1&includeFailed=1", undefined, TOKEN);
+  check(r.status === 200 && r.data.job && r.data.job.id === s.data.id, "includeFailed reclaims it");
+  const unk = await call(authed, "POST", "/fetch/jobs/nope/done", {}, TOKEN);
+  check(unk.status === 404, "fetch done on an unknown job 404s");
+}
+// Trailing slashes route the same.
+{
+  const r = await call(authed, "GET", "/fetch/jobs/", undefined, TOKEN);
+  check(r.status === 200 && Array.isArray(r.data), "fetch list tolerates a trailing slash");
+}
+// A claim older than two hours is a crashed worker: the job comes
+// back instead of sticking in claimed forever.
+{
+  const s = await call(authed, "POST", "/fetch/jobs", { url: "https://x/stuck.mp4" }, TOKEN);
+  await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  authed.DB.prepare(`UPDATE fetch_jobs SET updated_at = ? WHERE id = ?`)
+    .bind(Math.floor(Date.now() / 1000) - 7201, s.data.id).run();
+  const r = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe2", undefined, TOKEN);
+  check(r.status === 200 && r.data.job && r.data.job.id === s.data.id,
+    "an abandoned claim is handed out again");
 }
 console.log(`ALL HUB CHECKS PASSED (${n})`);

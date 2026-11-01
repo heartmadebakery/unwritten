@@ -8,6 +8,11 @@ mkdir -p "$(dirname "$LOG")"
 (
   flock -n 9 || { echo "[cloud] $(date '+%F %T'): previous run still holds the lock — skipping" >>"$LOG"; exit 0; }
   FAIL=0
+  # Queued URL jobs first (YouTube/watch links from the apps), when the
+  # queue is configured; --fetch exits 0 with no jobs pending.
+  if [ -n "${FETCH_QUEUE_URL:-${CLOUD_PROXY_URL:-}}" ]; then
+    .venv/bin/python pipeline/run_pipeline.py --fetch work/cloud >>"$LOG" 2>&1 || { echo "[cloud] FAIL: fetch step failed (see above)" >>"$LOG"; FAIL=1; }
+  fi
   .venv/bin/python pipeline/run_pipeline.py --cloud work/cloud >>"$LOG" 2>&1 || { echo "[cloud] FAIL: pipeline step failed (see above)" >>"$LOG"; FAIL=1; }
   # Rebuild site so new sessions appear immediately
   # Publish finished work dirs to the hub (idempotent upsert; needs signer token)

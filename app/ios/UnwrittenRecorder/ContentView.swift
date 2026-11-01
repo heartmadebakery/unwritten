@@ -69,6 +69,7 @@ struct ContentView: View {
     @State private var showUploadPicker = false
     @State private var showPhotosPicker = false
     @State private var photoItem: PhotosPickerItem?
+    @State private var fetchUrl = ""
 
     /// Record is the top screen: the camera may run.
     private var onRecordScreen: Bool { path.last == .record }
@@ -238,6 +239,20 @@ struct ContentView: View {
                     }
                 } label: {
                     Label("Upload video", systemImage: "square.and.arrow.up.on.square")
+                        .font(.system(size: 18))
+                        .foregroundColor(INK)
+                }
+                // Or paste a link: watch pages queue to the pipeline
+                // fetcher, which downloads and processes them.
+                TextField("Paste a video link…", text: $fetchUrl)
+                    .font(.system(size: 16))
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                Button {
+                    store.queueFetchUrl(fetchUrl)
+                    fetchUrl = ""
+                } label: {
+                    Label("Fetch from link", systemImage: "arrow.down.circle")
                         .font(.system(size: 18))
                         .foregroundColor(INK)
                 }

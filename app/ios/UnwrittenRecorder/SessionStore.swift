@@ -672,6 +672,42 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// Queues a video URL for the pipeline fetcher (YouTube/watch
+    /// links the app cannot download itself).
+    func queueFetchUrl(_ url: String) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { status = "Paste a link first."; return }
+        guard hubAvailable(), let endpoint = URL(string: cloud.effSignerUrl() + "/fetch/jobs"),
+              endpoint.scheme != nil, endpoint.host != nil else {
+            status = "Queuing needs the signer token — add it in Cloud settings."
+            return
+        }
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue(cloud.effSignerToken(), forHTTPHeaderField: "X-Signer-Token")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": trimmed])
+        status = "⬇ Queuing…"
+        Task { [weak self] in
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                if code == 401 {
+                    self?.status = "Signer refused the token — check it in Cloud settings."
+                    return
+                }
+                guard code >= 200 && code < 300 else {
+                    throw CloudError.message("queue refused (\(code)): \(String(data: data, encoding: .utf8) ?? "")")
+                }
+                self?.status = "✅ Queued — the pipeline will fetch the video."
+            } catch {
+                let cause = String(error.localizedDescription.prefix(180))
+                self?.status = "Couldn't queue that link (\(cause)) — check the connection and Cloud settings."
+            }
+        }
+    }
+
     func openHubSession(_ row: HubSession) {
         let encoded = row.videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? row.videoId
         guard let req = hubRequest("/hub/sessions/" + encoded) else { return }

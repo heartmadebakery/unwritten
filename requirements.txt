@@ -6,6 +6,9 @@
 faster-whisper==1.2.1
 pillow==12.3.0
 numpy==2.5.2
+# URL fetch queue (pipeline/fetch_jobs.py --fetch): downloads YouTube /
+# watch-page jobs the browser cannot fetch itself. Pure Python.
+yt-dlp==2026.10.26
 # Advisory only: decodes a few SAM masks per highlight to catch API
 # drift (lazy import — the boxes-only spotlight renders without it).
 meta_sam_parser==0.1.0

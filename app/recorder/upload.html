@@ -30,6 +30,12 @@
     <input type="file" id="uploadinput" accept="video/*">
     <button class="bigbtn" id="uploadbtn">⬆ Upload</button>
     <div id="uploadstatus"></div>
+    <div class="library"><h3>Or paste a link</h3></div>
+    <p class="note">A direct video file downloads right here; a YouTube or watch-page link queues to the pipeline, which fetches and processes it like a recording.</p>
+    <label for="urlinput" class="vh">Video link</label>
+    <input type="url" id="urlinput" inputmode="url" autocomplete="off" placeholder="https://…">
+    <button class="bigbtn" id="urlfetchbtn">⬇ Fetch from link</button>
+    <div id="urlstatus"></div>
   </div>
 </div>
 <script src="common.js"></script>

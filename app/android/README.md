@@ -49,7 +49,7 @@ app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
 app/src/main/java/org/tinio/unwritten/
-    MainActivity.java    home + record screens, upload picker, cloud, hub
+    MainActivity.java    home + record screens, upload picker + link queue, cloud, hub
     TinyFileProvider.java read-only content:// clips for external players
     CameraEngine.java    Camera2 + MediaRecorder + YUV/still readers
     NativeCore.java      JNI bridge to libuwcore
@@ -86,7 +86,9 @@ saving off (lessons stay on-device only). Long-press a lesson to
 delete it from the phone *and* its cloud copy (cloud first — if that
 fails, the local lesson is kept). **Export lessons to Downloads** is
 shown only when Cloud is off (offline fallback); **Share Cloud link**
-only when Cloud is on.
+only when Cloud is on. Pasting a link instead queues it to the
+pipeline fetcher (`POST /fetch/jobs`), which downloads YouTube and
+watch pages with yt-dlp and processes them like a take.
 
 No typing needed: `build.sh` stamps one random token from the signer
 pool into the APK (`token #N of 10` in the build log), so uploads work

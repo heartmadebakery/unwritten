@@ -6,6 +6,7 @@ import org.json.JSONObject;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -43,6 +44,36 @@ public class HubClient {
     public JSONObject get(String videoId) throws Exception {
         if (videoId == null || videoId.isEmpty()) throw new IOException("videoId required");
         return new JSONObject(getRaw("/hub/sessions/" + URLEncoder.encode(videoId, "UTF-8")));
+    }
+
+    /** Queues a video URL for the pipeline fetcher (YouTube/watch
+     *  links the app cannot download itself). Returns the job id. */
+    public String queueFetchJob(String url) throws Exception {
+        if (url == null || url.trim().isEmpty()) throw new IOException("url required");
+        HttpURLConnection c = null;
+        try {
+            URL endpoint = new URL(signerUrl + "/fetch/jobs");
+            c = (HttpURLConnection) endpoint.openConnection();
+            c.setRequestMethod("POST");
+            c.setRequestProperty("Accept", "application/json");
+            c.setRequestProperty("Content-Type", "application/json");
+            if (!signerToken.isEmpty()) c.setRequestProperty("X-Signer-Token", signerToken);
+            c.setDoOutput(true);
+            c.setConnectTimeout(30000);
+            c.setReadTimeout(30000);
+            byte[] payload = new JSONObject().put("url", url.trim()).toString().getBytes("UTF-8");
+            OutputStream out = c.getOutputStream();
+            try { out.write(payload); } finally { try { out.close(); } catch (Throwable ignored) { } }
+            int status = c.getResponseCode();
+            String body = readBody(c);
+            if (status == 401) throw new IOException("Signer refused the token — check it in Cloud settings.");
+            if (status < 200 || status >= 300) throw new IOException("Queue failed (" + status + "): " + body);
+            String id = new JSONObject(body).optString("id", "");
+            if (id.isEmpty()) throw new IOException("Queue returned no job id.");
+            return id;
+        } finally {
+            if (c != null) try { c.disconnect(); } catch (Throwable ignored) { }
+        }
     }
 
     /** Deletes a hub record. A missing record counts as gone. */

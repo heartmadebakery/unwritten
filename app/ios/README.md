@@ -56,7 +56,7 @@ build.sh                             (stamp + simulator build — see below)
 UnwrittenRecorder/
     Info.plist             camera/mic usage, Files sharing, portrait
     UnwrittenRecorderApp.swift   app entry
-    ContentView.swift      home + record screens, upload picker, playback
+    ContentView.swift      home + record screens, upload picker + link queue, playback
     CameraEngine.swift     AVCaptureSession + movie output + zoom + luma hook
     SessionStore.swift     clips dir, rows, durations, export/share/delete, uploads
     CloudStore.swift       Cloud settings + per-lesson link state (UserDefaults)
@@ -95,7 +95,9 @@ broadcast. The **Cloud** toggle turns saving off (lessons stay on-device
 only). Touch and hold a lesson for its context menu (Play, Share Cloud
 link, Retry upload, Save a copy, Delete), or swipe it to delete it from
 the phone *and* its cloud copy (cloud first — if that fails, the local
-lesson is kept).
+lesson is kept). Pasting a link instead queues it to the pipeline
+fetcher (`POST /fetch/jobs`), which downloads YouTube and watch pages
+with yt-dlp and processes them like a take.
 **Export sessions to Downloads** is shown only when Cloud is off
 (offline fallback); it shares every lesson through the share sheet
 (Save to Files, AirDrop, …).

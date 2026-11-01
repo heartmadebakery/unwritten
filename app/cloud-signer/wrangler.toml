@@ -17,6 +17,8 @@ CORS_ORIGIN = "*"
 # in the real database_id it prints:
 #   npx wrangler d1 create unwritten-hub
 #   npx wrangler d1 execute unwritten-hub --file migrations/0001_sessions.sql
+# URL fetch queue (0002): existing databases apply it too, then redeploy:
+#   npx wrangler d1 execute unwritten-hub --file migrations/0002_fetch_jobs.sql
 [[d1_databases]]
 binding = "DB"
 database_name = "unwritten-hub"

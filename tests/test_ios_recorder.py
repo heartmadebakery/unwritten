@@ -580,6 +580,15 @@ class IOSScreensTests(unittest.TestCase):
         self.assertIn("hubEmbedUrl(", play)
         self.assertIn("import AVKit", self.view)
 
+    def test_url_upload_queues_to_pipeline(self):
+        # User-ordered Oct 31: paste a link — natives queue every URL
+        # to the pipeline fetcher (only the web page downloads direct
+        # files itself).
+        self.assertIn("/fetch/jobs", self.store)
+        self.assertIn("queueFetchUrl", self.store)
+        for token in ["fetchUrl", "Fetch from link", "TextField"]:
+            self.assertIn(token, self.view, token)
+
 
 if __name__ == "__main__":
     unittest.main()

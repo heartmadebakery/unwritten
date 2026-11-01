@@ -162,6 +162,22 @@ class WebRecorderTests(unittest.TestCase):
         self.assertIn("saveBlob(f, ", up)
         self.assertIn("unwritten_lesson_upload_", up)
 
+    def test_url_upload_field_queues_watch_links(self):
+        # User-ordered Oct 31: paste a link — direct files download
+        # in the page, watch pages queue to the pipeline fetcher.
+        for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"']:
+            self.assertIn(token, self.upload, token)
+        self.assertIn("/fetch/jobs", self.uploadjs)
+        self.assertIn("Queued.", self.uploadjs)
+        self.assertIn("Signer refused the token", self.uploadjs)
+
+    def test_direct_links_download_in_browser(self):
+        self.assertIn("function isDirectMediaUrl", self.uploadjs)
+        up = self.uploadjs.split("isDirectMediaUrl(u)", 1)[1] \
+                          .split("cloudToken()", 1)[0]
+        self.assertIn("saveBlob(", up)
+        self.assertIn("unwritten_lesson_upload_", up)
+
     def test_hub_escapes_server_titles(self):
         # Hub titles come from the server; they must never inject markup.
         self.assertIn("function escHtml", self.common)
@@ -305,6 +321,16 @@ class AndroidRecorderTests(unittest.TestCase):
         self.assertLess(body.index("HubClient("),
                         body.index("deleteVideo(videoId)"))
         self.assertIn("but the cloud copy remains", body)
+
+    def test_url_upload_queues_to_pipeline(self):
+        # User-ordered Oct 31: paste a link — natives queue every URL
+        # to the pipeline fetcher (only the web page downloads direct
+        # files itself).
+        hub = read(HUB)
+        self.assertIn("/fetch/jobs", hub)
+        self.assertIn("queueFetchJob", hub)
+        for token in ["Fetch from link", "queueFetchJob", "Queued"]:
+            self.assertIn(token, self.main, token)
 
     def test_errors_reach_the_user_not_a_hidden_view(self):
         # The status TextView is intentionally hidden; camera, record,
