@@ -106,4 +106,6 @@ fi
 "$BT/apksigner" verify "$OUT/unwritten-craft-signed.apk"
 cp "$OUT/unwritten-craft-signed.apk" "$HERE/unwritten-craft.apk"
 echo "APK: $HERE/unwritten-craft.apk"
-"$BT/aapt2" dump badging "$HERE/unwritten-craft.apk" | head -4
+# head closes the pipe early (badging prints ~21 lines), so aapt2 dies of
+# SIGPIPE — `|| true` keeps pipefail from turning that into exit 141.
+"$BT/aapt2" dump badging "$HERE/unwritten-craft.apk" | head -4 || true

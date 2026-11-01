@@ -13,6 +13,15 @@ import unittest
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 WEB = os.path.join(ROOT, "app", "recorder", "index.html")
 SW = os.path.join(ROOT, "app", "recorder", "sw.js")
+# User-ordered Oct 31: one page per screen (index/record/upload share
+# common.js + per-page scripts), not a single showScreen file.
+REC_RECORD = os.path.join(ROOT, "app", "recorder", "record.html")
+REC_UPLOAD = os.path.join(ROOT, "app", "recorder", "upload.html")
+REC_COMMON = os.path.join(ROOT, "app", "recorder", "common.js")
+REC_HOME_JS = os.path.join(ROOT, "app", "recorder", "home.js")
+REC_RECORD_JS = os.path.join(ROOT, "app", "recorder", "record.js")
+REC_UPLOAD_JS = os.path.join(ROOT, "app", "recorder", "upload.js")
+REC_CSS = os.path.join(ROOT, "app", "recorder", "app.css")
 MANIFEST = os.path.join(ROOT, "app", "recorder", "manifest.webmanifest")
 MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
                     "org", "tinio", "unwritten", "MainActivity.java")
@@ -41,47 +50,57 @@ def read(path):
 
 
 class WebRecorderTests(unittest.TestCase):
+    # User-ordered Oct 31: one page per screen. Each assertion reads the
+    # file that owns the contract; `all` covers cross-cutting sweeps.
     @classmethod
     def setUpClass(cls):
-        cls.html = read(WEB)
+        cls.home = read(WEB)
+        cls.record = read(REC_RECORD)
+        cls.upload = read(REC_UPLOAD)
+        cls.common = read(REC_COMMON)
+        cls.homejs = read(REC_HOME_JS)
+        cls.recordjs = read(REC_RECORD_JS)
+        cls.uploadjs = read(REC_UPLOAD_JS)
+        cls.all = "\n".join([cls.home, cls.record, cls.upload, cls.common,
+                             cls.homejs, cls.recordjs, cls.uploadjs])
 
     def test_no_cut_design_vocabulary(self):
-        low = self.html.lower()
+        low = self.all.lower()
         for word in CUT_WORDS:
             self.assertNotIn(word.lower(), low, word)
 
     def test_no_roles_steps_or_session_code(self):
         for token in ["data-role", "STEPS", "uw_role", "uw_step",
                       "session_code", "makeCode"]:
-            self.assertNotIn(token, self.html, token)
+            self.assertNotIn(token, self.all, token)
 
     def test_single_lesson_recording_flow(self):
-        self.assertIn('id="recbtn"', self.html)
-        self.assertIn("MediaRecorder", self.html)
-        self.assertIn("unwritten_lesson_", self.html)
-        self.assertIn("indexedDB", self.html)  # on-device vault stays
+        self.assertIn('id="recbtn"', self.record)
+        self.assertIn("MediaRecorder", self.recordjs)
+        self.assertIn("unwritten_lesson_", self.all)
+        self.assertIn("indexedDB", self.common)  # on-device vault stays
 
     def test_linked_rows_keep_their_download(self):
         # Cloud-linking a session must not remove its on-device
         # download: every linked row keeps ↓ next to its cloud action.
-        clip = self.html.split("function clipHTML(c)", 1)[1] \
-                        .split("function renderClips", 1)[0]
+        clip = self.common.split("function clipHTML(c)", 1)[1] \
+                           .split("function renderClips", 1)[0]
         self.assertIn("var dl =", clip)
         self.assertEqual(clip.count("dl +"), 4)
 
     def test_memory_only_rows_warn(self):
         # The vault write can fail (private mode, quota): rows that
         # live in memory only must say so instead of looking saved.
-        clip = self.html.split("function clipHTML(c)", 1)[1] \
-                        .split("function renderClips", 1)[0]
+        clip = self.common.split("function clipHTML(c)", 1)[1] \
+                           .split("function renderClips", 1)[0]
         self.assertIn("persisted", clip)
         self.assertIn("⚠", clip)
 
     def test_recorder_error_survives_onstop(self):
         # onerror fires before onstop: without a flag, onstop's
         # "Session saved" buries the error every time.
-        start = self.html.split("rec.onerror", 1)[1] \
-                         .split("function stopRec", 1)[0]
+        start = self.recordjs.split("rec.onerror", 1)[1] \
+                             .split("function stopRec", 1)[0]
         self.assertIn("recErr", start)
 
     def test_service_worker_caches_good_pages_only(self):
@@ -91,6 +110,11 @@ class WebRecorderTests(unittest.TestCase):
         sw = read(SW)
         self.assertIn("res.ok", sw)
         self.assertIn("503", sw)
+        # User-ordered Nov 1: the offline shell precaches every page
+        # and script of the split app, not just index.html.
+        for asset in ["record.html", "upload.html", "app.css",
+                      "common.js", "home.js", "record.js", "upload.js"]:
+            self.assertIn(asset, sw, asset)
 
     def test_manifest_is_the_recorder_not_the_apprentice(self):
         manifest = read(MANIFEST)
@@ -102,42 +126,59 @@ class WebRecorderTests(unittest.TestCase):
         # One Unwritten Craft app: it opens on the hub sessions, with
         # Record and Upload above the listing; recording is a screen,
         # not a separate app, and every screen leads home.
-        for token in ['id="screen-home"', 'id="screen-record"',
-                      'id="screen-upload"', "showScreen",
-                      'id="gorecord"', 'id="goupload"', 'id="hublist"',
-                      "loadHub", "/hub/sessions", 'id="uploadinput"',
-                      'id="uploadbtn"', "backbtn"]:
-            self.assertIn(token, self.html, token)
-        home = self.html.split('id="screen-home"', 1)[1] \
-                        .split('id="screen-record"', 1)[0]
-        self.assertLess(home.index('id="gorecord"'), home.index('id="hublist"'))
-        self.assertLess(home.index('id="goupload"'), home.index('id="hublist"'))
+        # User-ordered Oct 31: screens are separate pages linked to each
+        # other — no showScreen toggles remain anywhere.
+        self.assertNotIn("showScreen", self.all)
+        self.assertNotIn("screen-record", self.all)
+        self.assertNotIn("screen-upload", self.all)
+        for token in ['id="gorecord"', 'href="record.html"',
+                      'id="goupload"', 'href="upload.html"',
+                      'id="hublist"', 'src="common.js"', 'src="home.js"']:
+            self.assertIn(token, self.home, token)
+        self.assertIn("loadHub()", self.homejs)
+        self.assertIn("/hub/sessions", self.common)
+        self.assertIn('id="uploadinput"', self.upload)
+        self.assertIn('id="uploadbtn"', self.upload)
+        self.assertIn('id="backhome-record"', self.record)
+        self.assertIn('href="index.html"', self.record)
+        self.assertIn('id="backhome-upload"', self.upload)
+        self.assertIn('href="index.html"', self.upload)
+        # Every page loads the shared core plus its own script, and
+        # carries the status line the shared code reports into.
+        for token in ['src="common.js"', 'src="record.js"', 'id="status"']:
+            self.assertIn(token, self.record, token)
+        for token in ['src="common.js"', 'src="upload.js"', 'id="status"']:
+            self.assertIn(token, self.upload, token)
+        self.assertIn('id="status"', self.home)
+        self.assertLess(self.home.index('id="gorecord"'),
+                        self.home.index('id="hublist"'))
+        self.assertLess(self.home.index('id="goupload"'),
+                        self.home.index('id="hublist"'))
 
     def test_upload_saves_like_a_recording(self):
         # An upload lands in the device sessions and rides the same
         # cloud path as a take, so the pipeline picks it up the same way.
-        up = self.html.split('$("uploadbtn").onclick', 1)[1] \
-                      .split("function hubAvailable", 1)[0]
+        up = self.uploadjs.split('$("uploadbtn").onclick', 1)[1]
         self.assertIn("saveBlob(f, ", up)
         self.assertIn("unwritten_lesson_upload_", up)
 
     def test_hub_escapes_server_titles(self):
         # Hub titles come from the server; they must never inject markup.
-        self.assertIn("function escHtml", self.html)
-        row = self.html.split("function hubRowHTML", 1)[1] \
-                       .split("function loadHub", 1)[0]
+        self.assertIn("function escHtml", self.common)
+        row = self.common.split("function hubRowHTML", 1)[1] \
+                         .split("function loadHub", 1)[0]
         self.assertIn("escHtml(r.title", row)
 
     def test_camera_runs_only_on_record_screen(self):
         # Home-first means no permission prompt on landing: the camera
         # opens when the record screen shows and releases when it hides.
-        nav = self.html.split("function showScreen", 1)[1] \
-                       .split("function closeCamera", 1)[0]
-        self.assertIn("openCamera()", nav)
-        self.assertIn("closeCamera()", nav)
-        boot = self.html.split("wakeLock(); idbRestore()", 1)[1]
-        self.assertIn('showScreen("home")', boot)
-        self.assertNotIn("openCamera();", boot.split("</script>", 1)[0])
+        # User-ordered Oct 31: the record page opens the camera at boot;
+        # no other page may reference it at all.
+        self.assertIn("openCamera()", self.recordjs)
+        for name, src in [("home", self.home), ("upload", self.upload),
+                          ("common", self.common), ("home.js", self.homejs),
+                          ("upload.js", self.uploadjs)]:
+            self.assertNotIn("openCamera", src, name)
 
 
 class AndroidRecorderTests(unittest.TestCase):
@@ -297,6 +338,27 @@ class Pixel4BaselineTests(unittest.TestCase):
         self.assertNotIn("SDK_INT", self.main)
 
 
+class AndroidBuildExitTests(unittest.TestCase):
+    """build.sh exits 0 on a successful build (Oct 31).
+
+    The script runs under `set -o pipefail`, so its final
+    `aapt2 dump badging | head -4` line used to exit 141: badging prints
+    21 lines, head closes the pipe early, aapt2 dies of SIGPIPE, and
+    pipefail turns that into the script's exit code — breaking every
+    `build.sh && ...` dev-loop chain on success.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.build_sh = read(os.path.join(ROOT, "app", "android", "build.sh"))
+
+    def test_badging_tail_is_sigpipe_safe(self):
+        hits = [ln for ln in self.build_sh.splitlines()
+                if "dump badging" in ln and not ln.lstrip().startswith("#")]
+        self.assertEqual(len(hits), 1, hits)
+        self.assertTrue(hits[0].rstrip().endswith("|| true"), hits[0])
+
+
 CLOUD_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
                               "java", "org", "tinio", "unwritten",
                               "CloudUploader.java")
@@ -311,31 +373,43 @@ class CloudWebTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.html = read(WEB)
+        # User-ordered Oct 31: one page per screen; cloud settings live
+        # on the home page, cloud logic in the shared core.
+        cls.home = read(WEB)
+        cls.common = read(REC_COMMON)
+        cls.homejs = read(REC_HOME_JS)
 
     def test_cloud_is_opt_in_with_settings(self):
-        self.assertIn('id="cloudtoggle"', self.html)
-        self.assertIn('id="cloudpanel"', self.html)
-        self.assertIn('id="cloudsigner"', self.html)
-        self.assertIn("cloudReady()", self.html)
-        self.assertIn("CLOUD_SIGNER_DEFAULT", self.html)
-        self.assertIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.html)
-        self.assertIn("data-cloud-delete", self.html)
-        self.assertIn("cloudDeleteLesson", self.html)
-        self.assertNotIn("a.click()", self.html)
+        self.assertIn('id="cloudtoggle"', self.home)
+        self.assertIn('id="cloudpanel"', self.home)
+        self.assertIn('id="cloudsigner"', self.home)
+        self.assertIn("cloudReady()", self.common)
+        self.assertIn("CLOUD_SIGNER_DEFAULT", self.common)
+        self.assertIn("data-cloud-delete", self.common)
+        self.assertIn("cloudDeleteLesson", self.common)
+        self.assertNotIn("a.click()", self.homejs)
+
+    def test_build_stamps_the_shared_core(self):
+        # User-ordered Oct 31: the signer token placeholder lives in
+        # exactly one place — common.js — and build.sh stamps the
+        # served copy. No page carries its own placeholder.
+        self.assertIn('var CLOUD_SIGNER_TOKEN_DEFAULT = "";', self.common)
+        self.assertNotIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.home)
+        build = read(os.path.join(ROOT, "app", "recorder", "build.sh"))
+        self.assertIn("dist/common.js", build)
 
     def test_upload_uses_presigned_tus(self):
-        self.assertIn("https://video.bunnycdn.com/tusupload", self.html)
-        self.assertIn("AuthorizationSignature", self.html)
-        self.assertIn("AuthorizationExpire", self.html)
-        self.assertIn("Upload-Offset", self.html)
+        self.assertIn("https://video.bunnycdn.com/tusupload", self.common)
+        self.assertIn("AuthorizationSignature", self.common)
+        self.assertIn("AuthorizationExpire", self.common)
+        self.assertIn("Upload-Offset", self.common)
 
     def test_streaming_link_is_cloud_embed(self):
-        self.assertIn("https://player.mediadelivery.net/embed/", self.html)
+        self.assertIn("https://player.mediadelivery.net/embed/", self.common)
 
     def test_local_save_still_comes_first(self):
         # The vault write and download copy stay; Cloud hooks after them.
-        save = self.html.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
+        save = self.common.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("idbPut", save)
         self.assertLess(save.index("idbPut"), save.index("startCloudUpload"))
 
@@ -345,8 +419,8 @@ class CloudWebTests(unittest.TestCase):
         # and the failure names the token instead of staying silent —
         # the same contract Android and iOS keep.
         for token in ["cloudCanUpload", "Cloud credentials missing"]:
-            self.assertIn(token, self.html, token)
-        start = self.html.split("async function startCloudUpload", 1)[1]
+            self.assertIn(token, self.common, token)
+        start = self.common.split("async function startCloudUpload", 1)[1]
         self.assertLess(start.index("cloudCanUpload"),
                         start.index("cloudCreds"))
 
@@ -354,17 +428,17 @@ class CloudWebTests(unittest.TestCase):
         # Sessions recorded while Cloud was off (or failed) still
         # need their copy when Cloud comes back on — without a sweep
         # they would stay local-only forever, silently.
-        self.assertIn("function sweepBacklog", self.html)
-        toggle = self.html.split('$("cloudtoggle").onclick', 1)[1] \
-                          .split('$("cloudsettings").onclick', 1)[0]
+        self.assertIn("function sweepBacklog", self.homejs)
+        toggle = self.homejs.split('$("cloudtoggle").onclick', 1)[1] \
+                            .split('$("cloudsettings").onclick', 1)[0]
         self.assertIn("sweepBacklog()", toggle)
 
     def test_processing_timeout_offers_retry(self):
         # pollCloudStatus must not leave a session on "…" forever when
         # Cloud never finishes preparing the stream: the poll ends in
         # the failed state (the ! retry action) with a reason.
-        poll = self.html.split("async function pollCloudStatus", 1)[1] \
-                        .split("async function startCloudUpload", 1)[0]
+        poll = self.common.split("async function pollCloudStatus", 1)[1] \
+                          .split("async function startCloudUpload", 1)[0]
         self.assertIn("taking too long", poll)
         self.assertIn('"failed"', poll)
 
@@ -372,8 +446,8 @@ class CloudWebTests(unittest.TestCase):
         # A dead cloud delete must not trap local storage: the user
         # gets a second confirm to delete this device's copy anyway
         # (the cloud copy stays where it is).
-        delete = self.html.split("async function cloudDeleteLesson", 1)[1] \
-                          .split("function cloudResumePending", 1)[0]
+        delete = self.common.split("async function cloudDeleteLesson", 1)[1] \
+                            .split("function cloudResumePending", 1)[0]
         self.assertIn("anyway", delete)
 
 
@@ -633,59 +707,71 @@ class WebAndroidParityTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.html = read(WEB)
+        # User-ordered Oct 31: one page per screen; style in app.css,
+        # logic split between the shared core and per-page scripts.
+        cls.home = read(WEB)
+        cls.record = read(REC_RECORD)
+        cls.common = read(REC_COMMON)
+        cls.homejs = read(REC_HOME_JS)
+        cls.recordjs = read(REC_RECORD_JS)
+        cls.css = read(REC_CSS)
         cls.manifest = read(MANIFEST)
 
     def test_android_dark_palette(self):
         for color in ["#17130E", "#241C12", "#F5EAD6", "#B8A888"]:
-            self.assertIn(color, self.html, color)
+            self.assertIn(color, self.css, color)
 
     def test_title_and_sessions_wording(self):
         # Post-restructure contract (user-ordered): the app is Unwritten
         # Craft, landing on the hub with Record/Upload above it; device
         # sessions sit under "This device", not a recorder "Sessions" list.
-        self.assertIn("Record, upload, and revisit craft lessons.", self.html)
-        self.assertNotIn("Film mentor session. Record and let it happen.", self.html)
-        self.assertIn(">Hub<", self.html)
-        self.assertIn(">This device<", self.html)
-        self.assertNotIn("Lessons on this device", self.html)
+        self.assertIn("Record, upload, and revisit craft lessons.", self.home)
+        self.assertNotIn("Film mentor session. Record and let it happen.", self.home)
+        self.assertIn(">Hub<", self.home)
+        self.assertIn(">This device<", self.home)
+        self.assertNotIn("Lessons on this device", self.home)
 
     def test_zoom_row_below_viewfinder(self):
         for token in ['id="zoomrow"', 'id="zoomseek"', 'id="zoomlabel"']:
-            self.assertIn(token, self.html, token)
-        self.assertLess(self.html.index('id="zoomrow"'),
-                        self.html.index('id="recbtn"'))
+            self.assertIn(token, self.record, token)
+        self.assertLess(self.record.index('id="zoomrow"'),
+                        self.record.index('id="recbtn"'))
 
     def test_in_viewfinder_playback(self):
-        for token in ['id="player"', "playInViewfinder",
-                      "stopLocalPlayback", 'id="playercontrols"']:
-            self.assertIn(token, self.html, token)
+        self.assertIn('id="player"', self.record)
+        self.assertIn('id="playercontrols"', self.record)
+        self.assertIn("playInViewfinder", self.common)
+        self.assertIn("stopLocalPlayback", self.common)
+        # User-ordered Oct 31: home rows reach the viewfinder by
+        # navigating to the record page with the session named.
+        self.assertIn("record.html?play=", self.homejs)
 
     def test_stop_button_carries_timer_like_android(self):
-        self.assertIn("■ Stop  ", self.html)
+        self.assertIn("■ Stop  ", self.recordjs)
 
     def test_export_visible_only_when_cloud_off(self):
-        self.assertIn('id="exportbtn"', self.html)
-        self.assertIn("Export sessions to Downloads", self.html)
+        self.assertIn('id="exportbtn"', self.home)
+        self.assertIn("Export sessions to Downloads", self.home)
 
     def test_session_rows_newest_first_with_date_and_duration(self):
         for token in ["leftIconFor", "displayDateFor", "durationFor"]:
-            self.assertIn(token, self.html, token)
+            self.assertIn(token, self.common, token)
 
     def test_long_press_deletes_like_android(self):
-        self.assertIn("confirmDeleteLesson", self.html)
+        self.assertIn("confirmDeleteLesson", self.common)
+        self.assertIn("armPress", self.homejs)
 
     def test_share_uses_cloud_link(self):
-        self.assertIn("shareCloudLinkFor", self.html)
+        self.assertIn("shareCloudLinkFor", self.common)
 
     def test_manifest_uses_android_theme_color(self):
         self.assertIn("#17130E", self.manifest)
 
     def test_live_mic_check_warns_after_quiet_minute(self):
-        for token in ['id="speechwarn"', "startSpeechMonitor",
-                      "stopSpeechMonitor", "getFloatTimeDomainData",
-                      "60000"]:
-            self.assertIn(token, self.html, token)
+        self.assertIn('id="speechwarn"', self.record)
+        for token in ["startSpeechMonitor", "stopSpeechMonitor",
+                      "getFloatTimeDomainData", "60000"]:
+            self.assertIn(token, self.recordjs, token)
 
 
 if __name__ == "__main__":

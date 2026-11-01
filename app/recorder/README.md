@@ -1,9 +1,13 @@
-# Unwritten Craft web app (app/recorder/index.html)
+# Unwritten Craft web app (app/recorder/)
 
-A single-file web app: home lands on the hub sessions with Record and
-Upload above them, and recording is one screen of the app. Plain
-HTML/CSS/JS — no dependencies; one tiny build step stamps a signer
-token into a servable copy. Every take is saved to the on-device vault
+One page per screen sharing a common core: home (`index.html`) lands
+on the hub sessions with Record and Upload above them, `record.html`
+is the viewfinder screen, and `upload.html` takes a video file.
+`common.js` holds the vault, cloud, hub, and session rows;
+`home.js` / `record.js` / `upload.js` wire each page; `app.css` holds
+the dark palette. Plain HTML/CSS/JS — no dependencies, no modules
+(`file://` keeps working); one tiny build step stamps a signer token
+into a servable copy. Every take is saved to the on-device vault
 (IndexedDB) with no download prompt, and with Cloud on (a default) a
 copy is also uploaded for streamed playback. An upload rides the exact
 session path of a take, so the pipeline picks it up the same way a
@@ -100,7 +104,8 @@ access. Without one, the native-app capture path still works:
 1. **Durable:** GitHub Pages from this repo once it is public
    (Settings → Pages → deploy from `main`, folder `/app/recorder` —
    or serve the repo root and navigate to the path).
-2. **Quick test:** download `index.html` and open it. Chrome treats
+2. **Quick test:** download the folder (the pages plus their `.js`
+   and `.css` travel together) and open `index.html`. Chrome treats
    `file://` as trustworthy; iOS Safari generally does not for camera
    access — which is exactly what the native-app buttons are for.
 3. Allow camera + microphone, then **Add to Home screen** for a

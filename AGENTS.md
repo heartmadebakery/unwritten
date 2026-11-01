@@ -13,7 +13,7 @@ service, cron. Then come back here.
 
 | Path | What it is |
 |---|---|
-| `app/recorder/` | Single-file web app (`index.html`); `build.sh` stamps a token into `dist/` (git-ignored, never edit — rebuild) |
+| `app/recorder/` | Web app (`index.html` + `record.html` + `upload.html`, shared `common.js`); `build.sh` stamps a token into `dist/` (git-ignored, never edit — rebuild) |
 | `app/android/` | Native app, no Gradle daemon needed (`build.sh`: javac + d8 + CMake/NDK); base device Pixel 4, minSdk 29 |
 | `app/ios/` | SwiftUI app; `build.sh` needs Xcode (Mac only). Without it: contract tests only, say so |
 | `app/cloud-signer/` | Cloudflare Worker: Stream signing proxy + hub API (D1). `hub-check.mjs` is its test suite |

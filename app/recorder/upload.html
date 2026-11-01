@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Unwritten">
+<meta name="theme-color" content="#17130E">
+<meta name="description" content="Record one lesson, in the mentor's own words.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="stylesheet" href="app.css">
+<title>Upload · Unwritten Craft</title>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Unwritten Craft</h1>
+    <p class="sub">Record, upload, and revisit craft lessons.</p>
+  </header>
+  <div id="status">Upload a lesson video — it is saved on this device like a recording.</div>
+  <div>
+    <a class="backbtn" id="backhome-upload" href="index.html">‹ Home</a>
+    <div class="library"><h3>Upload a lesson video</h3></div>
+    <p class="note">Pick a video file: it is saved as a session on this device and uploaded to Cloud, and the pipeline picks it up exactly like a recording.</p>
+    <input type="file" id="uploadinput" accept="video/*">
+    <button class="bigbtn" id="uploadbtn">⬆ Upload</button>
+    <div id="uploadstatus"></div>
+  </div>
+</div>
+<script src="common.js"></script>
+<script src="upload.js"></script>
+<script>
+/* PWA: register the offline shell where supported (secure contexts
+   only; old Safari without service workers simply skips this). */
+if("serviceWorker" in navigator && window.isSecureContext){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+</script>
+</body>
+</html>

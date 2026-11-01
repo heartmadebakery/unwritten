@@ -1,9 +1,11 @@
-/* Unwritten Craft recorder — offline shell.
+/* Unwritten Craft web app — offline shell.
    Pages are network-first so design updates arrive when online; the
    cache only answers when the network is gone. Clips never pass
    through here — they live in IndexedDB and downloads, as before. */
-var CACHE = "unwritten-recorder-v5";
-var ASSETS = ["./", "index.html", "manifest.webmanifest",
+var CACHE = "unwritten-recorder-v6";
+var ASSETS = ["./", "index.html", "record.html", "upload.html",
+              "app.css", "common.js", "home.js", "record.js",
+              "upload.js", "manifest.webmanifest",
               "icons/apple-touch-icon.png", "icons/icon-192.png",
               "icons/icon-512.png", "icons/icon-512-maskable.png"];
 
@@ -27,11 +29,13 @@ self.addEventListener("fetch", function(e){
          shell until the cache is cleared by hand. */
       if(res && res.ok){
         var copy = res.clone();
-        caches.open(CACHE).then(function(c){ c.put("index.html", copy); });
+        caches.open(CACHE).then(function(c){ c.put(e.request, copy); });
       }
       return res;
     }).catch(function(){
-      return caches.match("index.html").then(function(hit){
+      return caches.match(e.request).then(function(hit){
+        return hit || caches.match("index.html");
+      }).then(function(hit){
         /* Nothing cached and nothing reachable: answer plainly
            instead of resolving undefined (a TypeError). */
         return hit || new Response("Unwritten Craft is offline and was never cached.",

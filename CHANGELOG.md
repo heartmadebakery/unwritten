@@ -6,6 +6,27 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-10-31
+
+### Changed
+- **Web app split into one page per screen (user-ordered).** The
+  single `index.html` with `showScreen` toggles is now `index.html`
+  (home) + `record.html` + `upload.html` sharing `common.js` and
+  `app.css`, with per-page scripts. Same screens, same behavior —
+  home rows reach the viewfinder via `record.html?play=<name>` — and
+  the build stamps its token into `dist/common.js`, the single stamp
+  point. Contract tests in `tests/test_recorder_streamlined.py` read
+  the file that owns each assertion; the service worker precaches
+  every page and script (cache `v6`).
+
+### Fixed
+- **Android `build.sh` exits 0 on success.** The final
+  `aapt2 dump badging | head -4` line died with SIGPIPE under
+  `set -o pipefail` (badging prints 21 lines; head closes early), so
+  every successful build exited 141 and broke `build.sh && ...`
+  chains. The tail is now SIGPIPE-safe; covered by
+  `AndroidBuildExitTests` in `tests/test_recorder_streamlined.py`.
+
 ## 2026-10-30
 
 ### Docs

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Unwritten">
+<meta name="theme-color" content="#17130E">
+<meta name="description" content="Record one lesson, in the mentor's own words.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="stylesheet" href="app.css">
+<title>Record · Unwritten Craft</title>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Unwritten Craft</h1>
+    <p class="sub">Record, upload, and revisit craft lessons.</p>
+  </header>
+  <div id="status">Record a new lesson — teach the way you'd teach anyway.</div>
+  <div>
+    <a class="backbtn" id="backhome-record" href="index.html">‹ Home</a>
+    <div id="stage">
+      <video id="view" autoplay playsinline muted></video>
+      <video id="player" class="hidden" playsinline preload="metadata"></video>
+      <div id="recbadge" class="hidden"><span id="recdot"></span>REC&nbsp;<span id="timer">0:00</span></div>
+      <div id="playercontrols" class="hidden">
+        <button id="vfplay" title="Play">▶</button>
+        <button id="vfpause" title="Pause">⏸</button>
+        <button id="vfclose" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
+    <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
+    <div id="zoomrow" class="hidden">
+      <button id="zoomout" title="Zoom out">−</button>
+      <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
+      <button id="zoomin" title="Zoom in">+</button>
+      <span id="zoomlabel">1.0×</span>
+    </div>
+    <button class="bigbtn" id="recbtn">● Record</button>
+    <div class="hidden" id="capcontrols">
+      <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
+      <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
+    </div>
+    <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list on the home screen.</div>
+    <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
+    <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
+    <div class="smallrow">
+      <button id="camtoggle">📷 Back camera</button>
+    </div>
+  </div>
+</div>
+<script src="common.js"></script>
+<script src="record.js"></script>
+<script>
+/* PWA: register the offline shell where supported (secure contexts
+   only; old Safari without service workers simply skips this). */
+if("serviceWorker" in navigator && window.isSecureContext){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+</script>
+</body>
+</html>

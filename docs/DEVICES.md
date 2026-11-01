@@ -1,8 +1,8 @@
 # Devices — capture on any device
 
 Unwritten Craft is one app in three forms: the web app
-([`app/recorder/index.html`](../app/recorder/index.html) — still a
-single file, plus a small build step that stamps in its Cloud
+([`app/recorder/`](../app/recorder/) — one page per screen over a
+shared core, plus a small build step that stamps in its Cloud
 credentials), the native Android app ([`app/android/`](../app/android/)),
 and the native iOS app ([`app/ios/`](../app/ios/)). All three open on
 the hub sessions with Record and Upload above them; recording is one

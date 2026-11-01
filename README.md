@@ -110,7 +110,7 @@ mentor data — samples are fictional.
 - `harness/` — the retired apprentice process-test harness, kept for the
   record. Its tests still run (`python3 -m unittest discover -s tests`).
 - `app/` — Unwritten Craft, in three forms: `app/recorder/`
-  (single-file web app), `app/android/` (native port, base device:
+  (web app, one page per screen), `app/android/` (native port, base device:
   Pixel 4, minSdk 29), and `app/ios/` (native port, base device:
   iPhone, iOS 17+). All three open on the hub sessions with Record
   and Upload above them; recording is one screen of the app, and an
