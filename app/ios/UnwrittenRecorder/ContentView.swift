@@ -54,6 +54,7 @@ struct ContentView: View {
     @State private var playingName: String?
     @State private var endObserver: NSObjectProtocol?
     @State private var hubPlayer: AVPlayer?
+    @State private var hubItemObserver: NSKeyValueObservation?
 
     @State private var showCloudPanel = false
     @State private var pendingDelete: String?
@@ -314,20 +315,13 @@ struct ContentView: View {
 
     private var recordView: some View {
         List {
-            // The viewfinder card: preview (or in-viewfinder playback),
-            // the red/quiet banners, and zoom — all in one group.
+            // The viewfinder card: the live preview, the red/quiet
+            // banners, and zoom — all in one group.
             Section {
-                // Viewfinder with in-player overlay (playback appears
-                // inside the viewfinder, like Android and the web).
                 ZStack(alignment: .bottom) {
                     CameraPreview(engine: engine)
                         .frame(height: 280)
                         .background(Color.black)
-                    if player != nil, let player {
-                        PlayerView(player: player)
-                            .frame(height: 280)
-                            .background(Color.black)
-                    }
                     if engine.isRecording {
                         HStack {
                             HStack(spacing: 8) {
@@ -343,15 +337,6 @@ struct ContentView: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }
-                    if player != nil {
-                        HStack(spacing: 8) {
-                            playerButton("play.fill", "Play") { player?.play() }
-                            playerButton("pause.fill", "Pause") { player?.pause() }
-                            playerButton("xmark", "Close") { stopLocalPlayback() }
-                        }
-                        .padding(8)
-                        .background(Color.black.opacity(0.66))
                     }
                 }
                 .listRowInsets(EdgeInsets())
@@ -486,6 +471,14 @@ struct ContentView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(BG)
+        // A device session plays in a full-screen native player. (It
+        // used to play in the viewfinder at the top of this list, which
+        // sat off-screen whenever the tapped row was scrolled into view
+        // — the video played where nobody could see it.)
+        .fullScreenCover(isPresented: Binding(get: { player != nil },
+                                              set: { if !$0 { stopLocalPlayback() } })) {
+            devicePlayerCover
+        }
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -522,6 +515,30 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
         .accessibilityLabel(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record")
         .sensoryFeedback(.impact, trigger: engine.isRecording)
+    }
+
+    /// Full-screen native playback of a device session: system
+    /// transport controls (scrub, AirPlay, picture in picture) and a
+    /// close button. The end of the video closes it.
+    private var devicePlayerCover: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea(edges: .bottom)
+            }
+            Button {
+                stopLocalPlayback()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 32))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .black.opacity(0.55))
+            }
+            .padding(16)
+            .accessibilityLabel("Close player")
+        }
+        .preferredColorScheme(.dark)
     }
 
     // ---------- screens ----------
@@ -589,6 +606,12 @@ struct ContentView: View {
         if engine.isRecording { return }
         stopLocalPlayback()
         playingName = label
+        // The camera rests while a lesson plays, and the sound comes
+        // out of the speaker like any video app (the capture session's
+        // record-capable audio session would use the earpiece).
+        engine.pauseSession()
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
         let p = AVPlayer(url: url)
         player = p
         endObserver = NotificationCenter.default.addObserver(
@@ -612,27 +635,53 @@ struct ContentView: View {
     }
 
     /// Hub sessions stream in the hub screen's own player — watching a
-    /// published lesson never opens the camera. With no stream URL the
-    /// Cloud embed page opens instead (Android's openInBrowser), so
-    /// Play is never a dead button.
+    /// published lesson never opens the camera. The progressive MP4 is
+    /// preferred (one resource, so the Referer below rides every range
+    /// request), then HLS. The Cloud CDN's hotlink protection 403s any
+    /// request without the player page as Referer — AVPlayer sends none
+    /// by itself, so every stream failed until it was added (the
+    /// pipeline fetcher works around it the same way). A stream that
+    /// still fails, or no stream URL at all, opens the Cloud embed page
+    /// instead (Android's openInBrowser): Play is never a dead button.
     private func playHubSession(_ session: HubSession) {
-        let str = (session.hlsUrl?.isEmpty == false) ? session.hlsUrl : session.mp4Url
+        let str = (session.mp4Url?.isEmpty == false) ? session.mp4Url : session.hlsUrl
         guard let str, !str.isEmpty, let url = URL(string: str) else {
-            if let embed = store.hubEmbedUrl(session), let url = URL(string: embed) {
-                store.status = "Opening the Cloud player for this session."
-                openURL(url)
-            } else {
-                store.status = "No playable stream on this hub session yet."
-            }
+            openHubEmbed(session, note: "No stream on this hub session yet — opening the Cloud player.")
             return
         }
         stopHubPlayer()
-        let p = AVPlayer(url: url)
+        var headers: [String: String] = [:]
+        if let embed = store.hubEmbedUrl(session) { headers["Referer"] = embed }
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let item = AVPlayerItem(asset: asset)
+        hubItemObserver = item.observe(\.status, options: [.new]) { item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async {
+                stopHubPlayer()
+                openHubEmbed(session, note: "That stream couldn't play here — opening the Cloud player.")
+            }
+        }
+        // A video screen plays through the speaker like any video app;
+        // the camera engine's record-capable session would use the earpiece.
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
+        let p = AVPlayer(playerItem: item)
         hubPlayer = p
         p.play()
     }
 
+    private func openHubEmbed(_ session: HubSession, note: String) {
+        if let embed = store.hubEmbedUrl(session), let url = URL(string: embed) {
+            store.status = note
+            openURL(url)
+        } else {
+            store.status = "No playable stream on this hub session yet."
+        }
+    }
+
     private func stopHubPlayer() {
+        hubItemObserver?.invalidate()
+        hubItemObserver = nil
         hubPlayer?.pause()
         hubPlayer = nil
     }
@@ -645,6 +694,9 @@ struct ContentView: View {
         }
         player = nil
         playingName = nil
+        // Back from the full-screen player: the camera wakes again (a
+        // redundant resume is a no-op; leaving Record parks it itself).
+        if onRecordScreen { engine.resumeSession() }
     }
 
     // ---------- sessions ----------
@@ -762,19 +814,6 @@ struct ContentView: View {
                 .frame(width: 44, height: 34)
                 .background(PANEL)
                 .cornerRadius(8)
-        }
-        .accessibilityLabel(label)
-    }
-
-    private func playerButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 15))
-                .foregroundColor(INK)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(PANEL)
-                .cornerRadius(6)
         }
         .accessibilityLabel(label)
     }
@@ -1027,28 +1066,6 @@ struct CameraPreview: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PreviewUIView, context: Context) {}
-}
-
-struct PlayerView: UIViewRepresentable {
-    let player: AVPlayer
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        let view = PlayerUIView()
-        view.backgroundColor = .black
-        view.playerLayer.player = player
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        // SwiftUI reuses the UIView: without this, tapping session B
-        // keeps showing session A's player.
-        uiView.playerLayer.player = player
-    }
-}
-
-final class PlayerUIView: UIView {
-    override class var layerClass: AnyClass { AVPlayerLayer.self }
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
 }
 
 /// System video picker for uploads. The picked video is copied into

@@ -8,6 +8,23 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Fixed
+- **iOS playback was broken for hub sessions and device recordings.**
+  *Hub:* the Cloud CDN's hotlink protection 403s any request without
+  the player page as `Referer` (the pipeline fetcher already sends it),
+  and AVPlayer sent none, so every hub stream failed to a crossed-out
+  play glyph. Hub playback now sends the session's embed URL as
+  `Referer`, prefers the progressive MP4 (then HLS), plays through the
+  speaker (`.playback` audio category), and a stream that still fails
+  opens the Cloud player instead of dying silently — like Android and
+  the web. *Device:* tapping a session row played the video in the
+  viewfinder at the top of the Record list, off-screen whenever the
+  row was scrolled into view (and `scrollTo` inside the List did not
+  bring it back). A tapped session now plays in a full-screen native
+  `VideoPlayer` (scrub, AirPlay, close), and the camera rests while it
+  plays. Verified on an iPhone 14 Pro: hub frames advance; the player
+  covers the screen with the list scrolled to the bottom.
+
 ### Added
 - **iOS app icon, the same artwork as the web PWA icon.** New
   `Assets.xcassets/AppIcon` (single 1024 opaque PNG, upscaled from

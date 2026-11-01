@@ -41,8 +41,8 @@ as the web and Android apps, built from iOS parts: a `NavigationStack`
 home (a grouped list with Record and Upload over the hub last, pull
 to refresh) that pushes Record (an inset-grouped list: the
 viewfinder card with zoom, a round camera-style shutter, the Cloud
-switch, and the device sessions — a swipe deletes — plus in-viewfinder
-playback, camera switch in the toolbar, and an Advanced settings link
+switch, and the device sessions — a swipe deletes — plus a
+full-screen native player for a tapped session, camera switch in the toolbar, and an Advanced settings link
 opening the Cloud settings sheet) and hub sessions (their own player, never the camera,
 plus the write-up, corrections and chapters, with Share/Delete in the
 toolbar). The system back button and edge swipe leave Record exactly

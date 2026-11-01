@@ -132,6 +132,22 @@ README; the notable porting decisions:
   so the granted/denied branches past the prompt are verified by
   code path + regression test, not by tapping — see open items.
 
+## Update — 2026-11-01: playback fix
+
+- Hub playback 403'd (CDN hotlink protection wants the player page as
+  `Referer`; `curl` without it → 403, with it → 200/206): AVPlayer now
+  gets `AVURLAssetHTTPHeaderFieldsKey: Referer` = the session's embed
+  URL, MP4 first then HLS, `.playback` audio, and a failed item opens
+  the Cloud embed page. Device recordings play in a full-screen
+  `VideoPlayer` cover (the old in-viewfinder strip was off-screen
+  whenever the tapped row was scrolled into view); camera pauses while
+  it plays and resumes after.
+- Evidence: iPhone 14 Pro screenshots — hub frames change 3 s apart;
+  the player covers the screen with the list scrolled to the bottom.
+- Not observed: sound (no remote hearing), the embed-fallback path on a
+  real stream failure, HLS-only sessions (the Referer header on HLS
+  segment requests), pause/scrub by hand.
+
 ## Update — 2026-11-01: native-feel pass
 
 - Record is now an inset-grouped `List` (viewfinder card + zoom, a

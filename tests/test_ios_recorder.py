@@ -223,7 +223,9 @@ class IOSNativeFeelTests(unittest.TestCase):
     def test_record_is_an_inset_grouped_list_so_swipe_deletes_work(self):
         self.assertIn("List {", self.record)
         self.assertIn(".listStyle(.insetGrouped)", self.record)
-        self.assertNotIn("ScrollView", self.record)
+        # No ScrollView *container* (swipe actions don't fire inside one);
+        # a ScrollViewReader around the List is only a scroll helper.
+        self.assertNotIn("ScrollView {", self.record)
         self.assertIn(".swipeActions", self.view)
 
     def test_shutter_is_a_ring_and_disc_with_shared_labels(self):
@@ -253,6 +255,67 @@ class IOSNativeFeelTests(unittest.TestCase):
         self.assertIn(".submitLabel(.go)", self.home)
         self.assertIn(".onSubmit", self.home)
         self.assertIn(".disabled(", self.home)
+
+
+class IOSPlaybackTests(unittest.TestCase):
+    """Playback bugs reported Nov 1: hub videos never played and device
+    recordings looked dead.
+
+    Hub: the Cloud CDN's hotlink protection 403s any request without
+    the player page as Referer (the pipeline fetcher already works
+    around it the same way), and AVPlayer sends none — so every hub
+    stream failed. Device: a session row sits far below the viewfinder
+    on the Record list, so tapping it played the video off-screen."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.view = read(VIEW)
+        cls.play = cls.view.split("private func playHubSession", 1)[1] \
+                           .split("private func stopLocalPlayback", 1)[0]
+        cls.record = cls.view.split("private var recordView", 1)[1] \
+                          .split("private func showScreen", 1)[0]
+
+    def test_hub_playback_sends_the_player_page_as_referer(self):
+        self.assertIn("AVURLAssetHTTPHeaderFieldsKey", self.play)
+        self.assertIn('"Referer"', self.play)
+        self.assertIn("hubEmbedUrl(", self.play)
+
+    def test_hub_prefers_the_progressive_mp4_then_hls(self):
+        self.assertLess(self.play.index("mp4Url"), self.play.index("hlsUrl"))
+
+    def test_failed_hub_stream_falls_back_to_the_cloud_player(self):
+        # Never a silent dead player: a failed item says so and opens
+        # the embed page (Android's openInBrowser, the web's onerror).
+        self.assertIn(".failed", self.play)
+        self.assertIn("openURL(", self.play)
+        self.assertIn("hubItemObserver", self.view)
+
+    def test_hub_audio_uses_the_playback_category(self):
+        # The camera engine leaves a record-capable session behind,
+        # which routes video sound to the quiet earpiece.
+        self.assertIn(".moviePlayback", self.play)
+
+    def test_device_playback_is_a_full_screen_native_player(self):
+        # Found on device: tapping a session row (scrolled far below the
+        # viewfinder) played the video in the off-screen viewfinder, and
+        # scrollTo inside the List did not bring it back. Playback is now
+        # a full-screen cover with the system player's controls.
+        self.assertIn(".fullScreenCover(", self.record)
+        self.assertIn("devicePlayerCover", self.view)
+        cover = self.view.split("private var devicePlayerCover", 1)[1] \
+                         .split("// ---------- screens", 1)[0]
+        self.assertIn("VideoPlayer(player:", cover)
+        self.assertIn("stopLocalPlayback()", cover)
+        self.assertNotIn("ScrollViewReader", self.view)
+
+    def test_camera_rests_while_a_session_plays(self):
+        start = self.view.split("private func startPlayer", 1)[1] \
+                         .split("private func playInViewfinder", 1)[0]
+        self.assertIn("engine.pauseSession()", start)
+        self.assertIn(".moviePlayback", start)
+        stop = self.view.split("private func stopLocalPlayback", 1)[1] \
+                        .split("// ---------- sessions", 1)[0]
+        self.assertIn("engine.resumeSession()", stop)
 
 
 class IOSBaselineTests(unittest.TestCase):
@@ -472,17 +535,14 @@ class IOSParityTests(unittest.TestCase):
             self.assertIn(token, self.view, token)
 
     def test_in_viewfinder_playback(self):
-        for token in ["PlayerView", "playInViewfinder",
+        # User-ordered Nov 1 (playback bug fix): a tapped session no
+        # longer plays in the viewfinder strip — which sat off-screen
+        # whenever the row was scrolled into view — but in a full-screen
+        # native VideoPlayer. The shared entry points keep their names.
+        for token in ["VideoPlayer(player:", "playInViewfinder",
                       "stopLocalPlayback"]:
             self.assertIn(token, self.view, token)
-
-    def test_player_view_updates_its_player(self):
-        # SwiftUI reuses the UIView: an empty updateUIView keeps
-        # playing session A after the user taps session B.
-        update = self.view.split(
-            "func updateUIView(_ uiView: PlayerUIView", 1)[1] \
-            .split("}", 1)[0]
-        self.assertIn("playerLayer.player", update)
+        self.assertNotIn("PlayerView(player:", self.view)
 
     def test_settings_show_stored_values_not_effective(self):
         # Loading effective (compiled-default) values into the fields
@@ -639,8 +699,9 @@ class IOSScreensTests(unittest.TestCase):
                         save.index("registerLesson(url:"))
 
     def test_home_playback_moves_to_record_screen(self):
-        # Device sessions still play inside the viewfinder (shared
-        # design); user-ordered Nov 1 the route there is a push.
+        # Device sessions play from the record screen (user-ordered Nov 1
+        # the route there is a push; the player itself is a full-screen
+        # cover now).
         play = self.view.split("private func playInViewfinder", 1)[1] \
                         .split("private func playHubSession", 1)[0]
         self.assertIn("path.append(.record)", play)
