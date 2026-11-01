@@ -18,6 +18,8 @@ history (30 commits) and is maintained in the open from then on.
   point. Contract tests in `tests/test_recorder_streamlined.py` read
   the file that owns each assertion; the service worker precaches
   every page and script (cache `v6`).
+- **Prebuilt APK re-stamped from the restored original token pool**
+  (no source change — the shipped build matches the worker again).
 
 ### Fixed
 - **Android `build.sh` exits 0 on success.** The final
