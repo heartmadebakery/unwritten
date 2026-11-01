@@ -17,6 +17,7 @@
 		3A2B3C4D0000000000000018 /* SessionStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A2B3C4D0000000000000018 /* SessionStore.swift */; };
 		3A2B3C4D0000000000000019 /* uwcore_luma.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 2A2B3C4D0000000000000019 /* uwcore_luma.cpp */; };
 		3A2B3C4D000000000000001A /* UWCoreBridge.mm in Sources */ = {isa = PBXBuildFile; fileRef = 2A2B3C4D000000000000001A /* UWCoreBridge.mm */; };
+		3A2B3C4D000000000000001F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 2A2B3C4D000000000000001F /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +36,7 @@
 		2A2B3C4D000000000000001C /* UWCoreBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = UWCoreBridge.h; sourceTree = "<group>"; };
 		2A2B3C4D000000000000001D /* UnwrittenRecorder-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "UnwrittenRecorder-Bridging-Header.h"; sourceTree = "<group>"; };
 		2A2B3C4D000000000000001E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		2A2B3C4D000000000000001F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,6 +83,7 @@
 				2A2B3C4D000000000000001C /* UWCoreBridge.h */,
 				2A2B3C4D000000000000001D /* UnwrittenRecorder-Bridging-Header.h */,
 				2A2B3C4D000000000000001E /* Info.plist */,
+				2A2B3C4D000000000000001F /* Assets.xcassets */,
 			);
 			path = UnwrittenRecorder;
 			sourceTree = "<group>";
@@ -137,6 +140,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3A2B3C4D000000000000001F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -181,6 +185,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = dwarf;
@@ -209,6 +214,7 @@
 				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				CLANG_ENABLE_MODULES = YES;
 				CLANG_ENABLE_OBJC_ARC = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";

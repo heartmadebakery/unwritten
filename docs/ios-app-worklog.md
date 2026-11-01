@@ -141,6 +141,6 @@ README; the notable porting decisions:
    real TUS upload to the signer (stamped token) through encoding to
    ↗ share, and cloud-first delete. Capture sessions vary by device;
    the device is the only proof.
-2. **App icon** — no asset catalog yet (same open item as Android).
+2. **App icon** — done Nov 1: `Assets.xcassets/AppIcon` from the web PWA icon (Android still open).
 3. **Release signing** — the project uses automatic signing; device
    and store builds need a development team.

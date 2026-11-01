@@ -219,6 +219,22 @@ class IOSBaselineTests(unittest.TestCase):
         self.assertIn("TARGETED_DEVICE_FAMILY = 1", self.pbxproj)
         self.assertIn("SDKROOT = iphoneos", self.pbxproj)
 
+    def test_app_icon_matches_web_pwa_icon(self):
+        # One 1024 AppIcon (iOS 17 single-size), made from the PWA icon.
+        assets = os.path.join(SRC, "Assets.xcassets", "AppIcon.appiconset")
+        meta = read(os.path.join(assets, "Contents.json"))
+        self.assertIn("icon-1024.png", meta)
+        self.assertTrue(os.path.isfile(os.path.join(assets, "icon-1024.png")))
+        with open(os.path.join(assets, "icon-1024.png"), "rb") as f:
+            head = f.read(32)
+        self.assertEqual(head[:8], b"\x89PNG\r\n\x1a\n")
+        self.assertEqual(int.from_bytes(head[16:20], "big"), 1024)
+        self.assertEqual(int.from_bytes(head[20:24], "big"), 1024)
+        self.assertNotEqual(head[25], 6, "icon must be opaque (no alpha)")
+        self.assertIn("Assets.xcassets", self.pbxproj)
+        self.assertIn("ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon",
+                      self.pbxproj)
+
     def test_same_bundle_id_as_android(self):
         self.assertIn("org.tinio.unwritten", self.plist)
         self.assertIn("org.tinio.unwritten", self.pbxproj)

@@ -8,6 +8,12 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Added
+- **iOS app icon, the same artwork as the web PWA icon.** New
+  `Assets.xcassets/AppIcon` (single 1024 opaque PNG, upscaled from
+  `app/recorder/icons/icon-512.png`) wired into the Xcode project;
+  contract test added.
+
 ### Changed
 - **Home is actions with the hub last; cloud + device moved to the
   record screen (user-ordered, all three apps).** Cloud settings hide
