@@ -113,6 +113,8 @@ public class MainActivity extends Activity {
     private JSONArray hubRows = new JSONArray();
     private JSONObject hubDetail;
     private String hubNotice = "";
+    private JSONObject ignoredById = new JSONObject();
+    private JSONObject ignoredByTitle = new JSONObject();
     private SeekBar zoomSeek;
     private long speechQuietSince;
     private File lastLessonFile;
@@ -1051,6 +1053,20 @@ public class MainActivity extends Activity {
                 }
             }
 
+            // ignored badge: takes the pipeline operator set aside
+            // never reach the hub; the reason rides along for readers
+            String ignReason = ignoredReasonFor(name);
+            if (ignReason != null) {
+                TextView stv = label("ignored", 13, DIM);
+                stv.setPadding(dp(8), 0, 0, 0);
+                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
+                bp.setMargins(dp(8), 0, 0, 0);
+                stv.setGravity(Gravity.CENTER);
+                stv.setLayoutParams(bp);
+                stv.setContentDescription(ignReason.isEmpty() ? "Ignored by the operator" : "Ignored by the operator: " + ignReason);
+                row.addView(stv);
+            }
+
             // long-press row to delete — also on children so anywhere on row triggers it
             View.OnLongClickListener longDelete = new View.OnLongClickListener() {
                 @Override public boolean onLongClick(View v) { confirmDeleteLesson(name); return true; }
@@ -1393,9 +1409,12 @@ public class MainActivity extends Activity {
             hubRows = new JSONArray();
             hubDetail = null;
             hubNotice = "";
-            runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
+            ignoredById = new JSONObject();
+            ignoredByTitle = new JSONObject();
+            runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); refreshClipList(); } });
             return;
         }
+        loadIgnored();
         cloudExec.execute(new Runnable() { @Override public void run() {
             try {
                 HubClient hub = new HubClient(cloudEffSignerUrl(), cloudEffSignerToken());
@@ -1425,6 +1444,46 @@ public class MainActivity extends Activity {
                 runOnUiThread(new Runnable() { @Override public void run() { refreshHubRows(); } });
             }
         } });
+    }
+
+    // Ignored badges: the pipeline operator's set-asides, fetched
+    // alongside the hub. Matching takes get an "ignored" badge in
+    // the Record list; the hub never shows these at all. Match rule,
+    // same as the web and iOS recorders: the take's cloud-link
+    // videoId, else its filename against the marker title (upload
+    // titles are filenames). A failed fetch just leaves badges off.
+    private void loadIgnored() {
+        if (!hubAvailable()) return;
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                JSONArray rows = new HubClient(cloudEffSignerUrl(), cloudEffSignerToken()).ignored();
+                JSONObject byId = new JSONObject();
+                JSONObject byTitle = new JSONObject();
+                for (int i = 0; i < rows.length(); i++) {
+                    JSONObject r = rows.optJSONObject(i);
+                    if (r == null) continue;
+                    String vid = r.optString("videoId", "");
+                    String title = r.optString("title", "");
+                    String reason = r.optString("reason", "");
+                    if (!vid.isEmpty()) byId.put(vid, reason);
+                    if (!title.isEmpty()) byTitle.put(title, reason);
+                }
+                ignoredById = byId;
+                ignoredByTitle = byTitle;
+                runOnUiThread(new Runnable() { @Override public void run() { refreshClipList(); } });
+            } catch (final Exception e) {
+                android.util.Log.e("UnwrittenHub", "ignored list failed", e);
+            }
+        } });
+    }
+
+    // The ignore reason for a take, or null when not ignored.
+    private String ignoredReasonFor(String name) {
+        JSONObject link = cloudLink(name);
+        String vid = link == null ? "" : link.optString("videoId", "");
+        if (!vid.isEmpty() && ignoredById.has(vid)) return ignoredById.optString(vid, "");
+        if (ignoredByTitle.has(name)) return ignoredByTitle.optString(name, "");
+        return null;
     }
 
     private void refreshHubRows() {

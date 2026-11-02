@@ -303,7 +303,7 @@ $("caps").textContent = "This device: " +
   (CAPS.inPageRecording ? "can record in the page ✓" : "no in-page recording — its own camera/voice apps will be used") +
   " · " + (CAPS.secure ? "secure page ✓" : "⚠️ not a secure page (in-page camera needs https or a local file)") +
   " · " + (CAPS.idb ? "on-device vault ✓" : "no on-device vault (sessions only last until reload)");
-idbRestore().then(function(){ renderClips(); cloudResumePending(); });
+idbRestore().then(function(){ renderClips(); cloudResumePending(); refreshIgnored(); });
 (function(){
   var m = /[?&]play=([^&]*)/.exec(location.search || "");
   if(!m || !m[1]) return;

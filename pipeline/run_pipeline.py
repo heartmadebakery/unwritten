@@ -151,17 +151,23 @@ def segment_ends(timestamped_text):
     return ends
 
 
+BEAT_CAP = 60  # user-ordered 2026-11-01: no correction beat runs
+# longer than this (sparse API transcripts yielded 4-minute
+# "moments" that also blew the highlight size limit)
+
+
 def correction_end(start_s, ends):
     """Where a correction beat ends: its segment's end on an exact
-    hit, else the next segment start after it, else a nominal 20 s.
-    A finder timestamp that lands mid-segment still cuts a tight
-    clip instead of falling back to the blind default."""
+    hit, else the next segment start after it, else a nominal 20 s —
+    capped at BEAT_CAP past the start. A finder timestamp that lands
+    mid-segment still cuts a tight clip instead of falling back to
+    the blind default."""
     if start_s in ends:
-        return ends[start_s]
-    later = [s for s in ends if s > start_s]
-    if later:
-        return min(later)
-    return start_s + 20
+        end = ends[start_s]
+    else:
+        later = [s for s in ends if s > start_s]
+        end = min(later) if later else start_s + 20
+    return min(end, start_s + BEAT_CAP)
 
 
 def clip_window(start_s, end_s):

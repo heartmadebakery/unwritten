@@ -52,6 +52,17 @@
  *
  *   DELETE /hub/sessions/<videoId> -> {deleted: true}
  *
+ *   Ignored videos (D1 table ignored_videos): operator set-asides
+ *   the hub never shows. The pipeline syncs them here; the
+ *   recorders badge them on the Record screen instead.
+ *
+ *   POST /hub/ignored  {videoId, title?, reason?} -> {ignored: videoId}
+ *                     Upserts the marker; videoId is required.
+ *   GET  /hub/ignored -> [{videoId, title, reason, ignoredAt}]
+ *                     (newest first)
+ *   DELETE /hub/ignored/<videoId> -> {deleted: true} (un-ignores;
+ *                     a published session becomes visible again)
+ *
  * Env: DB (d1_databases binding, see wrangler.toml + migrations/).
  * Without it the /hub/* routes answer 503 — uploads keep working.
  *
@@ -209,6 +220,63 @@ export default {
         return json({ ok: true });
       }
     }
+    // Ignored videos: operator set-asides the hub never shows. Like
+    // the fetch queue, needs only the token gate plus D1.
+    if (normPath === "/hub/ignored") {
+      const store = hubStore(env);
+      if (!store) return json({ error: "hub store not configured" }, 503);
+      if (request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const videoId = String(body.videoId || "").trim();
+        if (!videoId) return json({ error: "videoId required" }, 400);
+        const now = Math.floor(Date.now() / 1000);
+        await store
+          .prepare(
+            `INSERT INTO ignored_videos (video_id, title, reason, ignored_at)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(video_id) DO UPDATE SET
+               title=excluded.title, reason=excluded.reason,
+               ignored_at=excluded.ignored_at`
+          )
+          .bind(videoId, String(body.title || ""),
+            String(body.reason || ""), now).run();
+        return json({ ignored: videoId });
+      }
+      if (request.method === "GET") {
+        const rows = await store
+          .prepare(
+            `SELECT video_id, title, reason, ignored_at FROM ignored_videos
+             ORDER BY ignored_at DESC, video_id ASC`
+          )
+          .all();
+        return json(
+          (rows.results || []).map((r) => ({
+            videoId: r.video_id,
+            title: r.title,
+            reason: r.reason,
+            ignoredAt: r.ignored_at,
+          }))
+        );
+      }
+      return json({ error: "method not allowed" }, 405);
+    }
+    {
+      const m = normPath.match(/^\/hub\/ignored\/([^/]+)$/);
+      if (m) {
+        const store = hubStore(env);
+        if (!store) return json({ error: "hub store not configured" }, 503);
+        let videoId;
+        try { videoId = decodeURIComponent(m[1]); } catch { return json({ error: "bad video id" }, 400); }
+        if (request.method === "DELETE") {
+          await store
+            .prepare(`DELETE FROM ignored_videos WHERE video_id = ?`)
+            .bind(videoId)
+            .run();
+          return json({ deleted: true });
+        }
+        return json({ error: "method not allowed" }, 405);
+      }
+    }
     if (!env.CLOUD_LIBRARY_ID || !env.CLOUD_API_KEY) {
       return json({ error: "signer not configured (CLOUD_LIBRARY_ID / CLOUD_API_KEY)" }, 500);
     }
@@ -259,7 +327,9 @@ export default {
         const rows = await store
           .prepare(
             `SELECT video_id, library_id, title, lesson_date, published_at
-             FROM sessions ORDER BY published_at DESC, video_id ASC`
+             FROM sessions
+             WHERE video_id NOT IN (SELECT video_id FROM ignored_videos)
+             ORDER BY published_at DESC, video_id ASC`
           )
           .all();
         return json(
@@ -285,6 +355,11 @@ export default {
               .bind(videoId)
               .first();
             if (!row) return json({ error: "not found" }, 404);
+            const snubbed = await store
+              .prepare(`SELECT video_id FROM ignored_videos WHERE video_id = ?`)
+              .bind(videoId)
+              .first();
+            if (snubbed) return json({ error: "not found" }, 404);
             return json({
               videoId: row.video_id,
               libraryId: row.library_id,

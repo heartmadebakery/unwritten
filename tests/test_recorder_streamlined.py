@@ -1243,5 +1243,45 @@ class CameraEngineTests(unittest.TestCase):
         self.assertIn("between takes", luma)
 
 
+class IgnoredBadgeTests(unittest.TestCase):
+    """Ignored takes (user-ordered): the pipeline's operator set-asides
+    sync to the hub, and every recorder badges matching takes on the
+    Record screen instead of showing them in the hub. Match rule,
+    everywhere: the take's cloud-link videoId, else its filename
+    against the marker title (upload titles are filenames)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.common = read(REC_COMMON)
+        cls.record_js = read(REC_RECORD_JS)
+        cls.hub = read(HUB)
+        cls.main = read(MAIN)
+
+    def test_web_fetches_ignored_for_record_rows(self):
+        self.assertIn("/hub/ignored", self.common)
+        self.assertIn("ignoredMarks", self.common)
+        self.assertIn("refreshIgnored", self.record_js)
+
+    def test_web_badges_matching_rows(self):
+        row = self.common.split("function clipHTML", 1)[1] \
+                         .split("function renderClips", 1)[0]
+        self.assertIn("ignoredFor", row)
+        self.assertIn("ignored</span>", row)
+        match = self.common.split("function ignoredFor", 1)[1] \
+                            .split("function renderClips", 1)[0]
+        self.assertIn("videoId", match)
+
+    def test_android_lists_ignored(self):
+        self.assertIn("/hub/ignored", self.hub)
+        self.assertIn("public JSONArray ignored()", self.hub)
+
+    def test_android_badges_record_rows(self):
+        self.assertIn("loadIgnored", self.main)
+        rows = self.main.split("private void refreshClipList", 1)[1] \
+                        .split("private String mimeFor", 1)[0]
+        self.assertIn("ignored", rows)
+        self.assertIn("ignoredReasonFor", rows)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,6 +40,12 @@ public class HubClient {
         return new JSONArray(getRaw("/hub/sessions"));
     }
 
+    /** Operator set-asides, newest first: videos the hub never
+     *  shows. The Record screen badges matching takes instead. */
+    public JSONArray ignored() throws Exception {
+        return new JSONArray(getRaw("/hub/ignored"));
+    }
+
     /** One full session record (write-up, corrections, chapters, URLs). */
     public JSONObject get(String videoId) throws Exception {
         if (videoId == null || videoId.isEmpty()) throw new IOException("videoId required");

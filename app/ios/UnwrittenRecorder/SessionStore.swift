@@ -16,6 +16,14 @@ struct HubChapter: Decodable {
     var label: String?
 }
 
+/// One operator set-aside from the hub store: a video the hub never
+/// shows. The Record screen badges matching takes instead.
+struct IgnoredMark: Decodable {
+    var videoId: String
+    var title: String?
+    var reason: String?
+}
+
 struct HubSession: Decodable, Identifiable {
     var videoId: String
     var libraryId: String?
@@ -49,6 +57,9 @@ struct SessionRow: Identifiable {
     let leftIcon: String
     let middleText: String
     let rightKind: RightKind
+    /// Set when the pipeline operator set this take aside: the row
+    /// shows an "ignored" badge instead of hub content.
+    var ignoredReason: String? = nil
 
     var id: String { name }
 }
@@ -68,6 +79,8 @@ final class SessionStore: ObservableObject {
     let clipsDir: URL
     let cloud = CloudStore()
     private var durationCache: [String: String] = [:]
+    private var ignoredById: [String: String] = [:]
+    private var ignoredByTitle: [String: String] = [:]
     private var inFlight: Set<String> = []
     private var polling: Set<String> = []
     private var uploadTasks: [String: Task<Void, Never>] = [:]
@@ -167,13 +180,26 @@ final class SessionStore: ObservableObject {
         }
     }
 
+    /// The ignore reason for a take, or nil when not ignored.
+    /// Match rule, same as Android and the web: the take's
+    /// cloud-link videoId, else its filename against the marker
+    /// title (upload titles are filenames).
+    private func ignoredReason(for name: String) -> String? {
+        if let vid = cloud.cloudLink(name)?["videoId"] as? String, !vid.isEmpty,
+           let reason = ignoredById[vid] {
+            return reason
+        }
+        return ignoredByTitle[name]
+    }
+
     func refresh() {
         rows = clipFiles().map { file in
             let name = file.lastPathComponent
             let dur = durationCache[name] ?? ""
             let middle = dur.isEmpty ? displayDateFor(name) : displayDateFor(name) + "  •  " + dur
             return SessionRow(name: name, url: file, leftIcon: leftIconFor(name),
-                              middleText: middle, rightKind: rightKindFor(name))
+                              middleText: middle, rightKind: rightKindFor(name),
+                              ignoredReason: ignoredReason(for: name))
         }
         for file in clipFiles() where durationCache[file.lastPathComponent] == nil {
             loadDuration(for: file)
@@ -645,6 +671,36 @@ final class SessionStore: ObservableObject {
             : hubNotice
     }
 
+    /// Operator set-asides, newest first: videos the hub never
+    /// shows. Matching takes get an "ignored" badge in the Record
+    /// list instead. A failed fetch just leaves badges off.
+    func loadIgnored() {
+        guard hubAvailable(), let req = hubRequest("/hub/ignored") else {
+            ignoredById = [:]
+            ignoredByTitle = [:]
+            refresh()
+            return
+        }
+        Task { [weak self] in
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: req)
+                guard (resp as? HTTPURLResponse)?.statusCode == 200 else { return }
+                let marks = try JSONDecoder().decode([IgnoredMark].self, from: data)
+                var byId: [String: String] = [:]
+                var byTitle: [String: String] = [:]
+                for mark in marks {
+                    if !mark.videoId.isEmpty { byId[mark.videoId] = mark.reason ?? "" }
+                    if let title = mark.title, !title.isEmpty { byTitle[title] = mark.reason ?? "" }
+                }
+                self?.ignoredById = byId
+                self?.ignoredByTitle = byTitle
+                self?.refresh()
+            } catch {
+                return
+            }
+        }
+    }
+
     /// Published lessons, newest first. Unconfigured hubs clear the
     /// rows while the status text explains why nothing new loads.
     func loadHub() {
@@ -653,8 +709,10 @@ final class SessionStore: ObservableObject {
             hubDetail = nil
             hubNotice = ""
             hubLoading = false
+            loadIgnored()
             return
         }
+        loadIgnored()
         hubLoading = true
         Task { [weak self] in
             defer { self?.hubLoading = false }

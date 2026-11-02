@@ -158,6 +158,17 @@ class TestRunCloudSh(unittest.TestCase):
                       '--guid "$GUID"']:
             self.assertIn(token, sh, token)
 
+    def test_ignored_markers_sync_each_run(self):
+        # The operator's set-asides must reach the hub every cycle so
+        # the apps badge them on Record (the sessions list excludes
+        # them server-side); a sync failure is a loud FAIL like any
+        # other step.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            sh = fh.read()
+        for token in ["--sync-ignored", "ignored sync failed"]:
+            self.assertIn(token, sh, token)
+
     def test_publish_loop_skips_partial_work_dirs(self):
         # A work dir with writeup.md but no corrections.json is a
         # mid-run or crashed run — publishing it would push partial

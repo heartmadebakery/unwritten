@@ -793,5 +793,28 @@ class IOSScreensTests(unittest.TestCase):
             self.assertIn(token, self.view, token)
 
 
+class IOSIgnoredTests(unittest.TestCase):
+    """Ignored takes (user-ordered): like Android and the web, the
+    Record screen badges takes the pipeline operator set aside (hub
+    sessions exclude them server-side)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.store = read(STORE)
+        cls.view = read(VIEW)
+
+    def test_store_fetches_ignored(self):
+        self.assertIn("/hub/ignored", self.store)
+        self.assertIn("loadIgnored", self.store)
+        self.assertIn("ignoredReason", self.store)
+
+    def test_rows_carry_and_show_the_badge(self):
+        self.assertIn("ignoredReason", read(STORE).split(
+            "struct SessionRow", 1)[1].split("var id: String", 1)[0])
+        row = self.view.split("private func sessionRow", 1)[1] \
+                       .split("private func rightAction", 1)[0]
+        self.assertIn("ignored", row)
+
+
 if __name__ == "__main__":
     unittest.main()

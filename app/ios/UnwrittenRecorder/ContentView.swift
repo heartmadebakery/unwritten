@@ -739,6 +739,14 @@ struct ContentView: View {
                 .foregroundColor(INK)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            // Ignored badge: takes the pipeline operator set aside
+            // never reach the hub.
+            if let reason = row.ignoredReason {
+                Text("ignored")
+                    .font(.system(size: 13))
+                    .foregroundColor(DIM)
+                    .accessibilityLabel(reason.isEmpty ? "Ignored by the operator" : "Ignored by the operator: \(reason)")
+            }
             // Cloud-linking never removes the on-device download:
             // linked rows keep ↓ next to their cloud action.
             if row.rightKind != .download {

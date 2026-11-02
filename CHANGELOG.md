@@ -9,6 +9,25 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-01
 
 ### Added
+- **Ignored takes: hub-backed set-asides with Record-screen badges.**
+  Operator `ignored` entries sync to a new `ignored_videos` table
+  (`POST`/`GET /hub/ignored`, `DELETE /hub/ignored/<id>`,
+  migration `0003_ignored.sql`); the hub sessions list and detail
+  exclude them server-side, and all three recorders badge matching
+  takes on Record (cloud-link videoId, else filename vs marker
+  title) with the reason attached. `publish.py --sync-ignored`
+  converges markers every `run_cloud.sh` cycle; 13 new hub checks
+  (60 total) plus pipeline and per-app contract tests. Web `dist/`
+  and the APK rebuilt; iOS contract-test-only (no Xcode here).
+
+### Fixed
+- **Correction beats capped at 60 s (user-ordered).** Sparse API
+  transcripts yielded 4-minute "moments" (three identical 65 MB cuts
+  on one lesson) that also blew the highlight size limit; beats now
+  end at most 60 s past the start. The span contract test rewritten
+  with the order noted, plus a sparse-segment regression test.
+
+### Added
 - **Fetch-to-Stream upload: fetched lessons reach the in-app hub.**
   `--fetch` uploads each finished lesson after the pipeline (create
   the video, PUT the bytes streamed from disk, wait for finished)

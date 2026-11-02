@@ -29,6 +29,9 @@ mkdir -p "$(dirname "$LOG")"
       [ -n "$GUID" ] || continue
       .venv/bin/python pipeline/publish.py --work "$work" --guid "$GUID" --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" >>"$LOG" 2>&1 || { echo "[cloud] FAIL: publish $work failed (see above)" >>"$LOG"; FAIL=1; }
     done
+    # Sync operator set-asides so the apps badge them on Record (the
+    # hub sessions list excludes them server-side).
+    .venv/bin/python pipeline/publish.py --sync-ignored --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" >>"$LOG" 2>&1 || { echo "[cloud] FAIL: ignored sync failed (see above)" >>"$LOG"; FAIL=1; }
   fi
   .venv/bin/python pipeline/make_site.py work/cloud work/site >>"$LOG" 2>&1 || { echo "[cloud] FAIL: site rebuild failed (see above)" >>"$LOG"; FAIL=1; }
   if [ "$(wc -l < "$LOG" 2>/dev/null || echo 0)" -gt 2000 ]; then

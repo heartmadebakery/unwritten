@@ -78,11 +78,23 @@ class TestTimestamps(unittest.TestCase):
     def test_correction_end_bisects(self):
         # A finder timestamp that lands mid-segment ends at the next
         # segment start — not at a blind 20-second default.
+        # User-ordered 2026-11-01: beats are capped at 60 s, so the
+        # two long spans below end at start+60 instead of the far
+        # segment boundary (sparse API transcripts yielded 4-minute
+        # "moments" that also blew the highlight size limit).
         ends = {4: 128, 128: 221, 221: 241}
-        self.assertEqual(rp.correction_end(128, ends), 221)
-        self.assertEqual(rp.correction_end(130, ends), 221)
+        self.assertEqual(rp.correction_end(128, ends), 188)
+        self.assertEqual(rp.correction_end(130, ends), 190)
         self.assertEqual(rp.correction_end(0, ends), 4)
         self.assertEqual(rp.correction_end(999, ends), 1019)
+
+    def test_correction_end_caps_sparse_segments(self):
+        # The onion-lesson case: a 01:43 correction inside a
+        # 4-minute segment cuts a 60 s beat (+2 s padding), not the
+        # whole 236 s span.
+        ends = rp.segment_ends("[01:43] a\n[05:39] b\n[07:58] c\n")
+        self.assertEqual(rp.correction_end(103, ends), 163)
+        self.assertEqual(rp.clip_window(103, 163), (101, 165))
 
     def test_clip_window_pads_and_clamps(self):
         self.assertEqual(rp.clip_window(128, 140), (126, 142))

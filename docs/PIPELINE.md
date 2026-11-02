@@ -167,9 +167,9 @@ stdlib + ffmpeg + Muse calls.
   transcript + `prompts/correction_finder.md` into Muse Spark. Each
   hit is a technique: timestamp, the mentor's exact words, what they were
   correcting. `run_pipeline.py` renders `corrections.md` and cuts each
-  moment from the lesson video with ffmpeg (segment window padded
-  2 s on both sides; a failed cut keeps the timestamp anchor and says
-  so — it never blocks the run).
+  moment from the lesson video with ffmpeg (segment window capped
+  at a 60 s beat, padded 2 s on both sides; a failed cut keeps the
+  timestamp anchor and says so — it never blocks the run).
 - **Clips need the lesson file.** A transcript-only run produces
   anchored corrections without clips; the anchors carry the timestamps
   either way.

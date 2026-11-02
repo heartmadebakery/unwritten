@@ -199,6 +199,8 @@ function clipHTML(c){
   else if(st === "processing" && !b.videoId) right = dl + "<span class='rstat'>…</span>";
   else if(st === "failed") right = dl + "<a class='sright' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload'>!</a>";
   else right = dl + "<a class='sright box' href='#' data-cloud-watch='" + c.name + "' title='Share session link'>↗</a>";
+  var ign = ignoredFor(c.name);
+  if(ign) right += " <span class='rstat dim' title='Ignored by the operator" + (ign.reason ? ": " + escHtml(ign.reason) : "") + "'>ignored</span>";
   var dur = durationFor(c.name);
   var memOnly = c.persisted === false;
   var mid = displayDateFor(c.name) + (dur ? "  •  " + dur : "") + (memOnly ? " ⚠" : "");
@@ -207,6 +209,36 @@ function clipHTML(c){
     "<span class='sleft'>" + leftIconFor(c.name) + "</span>" +
     "<span class='smid'>" + mid + "</span>" + right +
     "<button class='vh' data-cloud-delete='" + c.name + "'>Delete " + c.name + "</button></div>";
+}
+/* Ignored badges: the pipeline operator's set-asides sync to the
+   hub (/hub/ignored); matching takes get an "ignored" badge on the
+   Record screen instead of ever appearing in the hub. Match rule,
+   same as the native recorders: the take's cloud-link videoId, else
+   its filename against the marker title (upload titles are
+   filenames). A failed fetch just leaves badges off — recording
+   never depends on it. */
+var ignoredMarks = null;
+async function refreshIgnored(){
+  if(!hubAvailable()) return;
+  try{
+    var rs = await fetch(cloudSignerUrl() + "/hub/ignored", {headers: {"X-Signer-Token": cloudToken()}});
+    if(!rs.ok) return;
+    var rows = await rs.json(), byId = {}, byTitle = {};
+    (rows || []).forEach(function(r){
+      if(!r) return;
+      if(r.videoId) byId[r.videoId] = r.reason || "";
+      if(r.title) byTitle[r.title] = r.reason || "";
+    });
+    ignoredMarks = {byId: byId, byTitle: byTitle};
+  }catch(e){ /* badges stay off */ }
+  renderClips();
+}
+function ignoredFor(name){
+  if(!ignoredMarks) return null;
+  var b = loadCloudLinks()[name], vid = b ? b.videoId : "";
+  if(vid && Object.prototype.hasOwnProperty.call(ignoredMarks.byId, vid)) return {reason: ignoredMarks.byId[vid]};
+  if(Object.prototype.hasOwnProperty.call(ignoredMarks.byTitle, name)) return {reason: ignoredMarks.byTitle[name]};
+  return null;
 }
 function renderClips(){
   var box = $("clips");

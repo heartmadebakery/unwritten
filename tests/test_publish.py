@@ -40,6 +40,17 @@ def fake_urlopen(req, timeout=None):
     if url.endswith("/hub/publish"):
         SENT["payload"] = json.loads(req.data.decode("utf-8"))
         return FakeResponse(200, {"published": SENT["payload"]["videoId"]})
+    if url.endswith("/hub/ignored") and req.get_method() == "GET":
+        return FakeResponse(200, SENT.get("remote_ignored", []))
+    if url.endswith("/hub/ignored"):
+        SENT.setdefault("ignored", []).append(
+            json.loads(req.data.decode("utf-8")))
+        if SENT.get("refuse_ignored"):
+            return FakeResponse(500, {"error": "boom"})
+        return FakeResponse(200, {"ignored": "x"})
+    if "/hub/ignored/" in url:
+        SENT.setdefault("unignored", []).append(url.rsplit("/", 1)[-1])
+        return FakeResponse(200, {"deleted": True})
     raise AssertionError("unexpected url " + url)
 
 
@@ -130,6 +141,91 @@ class TestPublish(unittest.TestCase):
                               "--token", "sekret", "--guid", "vid-1"])
 
 
+class TestSyncIgnored(unittest.TestCase):
+    # The operator's set-asides travel to the hub so the recorders
+    # badge them on Record (the sessions list excludes them
+    # server-side). Sync converges: ignored entries upserted, stale
+    # markers removed.
+    def setUp(self):
+        SENT.clear()
+        self.real = publish.urllib.request.urlopen
+        publish.urllib.request.urlopen = fake_urlopen
+
+    def tearDown(self):
+        publish.urllib.request.urlopen = self.real
+
+    def run_sync(self, td, state):
+        state_path = os.path.join(td, "cloud_state.json")
+        with open(state_path, "w") as fh:
+            json.dump(state, fh)
+        publish.main(["--sync-ignored", "--state", state_path,
+                      "--signer", "https://signer.test",
+                      "--token", "sekret"])
+
+    def test_posts_only_ignored_entries(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.run_sync(td, {
+                "junk": {"title": "Test", "result": "ignored",
+                         "reason": "not a lesson"},
+                "good": {"title": "Bread", "result": "done"},
+                "bad": {"title": "X", "result": "failed"}})
+        posted = SENT.get("ignored", [])
+        self.assertEqual(len(posted), 1)
+        self.assertEqual(posted[0]["videoId"], "junk")
+        self.assertEqual(posted[0]["title"], "Test")
+        self.assertEqual(posted[0]["reason"], "not a lesson")
+        self.assertEqual(SENT.get("unignored", None), None)
+
+    def test_removes_markers_no_longer_ignored(self):
+        with tempfile.TemporaryDirectory() as td:
+            SENT["remote_ignored"] = [
+                {"videoId": "junk", "title": "T", "reason": "r"},
+                {"videoId": "forgiven", "title": "F", "reason": "r"}]
+            self.run_sync(td, {"junk": {"title": "T",
+                                        "result": "ignored"}})
+        self.assertEqual(
+            [p["videoId"] for p in SENT.get("ignored", [])], ["junk"])
+        self.assertEqual(SENT.get("unignored"), ["forgiven"])
+
+    def test_missing_state_is_a_quiet_noop(self):
+        with tempfile.TemporaryDirectory() as td:
+            publish.main(["--sync-ignored",
+                          "--state", os.path.join(td, "nope.json"),
+                          "--signer", "https://signer.test",
+                          "--token", "sekret"])
+        self.assertNotIn("ignored", SENT)
+
+    def test_corrupt_state_fails_loudly(self):
+        with tempfile.TemporaryDirectory() as td:
+            state_path = os.path.join(td, "cloud_state.json")
+            with open(state_path, "w") as fh:
+                fh.write("{nope")
+            with self.assertRaises(SystemExit):
+                publish.main(["--sync-ignored", "--state", state_path,
+                              "--signer", "https://signer.test",
+                              "--token", "sekret"])
+
+    def test_refusal_names_the_video(self):
+        with tempfile.TemporaryDirectory() as td:
+            SENT["refuse_ignored"] = True
+            with self.assertRaises(SystemExit) as ctx:
+                self.run_sync(td, {"junk": {"title": "T",
+                                            "result": "ignored"}})
+        self.assertIn("junk", str(ctx.exception))
+
+    def test_needs_signer_and_token(self):
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            state_path = os.path.join(td, "cloud_state.json")
+            with open(state_path, "w") as fh:
+                fh.write("{}")
+            env = {k: v for k, v in os.environ.items()
+                   if not k.startswith("HUB_")}
+            with mock.patch.dict(os.environ, env, clear=True):
+                with self.assertRaises(SystemExit):
+                    publish.main(["--sync-ignored", "--state", state_path])
+
+
 class TestHubSchema(unittest.TestCase):
     def test_migration_builds_sessions_table(self):
         mig = os.path.join(ROOT, "app", "cloud-signer", "migrations",
@@ -147,6 +243,23 @@ class TestHubSchema(unittest.TestCase):
         rows = con.execute(
             "SELECT video_id, title FROM sessions").fetchall()
         self.assertEqual(rows, [("v1", "Bread v2")])
+
+    def test_migration_builds_ignored_table(self):
+        mig = os.path.join(ROOT, "app", "cloud-signer", "migrations",
+                           "0003_ignored.sql")
+        con = sqlite3.connect(":memory:")
+        with open(mig) as fh:
+            con.executescript(fh.read())
+        con.execute(
+            "INSERT INTO ignored_videos (video_id, title, reason) "
+            "VALUES (?, ?, ?)", ("v1", "Test", "r"))
+        con.execute(
+            "INSERT INTO ignored_videos (video_id, title, reason) "
+            "VALUES (?, ?, ?) ON CONFLICT(video_id) DO UPDATE SET "
+            "reason=excluded.reason", ("v1", "Test", "r2"))
+        rows = con.execute(
+            "SELECT video_id, reason FROM ignored_videos").fetchall()
+        self.assertEqual(rows, [("v1", "r2")])
 
 
 if __name__ == "__main__":

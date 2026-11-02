@@ -1,8 +1,9 @@
 // Unwritten Craft — hub store check. Zero dependencies:
 //   node app/cloud-signer/hub-check.mjs
 // Drives the real worker.js against a real SQLite database (node:sqlite)
-// seeded with migrations/0001_sessions.sql, through the real HTTP
-// routes. Fails non-zero on the first mismatch.
+// seeded with migrations/0001_sessions.sql, 0002_fetch_jobs.sql, and
+// 0003_ignored.sql, through the real HTTP routes. Fails non-zero on
+// the first mismatch.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +15,7 @@ const { default: worker } = await import("./worker.js");
 const db = new DatabaseSync(":memory:");
 db.exec(readFileSync(join(dir, "migrations", "0001_sessions.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0002_fetch_jobs.sql"), "utf8"));
+db.exec(readFileSync(join(dir, "migrations", "0003_ignored.sql"), "utf8"));
 
 // D1-compatible stub over the real database: prepare/bind/first/all/run
 // (bind is optional on real D1 when the query takes no parameters).
@@ -273,5 +275,52 @@ const VID = "vid-123";
   const r = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe2", undefined, TOKEN);
   check(r.status === 200 && r.data.job && r.data.job.id === s.data.id,
     "an abandoned claim is handed out again");
+}
+// Ignored videos: the operator's set-asides live here; the hub never
+// shows them, and the recorders badge them on the Record screen.
+{
+  const req = await call(authed, "POST", "/hub/ignored", { title: "x" }, TOKEN);
+  check(req.status === 400, "ignore requires videoId");
+  const p = await call(authed, "POST", "/hub/ignored",
+    { videoId: "junk-1", title: "Test clip", reason: "not a lesson" }, TOKEN);
+  check(p.status === 200 && p.data.ignored === "junk-1", "ignore upserts");
+  const l = await call(authed, "GET", "/hub/ignored", undefined, TOKEN);
+  check(l.status === 200 && l.data.length === 1 && l.data[0].title === "Test clip" &&
+    l.data[0].reason === "not a lesson", "ignored list carries title and reason");
+  const p2 = await call(authed, "POST", "/hub/ignored",
+    { videoId: "junk-1", title: "Test clip", reason: "changed mind" }, TOKEN);
+  const l2 = await call(authed, "GET", "/hub/ignored", undefined, TOKEN);
+  check(p2.status === 200 && l2.data.length === 1 && l2.data[0].reason === "changed mind",
+    "re-ignore updates the marker");
+}
+// A published session that gets ignored vanishes from the hub (list
+// and detail); un-ignoring brings it back.
+{
+  await call(authed, "POST", "/hub/publish",
+    { videoId: "soon-junk", title: "Oops", writeupMd: "# Oops" }, TOKEN);
+  const before = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  check(before.data.some((s) => s.videoId === "soon-junk"), "session listed before ignore");
+  await call(authed, "POST", "/hub/ignored", { videoId: "soon-junk", reason: "oops" }, TOKEN);
+  const after = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  check(!after.data.some((s) => s.videoId === "soon-junk"), "ignored session leaves the list");
+  const det = await call(authed, "GET", "/hub/sessions/soon-junk", undefined, TOKEN);
+  check(det.status === 404, "ignored session detail 404s");
+  const del = await call(authed, "DELETE", "/hub/ignored/soon-junk", undefined, TOKEN);
+  check(del.status === 200 && del.data.deleted === true, "un-ignore deletes the marker");
+  const back = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  check(back.data.some((s) => s.videoId === "soon-junk"), "un-ignored session returns");
+  await call(authed, "DELETE", "/hub/sessions/soon-junk", undefined, TOKEN);
+}
+// Ignored routes share the hub's guards.
+{
+  const r = await call(noDb, "GET", "/hub/ignored", undefined, TOKEN);
+  check(r.status === 503, "ignored answers 503 with no store");
+  const m = await call(authed, "PUT", "/hub/ignored/junk-1", {}, TOKEN);
+  check(m.status === 405, "unknown ignored method rejected");
+  const b = await call(authed, "DELETE", "/hub/ignored/%", undefined, TOKEN);
+  check(b.status === 400, "malformed ignored video id is a 400");
+  const t = await call(authed, "GET", "/hub/ignored/", undefined, TOKEN);
+  check(t.status === 200 && Array.isArray(t.data), "ignored list tolerates a trailing slash");
+  await call(authed, "DELETE", "/hub/ignored/junk-1", undefined, TOKEN);
 }
 console.log(`ALL HUB CHECKS PASSED (${n})`);

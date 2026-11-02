@@ -10,11 +10,15 @@ Usage:
   HUB_SIGNER_URL=https://signer.example.com HUB_SIGNER_TOKEN=.. \\
   python3 pipeline/publish.py --work <work_dir> [--state cloud_state.json]
                               [--guid GUID] [--signer URL] [--token T]
+  python3 pipeline/publish.py --sync-ignored [--state cloud_state.json]
+                              [--signer URL] [--token T]
 
 --guid overrides the state lookup (the state maps each cloud video id
 to the work dir the pipeline ran in). Playback URLs come from the
 vendor video object when the Cloud credentials are present, else the
-HLS pattern is used blind and mp4 is left empty.
+HLS pattern is used blind and mp4 is left empty. --sync-ignored
+converges the hub's ignored markers on the state instead of
+publishing: every ignored video upserted, stale markers removed.
 """
 import argparse
 import json
@@ -99,22 +103,106 @@ def post_json(url, payload, token):
         raise SystemExit("hub publish failed: %s" % exc)
 
 
+def get_json(url, token):
+    req = urllib.request.Request(
+        url, headers={"X-Signer-Token": token,
+                      "Accept": "application/json",
+                      "User-Agent": "UnwrittenCraft/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError as exc:
+        raise SystemExit("hub request failed: %s" % exc)
+
+
+def delete_url(url, token):
+    req = urllib.request.Request(
+        url, headers={"X-Signer-Token": token,
+                      "User-Agent": "UnwrittenCraft/1.0"},
+        method="DELETE")
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", "replace")
+    except urllib.error.URLError as exc:
+        raise SystemExit("hub request failed: %s" % exc)
+
+
+def sync_ignored(state_path, signer, token):
+    """Converge the hub's ignored markers on the cloud state: every
+    locally-ignored video upserted, every marker for a video no
+    longer ignored removed. Missing state is a quiet no-op (fresh
+    machine); corrupt state fails loudly."""
+    if not os.path.exists(state_path):
+        print("[hub] no cloud state yet — nothing to sync")
+        return 0
+    state = load_state(state_path)
+    base = signer.rstrip("/") + "/hub/ignored"
+    ignored = sorted(guid for guid, entry in state.items()
+                     if isinstance(entry, dict)
+                     and entry.get("result") == "ignored")
+    for guid in ignored:
+        entry = state[guid]
+        status, body = post_json(
+            base, {"videoId": guid, "title": entry.get("title", ""),
+                   "reason": entry.get("reason", "")}, token)
+        if status < 200 or status >= 300:
+            raise SystemExit("hub ignore refused for %s (%s): %s"
+                             % (guid, status, body))
+    status, body = get_json(base, token)
+    if status < 200 or status >= 300:
+        raise SystemExit("hub ignored list refused (%s): %s"
+                         % (status, body))
+    try:
+        remote = json.loads(body)
+    except ValueError:
+        raise SystemExit("hub ignored list answered not JSON: %.80s"
+                         % body.strip())
+    remote_ids = set(entry.get("videoId", "")
+                     for entry in remote
+                     if isinstance(entry, dict)) if isinstance(remote, list) \
+        else set()
+    removed = 0
+    for guid in sorted(remote_ids - set(ignored)):
+        status, body = delete_url("%s/%s" % (base, guid), token)
+        if status < 200 or status >= 300:
+            raise SystemExit("hub un-ignore refused for %s (%s): %s"
+                             % (guid, status, body))
+        removed += 1
+    print("[hub] %d ignored video(s) synced, %d marker(s) removed."
+          % (len(ignored), removed))
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("--work", required=True)
+    ap.add_argument("--work", default="",
+                    help="finished work dir to publish "
+                         "(not needed with --sync-ignored)")
     ap.add_argument("--state", default="cloud_state.json")
     ap.add_argument("--guid", default="")
     ap.add_argument("--signer", default=os.environ.get("HUB_SIGNER_URL", ""))
     ap.add_argument("--token", default=os.environ.get("HUB_SIGNER_TOKEN", ""))
+    ap.add_argument("--sync-ignored", action="store_true",
+                    help="sync the cloud state's ignored videos to the "
+                         "hub instead of publishing one work dir")
     args = ap.parse_args(argv)
+
+    if not args.signer or not args.token:
+        raise SystemExit("hub signer URL and token required "
+                         "(--signer/--token or HUB_SIGNER_URL/HUB_SIGNER_TOKEN)")
+    if args.sync_ignored:
+        return sync_ignored(args.state, args.signer, args.token)
+    if not args.work:
+        ap.error("--work is required without --sync-ignored")
 
     work = os.path.abspath(args.work)
     md_path = os.path.join(work, "writeup.md")
     if not os.path.isfile(md_path):
         raise SystemExit("no writeup.md in %s — nothing to publish" % work)
-    if not args.signer or not args.token:
-        raise SystemExit("hub signer URL and token required "
-                         "(--signer/--token or HUB_SIGNER_URL/HUB_SIGNER_TOKEN)")
     state = load_state(args.state)
     guid = resolve_guid(state, work, args.guid.strip())
     with open(md_path) as fh:
