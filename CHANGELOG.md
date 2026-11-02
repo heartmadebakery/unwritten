@@ -6,6 +6,40 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-02
+
+### Changed
+- **"Hearth": a friendlier design language across all three apps
+  (user-ordered).** Inspired by Airbnb's warm whites and photo-first
+  cards and the old Path app's warm red and round buttons, specified
+  once in the new `docs/DESIGN.md` and drawn in each platform's own
+  idiom; features unchanged and in parity. Warm paper by default with
+  a matching dark set that follows the system (CSS
+  `prefers-color-scheme`; Android `Theme.DeviceDefault.DayNight` plus
+  a runtime palette and light system bars; iOS dynamic colours, no
+  more forced dark), one ember accent (`#D2452A`, AA with white),
+  a time-of-day greeting over Record / Upload video action tiles,
+  hub lessons on warm cover tiles (same colour per title everywhere),
+  device sessions shown by a frame of the video with its length, and
+  statuses in word chips ("Uploading 42%", "In the cloud", "Upload
+  failed · Retry") with an upload progress ring. Record gets a
+  shutter dock (status under the shutter), a sage Cloud badge, a
+  pill zoom track; lessons open listing-style (cover banner, ember
+  Play pill, corrections as quote cards, chapters as time chips,
+  inline Markdown in the write-up). Platform touches: SF Pro Rounded
+  titles and press squish on iOS; on Android an in-content large
+  title (the ActionBar steps aside on home), line icons drawn in code
+  (`Glyphs.java`), video frames probed off the UI thread, haptics on
+  Record/Stop; on the web a translucent top bar, a drop-zone upload
+  card and a hub refresh button. New ember app icons (PWA, iOS,
+  Android adaptive). Design-pinned contract tests rewritten with the
+  order noted; 15 new cross-platform tests in
+  `tests/test_design_language.py`. Web verified by Playwright
+  screenshots (light/dark, every page); Android javac-checked against
+  the API 34 framework (no Android SDK on this host, so the APK and
+  web `dist/` are not rebuilt — no token pool here either); iOS
+  syntax-checked only (no Xcode).
+
 ## 2026-11-01
 
 ### Fixed

@@ -76,7 +76,9 @@ bash app/recorder/build.sh && bash app/android/build.sh   # rebuild after app ed
   the validator working, not a bug to fix.
 - Dated docs (`docs/*-2026-10-2*`, worklogs) are history: read, don't
   rewrite. Live docs are `README.md`, `docs/SETUP.md`,
-  `docs/PIPELINE.md`, `docs/DEVICES.md`, and the app READMEs.
+  `docs/PIPELINE.md`, `docs/DEVICES.md`, `docs/DESIGN.md` (the
+  shared "Hearth" design language all three apps draw), and the app
+  READMEs.
 - Continuing native work? Read `docs/android-app-worklog.md` /
   `docs/ios-app-worklog.md` first — build routes, device evidence,
   open items (icon, release signing, on-device shakeout).

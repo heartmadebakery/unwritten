@@ -19,4 +19,11 @@ $("hubdetail").onclick = function(e){
   else if(act === "share") shareHubSession(hubDetail);
   else if(act === "delete") confirmDeleteHub(hubDetail);
 };
+/* A personal hello over the title, by the device's own clock. */
+function greetingFor(hour){
+  return hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+}
+$("greeting").textContent = greetingFor(new Date().getHours());
+/* Android's refresh action and iOS's pull to refresh, as a button. */
+$("hubrefresh").onclick = function(){ loadHub(); };
 wakeLock(); loadHub();

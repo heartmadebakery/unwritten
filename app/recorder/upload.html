@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Unwritten">
-<meta name="theme-color" content="#17130E">
+<meta name="theme-color" content="#FAF6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171310" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Record one lesson, in the mentor's own words.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -24,19 +25,26 @@
     <div class="baraction"></div>
   </header>
   <div id="status"></div>
-  <div>
-    <div class="library"><h3>Upload a lesson video</h3></div>
+  <section class="card upcard" aria-labelledby="pickhead">
+    <h2 id="pickhead">Upload a lesson video</h2>
     <p class="note">Pick a video file: it is saved as a session on this device and uploaded to Cloud, and the pipeline picks it up exactly like a recording.</p>
-    <input type="file" id="uploadinput" accept="video/*">
-    <button class="bigbtn primary" id="uploadbtn">Upload</button>
+    <label class="dropzone" for="uploadinput">
+      <span class="eglyph" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9.5 4.5 2.5-4.5 2.5z"/></svg></span>
+      <b>Choose a video</b>
+      <span id="pickname">From your library or Files</span>
+    </label>
+    <input type="file" id="uploadinput" accept="video/*" class="vh">
+    <button class="pill primary block" id="uploadbtn">Upload</button>
     <div id="uploadstatus"></div>
-    <div class="library"><h3>Or paste a link</h3></div>
+  </section>
+  <section class="card upcard" aria-labelledby="linkhead">
+    <h2 id="linkhead">Or paste a link</h2>
     <p class="note">A direct video file downloads right here; a YouTube or watch-page link queues to the pipeline, which fetches and processes it like a recording.</p>
     <label for="urlinput" class="vh">Video link</label>
     <input type="url" id="urlinput" inputmode="url" autocomplete="off" placeholder="https://…">
-    <button class="bigbtn" id="urlfetchbtn">Fetch from link</button>
+    <button class="pill block" id="urlfetchbtn">Fetch from link</button>
     <div id="urlstatus"></div>
-  </div>
+  </section>
 </div>
 <script src="common.js"></script>
 <script src="upload.js"></script>

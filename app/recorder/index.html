@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Unwritten">
-<meta name="theme-color" content="#17130E">
+<meta name="theme-color" content="#FAF6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171310" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Record one lesson, in the mentor's own words.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -19,29 +20,34 @@
 <body>
 <div id="app">
   <header class="largetitle">
+    <p class="eyebrow" id="greeting">Welcome back</p>
     <h1>Unwritten Craft</h1>
     <p class="sub">Record, upload, and revisit craft lessons.</p>
   </header>
   <div id="status"></div>
-  <div class="group">
-    <a class="grow" id="gorecord" href="record.html">
-      <span class="gicon rec" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg></span>
-      <span class="glabel">Record<small>Film a lesson, the way you'd teach anyway</small></span>
-      <span class="chev" aria-hidden="true"></span>
+  <nav class="tiles" aria-label="Start a lesson">
+    <a class="tile primary" id="gorecord" href="record.html">
+      <span class="tglyph" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="9"/></svg></span>
+      <span class="ttitle">Record</span>
+      <span class="tsub">Film a lesson, the way you'd teach anyway</span>
     </a>
-    <a class="grow" id="goupload" href="upload.html">
-      <span class="gicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg></span>
-      <span class="glabel">Upload video<small>From your library, Files, or a link</small></span>
-      <span class="chev" aria-hidden="true"></span>
+    <a class="tile" id="goupload" href="upload.html">
+      <span class="tglyph" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M12 15.5V4M7.5 8.5 12 4l4.5 4.5M5 14v3.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V14"/></svg></span>
+      <span class="ttitle">Upload video</span>
+      <span class="tsub">From your phone or a link</span>
     </a>
-  </div>
-  <div class="library"><h3>Hub</h3>
+  </nav>
+  <section class="library" aria-labelledby="hubhead">
+    <div class="shead">
+      <h2 id="hubhead">Hub<small>Lessons the pipeline has written up</small></h2>
+      <button class="iconbtn" id="hubrefresh" title="Refresh the hub" aria-label="Refresh the hub"><svg class="i" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.7-4.4M4 4v4h4M4 13a8 8 0 0 0 14.7 4.4M20 20v-4h-4"/></svg></button>
+    </div>
     <div id="hubstatus"></div>
-    <div id="hubdetail"></div>
     <video id="hubplayer" class="hidden" controls playsinline preload="metadata"></video>
-    <button id="hubclose" class="hidden bigbtn" title="Close player">Close player</button>
-    <div id="hublist" class="group"><div class="sempty">Loading…</div></div>
-  </div>
+    <button id="hubclose" class="hidden pill block" title="Close player">Close player</button>
+    <div id="hubdetail"></div>
+    <div id="hublist" class="cards"><div class="sempty empty"><b>Loading…</b></div></div>
+  </section>
 </div>
 <script src="common.js"></script>
 <script src="home.js"></script>

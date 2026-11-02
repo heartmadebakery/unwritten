@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Unwritten">
-<meta name="theme-color" content="#17130E">
+<meta name="theme-color" content="#FAF6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171310" media="(prefers-color-scheme: dark)">
 <meta name="description" content="Record one lesson, in the mentor's own words.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -22,10 +23,9 @@
     <a class="backbtn" id="backhome-record" href="index.html" aria-label="Back to Home"><span class="bl">Home</span></a>
     <h1>Record</h1>
     <div class="baraction">
-      <button class="iconbtn" id="camtoggle" aria-label="Back camera — switch to front" title="Switch camera"><svg viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><path d="M9 13.5a3 3 0 0 1 5.2-2M15 13.5a3 3 0 0 1-5.2 2M14.4 10.4l.1 1.6-1.6-.1M9.6 16.6l-.1-1.6 1.6.1"/></svg></button>
+      <button class="iconbtn" id="camtoggle" aria-label="Back camera — switch to front" title="Switch camera"><svg class="i" viewBox="0 0 24 24"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><path d="M9 13.5a3 3 0 0 1 5.2-2M15 13.5a3 3 0 0 1-5.2 2M14.4 10.4l.1 1.6-1.6-.1M9.6 16.6l-.1-1.6 1.6.1"/></svg></button>
     </div>
   </header>
-  <div id="status">Record a new lesson — teach the way you'd teach anyway.</div>
   <div>
     <div id="stage">
       <video id="view" autoplay playsinline muted></video>
@@ -37,31 +37,35 @@
         <button id="vfclose" title="Close" aria-label="Close player">✕</button>
       </div>
     </div>
-    <div id="micwarn" class="hidden">🎤 <b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</div>
-    <div id="speechwarn" class="hidden">🔇 <b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</div>
+    <div id="micwarn" class="banner hidden"><span aria-hidden="true">🎤</span><span><b>No microphone.</b> The mentor's words won't be recorded — and the mentor's words are the whole point. Check the browser's site settings, or use the camera-app option below.</span></div>
+    <div id="speechwarn" class="banner hidden"><span aria-hidden="true">🔇</span><span><b>Quiet for a while.</b> No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.</span></div>
     <div id="zoomrow" class="hidden">
       <button id="zoomout" title="Zoom out" aria-label="Zoom out">−</button>
       <input id="zoomseek" type="range" min="0" max="100" value="0" aria-label="Zoom">
       <button id="zoomin" title="Zoom in" aria-label="Zoom in">+</button>
       <span id="zoomlabel">1.0×</span>
     </div>
-    <div class="shutterrow"><button id="recbtn">● Record</button></div>
-    <div class="hidden" id="capcontrols">
-      <button class="bigbtn" id="capvideo">🎥&nbsp; Record video</button>
-      <button class="bigbtn" id="capaudio">🎙&nbsp; Record audio</button>
+    <div class="dock">
+      <button id="recbtn">● Record</button>
+      <div class="hidden" id="capcontrols">
+        <button class="pill primary block" id="capvideo">🎥&nbsp; Record video</button>
+        <button class="pill block" id="capaudio">🎙&nbsp; Record audio</button>
+      </div>
+      <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list below.</div>
+      <div id="status">Record a new lesson — teach the way you'd teach anyway.</div>
     </div>
-    <div id="fallback" class="hidden">In-page recording isn't available on this device, so the buttons above open its own camera / voice apps — the session still lands in the list below.</div>
     <input type="file" id="fileinput" accept="video/*,image/*" capture="environment" class="hidden">
     <input type="file" id="audioinput" accept="audio/*" capture class="hidden">
-    <div class="group">
-      <button class="grow" id="cloudtoggle" role="switch" aria-checked="true">
-        <span class="gicon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 0 8.5z"/></svg></span>
-        <span class="glabel">Cloud<small>Upload a copy for streamed playback</small></span>
-        <span class="switch" aria-hidden="true"></span>
-      </button>
-    </div>
-    <div class="library"><h3>This device</h3><div id="clips" class="group"><div class="sempty">Nothing yet.</div></div></div>
-    <button class="bigbtn hidden" id="exportbtn">Export sessions to Downloads</button>
+    <button class="setrow" id="cloudtoggle" role="switch" aria-checked="true">
+      <span class="sglyph" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17 9.5a4.25 4.25 0 0 1 0 8.5z"/></svg></span>
+      <span class="glabel">Cloud<small>Upload a copy for streamed playback</small></span>
+      <span class="switch" aria-hidden="true"></span>
+    </button>
+    <section class="library" aria-labelledby="devhead">
+      <div class="shead"><h2 id="devhead">This device</h2></div>
+      <div id="clips" class="cards"><div class="sempty empty"><b>Nothing yet.</b></div></div>
+    </section>
+    <button class="pill block hidden" id="exportbtn">Export sessions to Downloads</button>
     <p class="note">Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; long-press it to delete it from the device and the cloud.</p>
     <p id="caps"></p>
     <button class="advlink" id="advancedlink">Advanced settings</button>

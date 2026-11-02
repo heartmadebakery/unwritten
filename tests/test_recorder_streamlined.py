@@ -352,9 +352,11 @@ class AndroidRecorderTests(unittest.TestCase):
                         .split("private void buildRecordScreen", 1)[0]
         record = self.main.split("private void buildRecordScreen", 1)[1] \
                           .split("// ---------- permissions", 1)[0]
-        for token in ['"● Record"', '"⬆ Upload video"', "hubContainer"]:
+        # User-ordered Nov 2 (Hearth redesign): the Record and Upload
+        # buttons became action tiles (glyphs drawn, not ●/⬆ text).
+        for token in ['actionTile("Record"', 'actionTile("Upload video"', "hubContainer"]:
             self.assertIn(token, home, token)
-        self.assertLess(home.index('"⬆ Upload video"'),
+        self.assertLess(home.index('actionTile("Upload video"'),
                         home.index("hubContainer"))
         for token in ["cloudToggleButton", "lessonContainer", "exportBtn",
                       "Advanced settings"]:
@@ -837,7 +839,11 @@ class AndroidNativeFeelTests(unittest.TestCase):
                              .split("// ---------- permissions", 1)[0]
 
     def test_theme_has_an_action_bar(self):
-        self.assertIn("@android:style/Theme.Material", self.manifest)
+        # User-ordered Nov 2 (Hearth redesign, docs/DESIGN.md): the
+        # always-dark Theme.Material became DeviceDefault.DayNight, so
+        # dialogs, toasts and widgets follow the system's light/dark
+        # setting along with the app's own palette. Still an ActionBar.
+        self.assertIn("@android:style/Theme.DeviceDefault.DayNight", self.manifest)
         self.assertNotIn("NoActionBar", self.manifest)
         for token in ["getActionBar()", "setDisplayHomeAsUpEnabled",
                       "onOptionsItemSelected", "android.R.id.home",
@@ -861,7 +867,12 @@ class AndroidNativeFeelTests(unittest.TestCase):
             self.assertNotIn("exportBtn.setBackgroundColor", region)
 
     def test_record_is_the_primary_action(self):
-        self.assertIn('primaryButton("● Record"', self.home)
+        # User-ordered Nov 2 (Hearth redesign): home's Record is the
+        # filled ember action tile; the record screen keeps the shared
+        # primaryButton("● Record") label, drawn as the shutter.
+        self.assertIn('actionTile("Record"', self.home)
+        tile = self.home.split('actionTile("Record"', 1)[1].split(");", 1)[0]
+        self.assertIn("true", tile)  # primary: filled ember
         self.assertIn('primaryButton("● Record"', self.record)
 
     def test_cloud_is_a_real_switch_that_only_acts_on_change(self):
@@ -927,8 +938,15 @@ class WebAndroidParityTests(unittest.TestCase):
         cls.manifest = read(MANIFEST)
 
     def test_android_dark_palette(self):
-        for color in ["#17130E", "#241C12", "#F5EAD6", "#B8A888"]:
-            self.assertIn(color, self.css, color)
+        # User-ordered Nov 2 (Hearth redesign, docs/DESIGN.md): the one
+        # dark palette became warm paper with a matching dark set that
+        # follows the system — the same tokens as Android and iOS.
+        light, dark = self.css.split("@media (prefers-color-scheme: dark)", 1)
+        for color in ["#FAF6F1", "#FFFFFF", "#2A211C", "#6F625A", "#D2452A"]:
+            self.assertIn(color, light, color)
+        for color in ["#171310", "#221C18", "#F7EFE6", "#B9AA9C", "#FF8A6B"]:
+            self.assertIn(color, dark, color)
+        self.assertIn("color-scheme:light dark", self.css)
 
     def test_title_and_sessions_wording(self):
         # Post-restructure contract (user-ordered): the app is Unwritten
@@ -977,7 +995,12 @@ class WebAndroidParityTests(unittest.TestCase):
         self.assertIn("shareCloudLinkFor", self.common)
 
     def test_manifest_uses_android_theme_color(self):
-        self.assertIn("#17130E", self.manifest)
+        # User-ordered Nov 2 (Hearth redesign): the canvas colour, with
+        # light/dark theme-color metas on every page.
+        self.assertIn("#FAF6F1", self.manifest)
+        for page in (self.home, self.record):
+            self.assertIn('content="#FAF6F1" media="(prefers-color-scheme: light)"', page)
+            self.assertIn('content="#171310" media="(prefers-color-scheme: dark)"', page)
 
     def test_live_mic_check_warns_after_quiet_minute(self):
         self.assertIn('id="speechwarn"', self.record)
@@ -1041,9 +1064,12 @@ class AndroidSyncTests(unittest.TestCase):
 
     def test_hub_refresh_action(self):
         # iOS pulls to refresh; Android (no SwipeRefreshLayout without
-        # AndroidX) offers a ⟳ action on the hub header instead of
-        # reloading only when home is re-entered.
-        self.assertIn('"⟳"', self.home)
+        # AndroidX) offers a refresh action on the hub header instead of
+        # reloading only when home is re-entered. User-ordered Nov 2
+        # (Hearth redesign): the ⟳ text became a drawn glyph button
+        # with a spoken label.
+        self.assertIn("Glyphs.REFRESH", self.home)
+        self.assertIn('"Refresh the hub"', self.home)
         self.assertIn("loadHub()", self.home)
 
     def test_device_empty_state(self):
@@ -1063,13 +1089,19 @@ class AndroidSyncTests(unittest.TestCase):
     def test_action_bar_titles_and_up(self):
         # Android idiom: the ActionBar carries the screen title and the
         # Up button off the record screen (iOS's NavigationStack back).
-        self.assertIn('android:theme="@android:style/Theme.Material"',
+        # User-ordered Nov 2 (Hearth redesign): DayNight, not dark-only.
+        self.assertIn('android:theme="@android:style/Theme.DeviceDefault.DayNight"',
                       self.manifest)
         self.assertIn("setDisplayHomeAsUpEnabled", self.main)
         self.assertIn("android.R.id.home", self.main)
         show = self.main.split("private void showScreen", 1)[1] \
                         .split("\n    private ", 1)[0]
         self.assertIn("setTitle(", show)
+        # User-ordered Nov 2 (Hearth redesign): home carries its own
+        # greeting and large title (Material's expanded large app bar),
+        # so the bar steps aside there and returns with Up on Record.
+        self.assertIn("bar.hide()", show)
+        self.assertIn("bar.show()", show)
 
     def test_launcher_icon(self):
         # The worklog's open icon item: an adaptive icon (minSdk 29
@@ -1163,10 +1195,14 @@ class WebNativeFeelTests(unittest.TestCase):
             self.assertNotIn("‹ Home", page)
 
     def test_actions_are_a_grouped_list_with_chevrons(self):
-        self.assertIn('class="group"', self.home)
-        self.assertIn('class="grow"', self.home)
-        self.assertIn(".group", self.css)
+        # User-ordered Nov 2 (Hearth redesign): home's actions became
+        # two action tiles (Record filled ember, Upload on surface);
+        # hub rows keep their chevrons as lesson cards.
+        self.assertIn('class="tile primary" id="gorecord"', self.home)
+        self.assertIn('class="tile" id="goupload"', self.home)
+        self.assertIn(".tile.primary", self.css)
         self.assertIn(".chev", self.css)
+        self.assertIn("class='chev'", self.common)
 
     def test_cloud_is_a_real_switch(self):
         self.assertIn('role="switch"', self.record)
@@ -1196,7 +1232,9 @@ class WebNativeFeelTests(unittest.TestCase):
         self.assertIn("html.android", self.css)
 
     def test_service_worker_cache_bumped_for_the_restyle(self):
-        self.assertIn("unwritten-recorder-v9", self.sw)
+        # User-ordered Nov 2 (Hearth redesign): bumped again so
+        # installed copies drop the old dark shell.
+        self.assertIn("unwritten-recorder-v10", self.sw)
 
 
 class CameraEngineTests(unittest.TestCase):
