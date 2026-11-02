@@ -61,15 +61,17 @@ import java.util.concurrent.Executors;
  *  Downloads/Unwritten. */
 public class MainActivity extends Activity {
 
-    private static final int BG = Color.parseColor("#17130E");
-    private static final int PANEL = Color.parseColor("#241C12");
-    private static final int TEXT = Color.parseColor("#F5EAD6");
-    private static final int DIM = Color.parseColor("#B8A888");
-    private static final int AMBER = Color.parseColor("#E8A13A"); // retained for compat, not used
-    private static final int RED = Color.parseColor("#C0392B"); // retained for compat, not used
-    private static final int BRIGHT = Color.parseColor("#E74C3C");
-    private static final int LINE = Color.parseColor("#2E2213");
-    private static final int PRESSED = Color.parseColor("#33281A");
+    // Hearth palette (docs/DESIGN.md): warm paper by default, a
+    // matching dark set when the system is in night mode. Chosen once
+    // in onCreate (a uiMode change recreates the activity), so every
+    // builder below reads the right set. Names kept from the old dark
+    // palette: BG canvas, PANEL surface, PRESSED sunken, TEXT ink,
+    // DIM secondary ink, BRIGHT the ember accent, RED danger.
+    private boolean night;
+    private int BG, PANEL, PRESSED, TEXT, DIM, LINE, RING, BRIGHT, EMBER_PRESS,
+            EMBER_INK, EMBER_SOFT, SAGE, SAGE_SOFT, HONEY, HONEY_SOFT, RED;
+    // Cover washes (letter on wash), picked by washIndex(title).
+    private int[] WASH, WASH_INK;
     private static final int MENU_CAMERA = 1;
     private static final int PERM_RECORD = 7;
     private static final int REQ_UPLOAD = 8;
@@ -107,7 +109,8 @@ public class MainActivity extends Activity {
                 if (isChecked != cloudEnabledCfg()) toggleCloudEnabled();
             }
         };
-    private TextView zoomLabel, micWarn, speechWarn, recBadge;
+    private TextView zoomLabel, micWarn, speechWarn, recBadge, dockHint;
+    private android.widget.ImageView cloudGlyph;
     private LinearLayout zoomRow;
     private LinearLayout hubContainer;
     private JSONArray hubRows = new JSONArray();
@@ -137,12 +140,45 @@ public class MainActivity extends Activity {
 
     private int dp(int v) { return (int) (v * getResources().getDisplayMetrics().density + 0.5f); }
 
+    private void applyPalette() {
+        night = (getResources().getConfiguration().uiMode
+                & android.content.res.Configuration.UI_MODE_NIGHT_MASK)
+                == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+        BRIGHT = Color.parseColor("#D2452A");
+        EMBER_PRESS = Color.parseColor("#B83A20");
+        RED = Color.parseColor("#C23B22");
+        if (!night) {
+            BG = Color.parseColor("#FAF6F1"); PANEL = Color.WHITE; PRESSED = Color.parseColor("#F3ECE4");
+            TEXT = Color.parseColor("#2A211C"); DIM = Color.parseColor("#6F625A");
+            LINE = Color.parseColor("#EADFD3"); RING = Color.parseColor("#DCCFC2");
+            EMBER_INK = Color.parseColor("#B83A20"); EMBER_SOFT = Color.parseColor("#FCE8E1");
+            SAGE = Color.parseColor("#2F7A4B"); SAGE_SOFT = Color.parseColor("#E3F2E7");
+            HONEY = Color.parseColor("#8A5A00"); HONEY_SOFT = Color.parseColor("#FFF3D6");
+            WASH = new int[] { 0xFFFCE3D9, 0xFFFBEFD2, 0xFFE2EFE1, 0xFFDDEBF4, 0xFFECE3F3, 0xFFF2E3D8 };
+            WASH_INK = new int[] { 0xFFB5432A, 0xFF8A5A00, 0xFF2F6B3F, 0xFF2B5F80, 0xFF6A4486, 0xFF8A4F2E };
+        } else {
+            BG = Color.parseColor("#171310"); PANEL = Color.parseColor("#221C18"); PRESSED = Color.parseColor("#2D2621");
+            TEXT = Color.parseColor("#F7EFE6"); DIM = Color.parseColor("#B9AA9C");
+            LINE = Color.parseColor("#3A312A"); RING = Color.parseColor("#5A4E44");
+            EMBER_INK = Color.parseColor("#FF8A6B"); EMBER_SOFT = Color.parseColor("#3A2420");
+            SAGE = Color.parseColor("#7FD39B"); SAGE_SOFT = Color.parseColor("#1F2E24");
+            HONEY = Color.parseColor("#F2C46B"); HONEY_SOFT = Color.parseColor("#33281A");
+            WASH = new int[] { 0xFF3A2420, 0xFF33281A, 0xFF1F2E24, 0xFF1C2A33, 0xFF2B2233, 0xFF33251C };
+            WASH_INK = new int[] { 0xFFFF9C82, 0xFFF2C46B, 0xFF7FD39B, 0xFF8CC4E6, 0xFFC7A6E0, 0xFFE0A884 };
+        }
+    }
+
     private TextView label(String text, int sp, int color) {
         TextView t = new TextView(this);
         t.setText(text); t.setTextSize(sp); t.setTextColor(color);
         t.setPadding(dp(4), dp(4), dp(4), dp(4));
         return t;
     }
+
+    private static final android.graphics.Typeface MEDIUM =
+        android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL);
+    private static final android.graphics.Typeface BOLD =
+        android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD);
 
     /** A rounded, flat fill (no ripple) — card and field backgrounds. */
     private android.graphics.drawable.Drawable rounded(int fill, int radiusDp) {
@@ -155,41 +191,47 @@ public class MainActivity extends Activity {
     /** A rounded fill with the Material ripple a flat setBackgroundColor
      *  lacks — every tappable surface gets touch feedback. */
     private android.graphics.drawable.Drawable ripple(int fill, int radiusDp) {
+        return ripple(rounded(fill, radiusDp), rounded(Color.WHITE, radiusDp));
+    }
+
+    private android.graphics.drawable.Drawable ripple(android.graphics.drawable.Drawable content,
+                                                      android.graphics.drawable.Drawable mask) {
         return new android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x33FFFFFF),
-            rounded(fill, radiusDp), rounded(Color.WHITE, radiusDp));
+            android.content.res.ColorStateList.valueOf(night ? 0x33FFFFFF : 0x1F2A211C), content, mask);
     }
 
     /** Ripple for a row inside a card (the card clips the corners). */
     private android.graphics.drawable.Drawable rowRipple() {
         return new android.graphics.drawable.RippleDrawable(
-            android.content.res.ColorStateList.valueOf(0x22FFFFFF), null,
+            android.content.res.ColorStateList.valueOf(night ? 0x22FFFFFF : 0x142A211C), null,
             new android.graphics.drawable.ColorDrawable(Color.WHITE));
     }
 
-    /** A card: rounded PANEL that clips its rows to the corners. */
+    /** A card: rounded surface that clips its rows to the corners and,
+     *  in light mode, floats on a soft Material elevation. */
     private void cardStyle(View v) {
-        v.setBackground(rounded(PANEL, 16));
+        v.setBackground(rounded(PANEL, 20));
         v.setClipToOutline(true);
+        v.setElevation(night ? 0 : dp(2));
     }
 
-    /** Small dim section header, like the other apps' "Hub" / "This device". */
+    /** Section header: sentence case, bold, with an optional subtitle. */
     private TextView sectionHeader(String text) {
-        TextView t = label(text, 14, DIM);
-        t.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
-        t.setPadding(dp(8), dp(20), dp(8), dp(6));
+        TextView t = label(text, 20, TEXT);
+        t.setTypeface(BOLD);
+        t.setPadding(dp(4), dp(22), dp(4), dp(8));
         return t;
     }
 
-    /** Tonal button: rounded PANEL fill, ripple, 52dp tall. */
+    /** Tonal button: rounded sunken fill, ripple, 52dp tall pill. */
     private Button button(String text) {
-        return styledButton(text, PANEL, TEXT);
+        return styledButton(text, PRESSED, TEXT);
     }
 
-    /** The one primary action on a screen: filled, bold. */
+    /** The one primary action on a screen: filled ember, medium. */
     private Button primaryButton(String text, int fill) {
         Button b = styledButton(text, fill, 0xFFFFFFFF);
-        b.setTypeface(android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL));
+        b.setTypeface(MEDIUM);
         b.setMinHeight(dp(56)); b.setMinimumHeight(dp(56));
         return b;
     }
@@ -198,15 +240,130 @@ public class MainActivity extends Activity {
         Button b = new Button(this);
         b.setText(text); b.setTextSize(17); b.setTextColor(textColor);
         b.setAllCaps(false);
-        b.setBackground(ripple(fill, 26));
+        b.setTypeface(MEDIUM);
+        b.setBackground(ripple(fill, 28));
         b.setStateListAnimator(null);
         b.setMinHeight(dp(52)); b.setMinimumHeight(dp(52));
-        b.setPadding(dp(16), dp(10), dp(16), dp(10));
+        b.setPadding(dp(20), dp(10), dp(20), dp(10));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, dp(6), 0, dp(6));
         b.setLayoutParams(lp);
         return b;
+    }
+
+    /** A pill chip: a status in words ("Uploading 42%", "In the cloud"). */
+    private TextView chip(String text, int bg, int fg) {
+        TextView t = new TextView(this);
+        t.setText(text); t.setTextSize(13); t.setTextColor(fg);
+        t.setTypeface(MEDIUM);
+        t.setSingleLine(true);
+        t.setBackground(rounded(bg, 14));
+        t.setPadding(dp(10), dp(3), dp(10), dp(3));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(4), dp(6), 0);
+        t.setLayoutParams(lp);
+        return t;
+    }
+
+    /** A lesson wears the same warm wash everywhere: the sum of the
+     *  title's UTF-16 code units, modulo the six cover pairs. */
+    private static int washIndex(String title) {
+        int n = 0;
+        if (title != null) for (int i = 0; i < title.length(); i++) n += title.charAt(i);
+        return n % 6;
+    }
+
+    private static String initialOf(String title) {
+        if (title != null) for (int i = 0; i < title.length(); i++) {
+            char ch = title.charAt(i);
+            if (Character.isLetterOrDigit(ch)) return String.valueOf(Character.toUpperCase(ch));
+        }
+        return "\u2022";
+    }
+
+    /** A cover tile: the lesson's initial on its warm wash. */
+    private TextView cover(String title, int sizeDp, int textSp, int radiusDp) {
+        int w = washIndex(title);
+        TextView t = new TextView(this);
+        t.setText(initialOf(title));
+        t.setTextSize(textSp);
+        t.setTypeface(BOLD);
+        t.setTextColor(WASH_INK[w]);
+        t.setGravity(Gravity.CENTER);
+        t.setBackground(rounded(WASH[w], radiusDp));
+        t.setLayoutParams(new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)));
+        t.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return t;
+    }
+
+    /** A 48dp round icon button with a ripple and a spoken label. */
+    private android.widget.ImageButton iconButton(int glyph, int color, Integer bg, String desc,
+                                                  View.OnClickListener onClick) {
+        android.widget.ImageButton b = new android.widget.ImageButton(this);
+        b.setImageDrawable(new Glyphs(glyph, color, dp(22)));
+        b.setBackground(ripple(bg != null ? bg : Color.TRANSPARENT, 24));
+        b.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        b.setContentDescription(desc);
+        b.setPadding(0, 0, 0, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        lp.setMargins(dp(2), 0, 0, 0);
+        b.setLayoutParams(lp);
+        if (onClick != null) b.setOnClickListener(onClick);
+        return b;
+    }
+
+    /** A glyph in a rounded wash square (tiles, the Cloud row). */
+    private android.widget.ImageView glyphBadge(int glyph, int fg, int bg, int sizeDp, int radiusDp) {
+        android.widget.ImageView v = new android.widget.ImageView(this);
+        v.setImageDrawable(new Glyphs(glyph, fg, dp(sizeDp / 2 + 2)));
+        v.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+        v.setBackground(rounded(bg, radiusDp));
+        v.setLayoutParams(new LinearLayout.LayoutParams(dp(sizeDp), dp(sizeDp)));
+        v.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        return v;
+    }
+
+    /** A home action tile: glyph on top, title and a line of help at the
+     *  bottom; filled ember for the primary action, surface otherwise.
+     *  Tiles dip a little while pressed and ripple, Material-style. */
+    private LinearLayout actionTile(String title, String sub, int glyph, boolean primary,
+                                    View.OnClickListener onClick) {
+        final LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setPadding(dp(18), dp(18), dp(18), dp(18));
+        tile.setMinimumHeight(dp(168));
+        int fill = primary ? BRIGHT : PANEL;
+        tile.setBackground(ripple(rounded(fill, 24), rounded(Color.WHITE, 24)));
+        tile.setElevation(night && !primary ? 0 : dp(primary ? 6 : 2));
+        tile.setClickable(true);
+        tile.setFocusable(true);
+        tile.setContentDescription(title + ". " + sub);
+        tile.setOnClickListener(onClick);
+        tile.setOnTouchListener(new View.OnTouchListener() {
+            @Override public boolean onTouch(View v, android.view.MotionEvent e) {
+                int a = e.getActionMasked();
+                if (a == android.view.MotionEvent.ACTION_DOWN) v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(120).start();
+                else if (a == android.view.MotionEvent.ACTION_UP || a == android.view.MotionEvent.ACTION_CANCEL)
+                    v.animate().scaleX(1f).scaleY(1f).setDuration(180).start();
+                return false;
+            }
+        });
+        tile.addView(glyphBadge(glyph, primary ? Color.WHITE : EMBER_INK,
+                primary ? 0x33FFFFFF : EMBER_SOFT, 48, 16));
+        View spacer = new View(this);
+        tile.addView(spacer, new LinearLayout.LayoutParams(1, 0, 1f));
+        TextView t = new TextView(this);
+        t.setText(title); t.setTextSize(20); t.setTypeface(BOLD);
+        t.setTextColor(primary ? Color.WHITE : TEXT);
+        t.setPadding(0, dp(14), 0, dp(2));
+        tile.addView(t);
+        TextView st = new TextView(this);
+        st.setText(sub); st.setTextSize(14);
+        st.setTextColor(primary ? 0xE0FFFFFF : DIM);
+        tile.addView(st);
+        return tile;
     }
 
     // ---------- lifecycle ----------
@@ -217,9 +374,18 @@ public class MainActivity extends Activity {
         // with a read grant) — file:// intents arrive unreadable on
         // Android 7+, so there is no StrictMode bypass here.
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        // System bars and the action bar wear the app's own dark palette.
+        // Hearth: warm paper, or its dark set when the system is in
+        // night mode (Theme.DeviceDefault.DayNight themes the dialogs,
+        // toasts and widgets to match).
+        applyPalette();
+        // System bars and the action bar wear the app's own canvas,
+        // with dark icons on the light canvas.
         getWindow().setStatusBarColor(BG);
         getWindow().setNavigationBarColor(BG);
+        if (!night) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+        }
         android.app.ActionBar bar = getActionBar();
         if (bar != null) {
             bar.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(BG));
@@ -279,7 +445,7 @@ public class MainActivity extends Activity {
         l.setBackgroundColor(BG);
         // The ActionBar carries the app title now (screen titles + Up
         // in showScreen); the tagline lives on the home screen itself.
-        l.setPadding(dp(16), dp(8), dp(16), dp(24));
+        l.setPadding(dp(18), dp(8), dp(18), dp(32));
 
         // One app, two screens. Home (record/upload actions with the
         // hub last) is the landing; record owns the viewfinder and
@@ -300,21 +466,64 @@ public class MainActivity extends Activity {
         status = label("", 16, TEXT); // hidden - status conveyed via list icons + toasts
 
         rootScroll = new ScrollView(MainActivity.this); rootScroll.setBackgroundColor(BG); rootScroll.addView(l);
+        // Cards cast their elevation shadows past their own bounds.
+        l.setClipChildren(false); l.setClipToPadding(false);
         setContentView(rootScroll);
     }
 
     private void buildHomeScreen() {
-        homeScreen.addView(label("Record, upload, and revisit craft lessons.", 16, DIM));
-        Button goRecord = primaryButton("● Record", BRIGHT);
-        goRecord.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showScreen("record"); } });
-        homeScreen.addView(goRecord);
+        // The ActionBar steps aside on home (showScreen hides it): a
+        // greeting and a large title sit in the content instead, like
+        // Material's expanded large top app bar.
+        homeScreen.setClipChildren(false);
+        TextView hello = label(greeting(), 15, DIM);
+        hello.setTypeface(MEDIUM);
+        hello.setPadding(dp(2), dp(18), dp(2), 0);
+        homeScreen.addView(hello);
+        TextView big = label("Unwritten Craft", 32, TEXT);
+        big.setTypeface(BOLD);
+        big.setPadding(dp(2), 0, dp(2), dp(4));
+        homeScreen.addView(big);
+        TextView tagline = label("Record, upload, and revisit craft lessons.", 16, DIM);
+        tagline.setPadding(dp(2), 0, dp(2), dp(14));
+        homeScreen.addView(tagline);
 
-        Button upload = button("⬆ Upload video");
-        upload.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
-        homeScreen.addView(upload);
+        // Two action tiles: Record (filled ember, the primary action)
+        // and Upload video (the system picker — the picked video rides
+        // the exact session path of a take).
+        LinearLayout tiles = new LinearLayout(this);
+        tiles.setOrientation(LinearLayout.HORIZONTAL);
+        tiles.setClipChildren(false);
+        LinearLayout goRecord = actionTile("Record", "Film a lesson, the way you'd teach anyway",
+                Glyphs.RECORD, true,
+                new View.OnClickListener() { @Override public void onClick(View v) { showScreen("record"); } });
+        LinearLayout upload = actionTile("Upload video", "From your phone or a link",
+                Glyphs.UPLOAD, false,
+                new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
+        // Both MATCH_PARENT: LinearLayout gives the pair one uniform height.
+        LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        tl.setMargins(0, 0, dp(6), 0);
+        tiles.addView(goRecord, tl);
+        LinearLayout.LayoutParams tr = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        tr.setMargins(dp(6), 0, 0, 0);
+        tiles.addView(upload, tr);
+        homeScreen.addView(tiles);
 
         // Or paste a link: YouTube/watch pages queue to the pipeline
         // fetcher, which downloads and processes them like a take.
+        LinearLayout linkCard = new LinearLayout(this);
+        linkCard.setOrientation(LinearLayout.VERTICAL);
+        linkCard.setPadding(dp(16), dp(14), dp(16), dp(10));
+        cardStyle(linkCard);
+        LinearLayout linkHead = new LinearLayout(this);
+        linkHead.setOrientation(LinearLayout.HORIZONTAL);
+        linkHead.setGravity(Gravity.CENTER_VERTICAL);
+        linkHead.addView(glyphBadge(Glyphs.LINK, EMBER_INK, EMBER_SOFT, 36, 12));
+        TextView linkTitle = label("Paste a link", 17, TEXT);
+        linkTitle.setTypeface(MEDIUM);
+        linkTitle.setPadding(dp(12), 0, 0, 0);
+        linkHead.addView(linkTitle);
+        linkCard.addView(linkHead);
         final EditText urlInput = new EditText(this);
         urlInput.setHint("Paste a video link…");
         urlInput.setTextSize(16);
@@ -333,89 +542,85 @@ public class MainActivity extends Activity {
                 return false;
             }
         });
-        urlInput.setBackground(rounded(PANEL, 12));
-        urlInput.setPadding(dp(16), dp(12), dp(16), dp(12));
+        urlInput.setBackground(rounded(PRESSED, 14));
+        urlInput.setPadding(dp(16), dp(14), dp(16), dp(14));
         urlInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
                 | android.text.InputType.TYPE_TEXT_VARIATION_URI);
         LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        urlLp.setMargins(0, dp(14), 0, dp(6));
-        homeScreen.addView(urlInput, urlLp);
-        Button urlFetch = button("⬇ Fetch from link");
+        urlLp.setMargins(0, dp(12), 0, dp(4));
+        linkCard.addView(urlInput, urlLp);
+        Button urlFetch = button("Fetch from link");
         urlFetch.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { queueFetchUrl(urlInput.getText().toString().trim()); } });
-        homeScreen.addView(urlFetch);
+        linkCard.addView(urlFetch);
+        LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        linkLp.setMargins(0, dp(12), 0, 0);
+        homeScreen.addView(linkCard, linkLp);
 
         // Hub: published lessons, same stories as the web hub. The hub
         // lives on the signer, so this section only fills when a signer
-        // URL and token are configured and Cloud is on. The ⟳ action
-        // is the pull-to-refresh analogue (no SwipeRefreshLayout
+        // URL and token are configured and Cloud is on. The refresh
+        // action is the pull-to-refresh analogue (no SwipeRefreshLayout
         // without AndroidX): the hub also reloads on return to home.
         LinearLayout hubHead = new LinearLayout(this);
         hubHead.setOrientation(LinearLayout.HORIZONTAL);
-        hubHead.setGravity(Gravity.CENTER_VERTICAL);
-        TextView hubTitle = sectionHeader("Hub sessions");
-        LinearLayout.LayoutParams hubTitleLp = new LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        hubTitle.setLayoutParams(hubTitleLp);
-        hubHead.addView(hubTitle);
-        TextView hubRefresh = new TextView(this);
-        hubRefresh.setText("⟳");
-        hubRefresh.setTextSize(20);
-        hubRefresh.setTextColor(TEXT);
-        hubRefresh.setBackground(ripple(Color.TRANSPARENT, 24));
-        hubRefresh.setPadding(dp(12), dp(4), dp(12), dp(4));
-        hubRefresh.setClickable(true);
-        hubRefresh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { loadHub(); } });
+        hubHead.setGravity(Gravity.BOTTOM);
+        LinearLayout hubTitles = new LinearLayout(this);
+        hubTitles.setOrientation(LinearLayout.VERTICAL);
+        hubTitles.addView(sectionHeader("Hub sessions"));
+        TextView hubSub = label("Lessons the pipeline has written up", 14, DIM);
+        hubSub.setPadding(dp(4), 0, dp(4), dp(10));
+        hubTitles.addView(hubSub);
+        hubHead.addView(hubTitles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.ImageButton hubRefresh = iconButton(Glyphs.REFRESH, TEXT, null, "Refresh the hub",
+                new View.OnClickListener() { @Override public void onClick(View v) { loadHub(); } });
+        LinearLayout.LayoutParams rl = (LinearLayout.LayoutParams) hubRefresh.getLayoutParams();
+        rl.setMargins(0, 0, 0, dp(8));
         hubHead.addView(hubRefresh);
         homeScreen.addView(hubHead);
         hubContainer = new LinearLayout(MainActivity.this);
         hubContainer.setOrientation(LinearLayout.VERTICAL);
-        hubContainer.setBackground(rounded(PANEL, 16));
+        hubContainer.setBackground(rounded(PANEL, 20));
         hubContainer.setClipToOutline(true);
+        hubContainer.setElevation(night ? 0 : dp(2));
         homeScreen.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    /** A personal hello over the title, by the phone's own clock. */
+    private static String greeting() {
+        int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        return h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
     }
 
     private void buildRecordScreen() {
         // No custom back button: the ActionBar Up button and the system
         // Back button are the ways off this screen (see the action-bar
         // section below).
+        recordScreen.setClipChildren(false);
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
-        viewfinderBox.setBackground(rounded(Color.BLACK, 16));
+        viewfinderBox.setBackground(rounded(Color.BLACK, 24));
         viewfinderBox.setClipToOutline(true);
+        viewfinderBox.setElevation(night ? 0 : dp(4));
         preview = new TextureView(this);
-        viewfinderBox.addView(preview, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)));
+        viewfinderBox.addView(preview, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
         localPlayer = new android.widget.VideoView(this);
         localPlayer.setVisibility(View.GONE);
-        viewfinderBox.addView(localPlayer, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(280)));
-        // playback controls overlay at bottom of viewfinder
+        viewfinderBox.addView(localPlayer, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)));
+        // Playback controls float over the bottom of the viewfinder as
+        // round translucent buttons.
         playerControls = new LinearLayout(this);
         playerControls.setOrientation(LinearLayout.HORIZONTAL);
         playerControls.setGravity(Gravity.CENTER);
-        playerControls.setBackgroundColor(Color.parseColor("#AA000000"));
         playerControls.setVisibility(View.GONE);
-        playerControls.setPadding(dp(6), dp(4), dp(6), dp(4));
-        Button vfPlay = new Button(this);
-        vfPlay.setText("▶"); vfPlay.setTextSize(14); vfPlay.setTextColor(TEXT); vfPlay.setBackground(ripple(PRESSED, 20)); vfPlay.setAllCaps(false);
-        vfPlay.setStateListAnimator(null);
+        playerControls.setPadding(dp(6), dp(6), dp(6), dp(12));
+        Button vfPlay = overlayButton("▶", "Play");
         vfPlay.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null && isViewfinderPlaying) localPlayer.start(); } });
-        Button vfPause = new Button(this);
-        vfPause.setText("⏸"); vfPause.setTextSize(14); vfPause.setTextColor(TEXT); vfPause.setBackground(ripple(PRESSED, 20)); vfPause.setAllCaps(false);
-        vfPause.setStateListAnimator(null);
+        Button vfPause = overlayButton("⏸", "Pause");
         vfPause.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { if (localPlayer != null) localPlayer.pause(); } });
-        Button vfClose = new Button(this);
-        vfClose.setText("✕"); vfClose.setTextSize(14); vfClose.setTextColor(TEXT); vfClose.setBackground(ripple(PRESSED, 20)); vfClose.setAllCaps(false);
-        vfClose.setStateListAnimator(null);
+        Button vfClose = overlayButton("✕", "Close player");
         vfClose.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { stopLocalPlayback(); } });
-        LinearLayout.LayoutParams vfp = new LinearLayout.LayoutParams(0, dp(40), 1f);
-        vfp.setMargins(dp(4), 0, dp(4), 0);
-        vfPlay.setLayoutParams(vfp);
-        LinearLayout.LayoutParams vfp2 = new LinearLayout.LayoutParams(0, dp(40), 1f);
-        vfp2.setMargins(dp(4), 0, dp(4), 0);
-        vfPause.setLayoutParams(vfp2);
-        LinearLayout.LayoutParams vfp3 = new LinearLayout.LayoutParams(0, dp(40), 1f);
-        vfp3.setMargins(dp(4), 0, dp(4), 0);
-        vfClose.setLayoutParams(vfp3);
         playerControls.addView(vfPlay); playerControls.addView(vfPause); playerControls.addView(vfClose);
         android.widget.FrameLayout.LayoutParams ctrlLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         ctrlLp.gravity = Gravity.BOTTOM;
@@ -425,50 +630,61 @@ public class MainActivity extends Activity {
         recBadge = new TextView(this);
         recBadge.setText("● REC");
         recBadge.setTextSize(15); recBadge.setTextColor(0xFFFFFFFF);
+        recBadge.setTypeface(BOLD);
         GradientDrawable badgeBg = new GradientDrawable();
         badgeBg.setShape(GradientDrawable.RECTANGLE);
         badgeBg.setCornerRadius(dp(20));
-        badgeBg.setColor(Color.parseColor("#AA000000"));
+        badgeBg.setColor(Color.parseColor("#8C000000"));
         recBadge.setBackground(badgeBg);
-        recBadge.setPadding(dp(12), dp(6), dp(12), dp(6));
+        recBadge.setPadding(dp(12), dp(6), dp(14), dp(6));
         recBadge.setVisibility(View.GONE);
         android.widget.FrameLayout.LayoutParams badgeLp = new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         badgeLp.gravity = Gravity.TOP | Gravity.START;
-        badgeLp.setMargins(dp(12), dp(12), dp(12), dp(12));
+        badgeLp.setMargins(dp(14), dp(14), dp(14), dp(14));
         viewfinderBox.addView(recBadge, badgeLp);
-        recordScreen.addView(viewfinderBox, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams vfLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        vfLp.setMargins(0, dp(6), 0, 0);
+        recordScreen.addView(viewfinderBox, vfLp);
 
         // Warning banners directly below the stage, like the web app.
-        micWarn = label("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings to re-enable it.", 15, 0xFFFFFFFF);
-        micWarn.setBackground(rounded(RED, 12));
+        micWarn = label("🎤  No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings to re-enable it.", 15, 0xFFFFFFFF);
+        micWarn.setBackground(rounded(RED, 16));
         micWarn.setPadding(dp(14), dp(12), dp(14), dp(12));
         micWarn.setVisibility(View.GONE);
-        recordScreen.addView(micWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        speechWarn = label("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, TEXT);
-        speechWarn.setBackground(rounded(PANEL, 12));
+        recordScreen.addView(micWarn, bannerLp());
+        speechWarn = label("🔇  Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", 15, HONEY);
+        speechWarn.setBackground(rounded(HONEY_SOFT, 16));
         speechWarn.setPadding(dp(14), dp(12), dp(14), dp(12));
         speechWarn.setVisibility(View.GONE);
-        recordScreen.addView(speechWarn, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        recordScreen.addView(speechWarn, bannerLp());
 
-        // Zoom directly below viewfinder
+        // Zoom directly below the viewfinder, in a pill track.
         zoomRow = new LinearLayout(this);
         zoomRow.setOrientation(LinearLayout.HORIZONTAL);
         zoomRow.setGravity(Gravity.CENTER_VERTICAL);
-        zoomRow.setPadding(0, dp(6), 0, dp(6));
+        zoomRow.setPadding(dp(4), 0, dp(8), 0);
+        zoomRow.setBackground(rounded(PANEL, 28));
+        zoomRow.setElevation(night ? 0 : dp(2));
         Button zoomOut = zoomButton("−");
         zoomSeek = new SeekBar(this);
         zoomSeek.setMax(100);
+        zoomSeek.setProgressTintList(android.content.res.ColorStateList.valueOf(BRIGHT));
+        zoomSeek.setThumbTintList(android.content.res.ColorStateList.valueOf(BRIGHT));
+        zoomSeek.setProgressBackgroundTintList(android.content.res.ColorStateList.valueOf(RING));
         LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         zoomSeek.setLayoutParams(sp);
         Button zoomIn = zoomButton("+");
         zoomLabel = label("1.0×", 14, DIM);
+        zoomLabel.setTypeface(MEDIUM);
         zoomLabel.setMinWidth(dp(48));
         zoomLabel.setGravity(Gravity.CENTER);
         zoomRow.addView(zoomOut);
         zoomRow.addView(zoomSeek);
         zoomRow.addView(zoomIn);
         zoomRow.addView(zoomLabel);
-        recordScreen.addView(zoomRow);
+        LinearLayout.LayoutParams zoomLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        zoomLp.setMargins(0, dp(10), 0, 0);
+        recordScreen.addView(zoomRow, zoomLp);
         zoomOut.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(-0.2f); } });
         zoomIn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { nudgeZoom(+0.2f); } });
         zoomSeek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -477,9 +693,26 @@ public class MainActivity extends Activity {
             @Override public void onStopTrackingTouch(SeekBar s) {}
         });
 
+        // The shutter dock: the round shutter centred in a card, with a
+        // line of help under it. The button keeps its shared "● Record"
+        // / "■ Stop  m:ss" text for TalkBack; paintRecordButton draws it.
+        LinearLayout dock = new LinearLayout(this);
+        dock.setOrientation(LinearLayout.VERTICAL);
+        dock.setGravity(Gravity.CENTER_HORIZONTAL);
+        dock.setPadding(dp(16), dp(18), dp(16), dp(14));
+        cardStyle(dock);
+        dock.setClipToOutline(false);
         recordButton = primaryButton("● Record", BRIGHT);
         recordButton.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { toggleRecord(); } });
-        recordScreen.addView(recordButton);
+        recordButton.setLayoutParams(new LinearLayout.LayoutParams(dp(88), dp(88)));
+        dock.addView(recordButton);
+        dockHint = label("", 15, DIM);
+        dockHint.setGravity(Gravity.CENTER);
+        dockHint.setPadding(dp(8), dp(10), dp(8), 0);
+        dock.addView(dockHint);
+        LinearLayout.LayoutParams dockLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dockLp.setMargins(0, dp(12), 0, 0);
+        recordScreen.addView(dock, dockLp);
         paintRecordButton(false);
 
         // Cloud: a real Switch row in a card (the camera switch lives in
@@ -487,51 +720,92 @@ public class MainActivity extends Activity {
         LinearLayout cloudRow = new LinearLayout(this);
         cloudRow.setOrientation(LinearLayout.HORIZONTAL);
         cloudRow.setGravity(Gravity.CENTER_VERTICAL);
-        cloudRow.setPadding(dp(16), dp(8), dp(16), dp(8));
+        cloudRow.setPadding(dp(12), dp(12), dp(16), dp(12));
         cardStyle(cloudRow);
+        cloudGlyph = glyphBadge(Glyphs.CLOUD, SAGE, SAGE_SOFT, 44, 14);
+        cloudRow.addView(cloudGlyph);
         LinearLayout cloudText = new LinearLayout(this);
         cloudText.setOrientation(LinearLayout.VERTICAL);
-        cloudText.addView(label("Cloud", 17, TEXT));
-        cloudText.addView(label("Upload a copy for streamed playback", 13, DIM));
+        cloudText.setPadding(dp(10), 0, dp(8), 0);
+        TextView cloudTitle = label("Cloud", 17, TEXT);
+        cloudTitle.setTypeface(MEDIUM);
+        cloudTitle.setPadding(dp(4), 0, dp(4), 0);
+        cloudText.addView(cloudTitle);
+        TextView cloudSub = label("Upload a copy for streamed playback", 14, DIM);
+        cloudSub.setPadding(dp(4), 0, dp(4), 0);
+        cloudText.addView(cloudSub);
         cloudRow.addView(cloudText, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         // Kept under its old name: the contract tests and the other
         // paint/sweep paths still call it the cloud toggle.
         cloudToggleButton = new android.widget.Switch(this);
         cloudToggleButton.setThumbTintList(new android.content.res.ColorStateList(
             new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
-            new int[] { TEXT, DIM }));
+            new int[] { Color.WHITE, night ? DIM : Color.WHITE }));
         cloudToggleButton.setTrackTintList(new android.content.res.ColorStateList(
             new int[][] { new int[] { android.R.attr.state_checked }, new int[] {} },
-            new int[] { Color.parseColor("#7A6A45"), Color.parseColor("#3A2F1E") }));
+            new int[] { SAGE, RING }));
         cloudToggleButton.setMinimumHeight(dp(48));
         cloudToggleButton.setOnCheckedChangeListener(cloudSwitchListener);
         cloudRow.addView(cloudToggleButton);
         LinearLayout.LayoutParams cloudLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cloudLp.setMargins(0, dp(10), 0, 0);
+        cloudLp.setMargins(0, dp(12), 0, 0);
         recordScreen.addView(cloudRow, cloudLp);
 
-        // This device: left icon (☁/device), middle date+duration, right share/download
+        // This device: a frame of the video, the date and a status chip,
+        // then save / share actions — rows in one card.
         recordScreen.addView(sectionHeader("This device"));
         lessonContainer = new LinearLayout(MainActivity.this);
         lessonContainer.setOrientation(LinearLayout.VERTICAL);
-        lessonContainer.setBackground(rounded(PANEL, 16));
+        lessonContainer.setBackground(rounded(PANEL, 20));
         lessonContainer.setClipToOutline(true);
+        lessonContainer.setElevation(night ? 0 : dp(2));
         recordScreen.addView(lessonContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         exportBtn = button("Export sessions to Downloads");
+        LinearLayout.LayoutParams exLp = (LinearLayout.LayoutParams) exportBtn.getLayoutParams();
+        exLp.setMargins(0, dp(12), 0, 0);
         exportBtn.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { exportClips(); } });
         recordScreen.addView(exportBtn);
+
+        TextView note = label("Every session is saved on this phone, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; touch and hold to delete it from the phone and the cloud.", 14, DIM);
+        note.setPadding(dp(4), dp(14), dp(4), dp(4));
+        note.setLineSpacing(0, 1.2f);
+        recordScreen.addView(note);
 
         // Debug overrides hide behind a small link at the bottom.
         Button advancedLink = new Button(this);
         advancedLink.setText("Advanced settings");
         advancedLink.setTextSize(14); advancedLink.setTextColor(DIM); advancedLink.setAllCaps(false);
+        advancedLink.setPaintFlags(advancedLink.getPaintFlags() | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        advancedLink.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
         advancedLink.setBackground(ripple(Color.TRANSPARENT, 12));
         advancedLink.setStateListAnimator(null);
         advancedLink.setMinHeight(dp(48)); advancedLink.setMinimumHeight(dp(48));
         advancedLink.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showCloudSettings(); } });
         recordScreen.addView(advancedLink);
+    }
+
+    private LinearLayout.LayoutParams bannerLp() {
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(10), 0, 0);
+        return lp;
+    }
+
+    /** A round translucent button floating over the video. */
+    private Button overlayButton(String text, String desc) {
+        Button b = new Button(this);
+        b.setText(text); b.setTextSize(16); b.setTextColor(Color.WHITE); b.setAllCaps(false);
+        b.setBackground(ripple(Color.parseColor("#8C000000"), 24));
+        b.setStateListAnimator(null);
+        b.setContentDescription(desc);
+        b.setMinWidth(0); b.setMinimumWidth(0); b.setMinHeight(0); b.setMinimumHeight(0);
+        b.setPadding(0, 0, 0, 0);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        lp.setMargins(dp(6), 0, dp(6), 0);
+        b.setLayoutParams(lp);
+        return b;
     }
 
     // ---------- permissions ----------
@@ -560,7 +834,11 @@ public class MainActivity extends Activity {
         if (bar != null) {
             bar.setTitle(home ? "Unwritten Craft" : "Record");
             bar.setDisplayHomeAsUpEnabled(!home);
+            // Home carries its own greeting and large title; the bar
+            // returns with the Up arrow on Record.
+            if (home) bar.hide(); else bar.show();
         }
+        if (rootScroll != null) rootScroll.scrollTo(0, 0);
         invalidateOptionsMenu();
         if (homeScreen != null) homeScreen.setVisibility(home ? View.VISIBLE : View.GONE);
         if (recordScreen != null) recordScreen.setVisibility(home ? View.GONE : View.VISIBLE);
@@ -697,12 +975,33 @@ public class MainActivity extends Activity {
         } catch (Throwable e) { showError("Camera error: " + e.getMessage()); }
     }
 
-    /** Idle: filled red "● Record". Recording: a quiet dark "■ Stop" so
-     *  the live state reads at a glance. */
+    /** The shutter: a ring with an ember disc while idle, a rounded
+     *  ember square while recording — the camera idiom, on a ripple. The
+     *  button text stays the shared "● Record" / "■ Stop  m:ss" for
+     *  TalkBack; it is drawn transparent. The dock's hint follows. */
     private void paintRecordButton(boolean recording) {
         if (recordButton == null) return;
-        recordButton.setBackground(ripple(recording ? PANEL : BRIGHT, 28));
-        recordButton.setTextColor(recording ? BRIGHT : 0xFFFFFFFF);
+        GradientDrawable ring = new GradientDrawable();
+        ring.setShape(GradientDrawable.OVAL);
+        ring.setStroke(dp(5), RING);
+        GradientDrawable core = new GradientDrawable();
+        core.setColor(BRIGHT);
+        int inset;
+        if (recording) { core.setCornerRadius(dp(9)); inset = dp(26); }
+        else { core.setShape(GradientDrawable.OVAL); inset = dp(11); }
+        android.graphics.drawable.LayerDrawable face = new android.graphics.drawable.LayerDrawable(
+            new android.graphics.drawable.Drawable[] { ring, core });
+        face.setLayerInset(1, inset, inset, inset, inset);
+        GradientDrawable mask = new GradientDrawable();
+        mask.setShape(GradientDrawable.OVAL);
+        mask.setColor(Color.WHITE);
+        recordButton.setBackground(ripple(face, mask));
+        recordButton.setTextColor(Color.TRANSPARENT);
+        recordButton.setPadding(0, 0, 0, 0);
+        recordButton.setMinWidth(0); recordButton.setMinimumWidth(0);
+        if (dockHint != null) dockHint.setText(recording
+                ? "Recording — teach the way you'd teach anyway. Tap to stop."
+                : "Tap to record a lesson — teach the way you'd teach anyway.");
     }
 
     private void showMicWarn() { if (micWarn != null) micWarn.setVisibility(View.VISIBLE); }
@@ -719,12 +1018,12 @@ public class MainActivity extends Activity {
         handler.postDelayed(new Runnable() { @Override public void run() { refreshZoomUi(); } }, 2500);
     }
 
-    /** A round 48dp − / + zoom button. */
+    /** A round 48dp − / + zoom button inside the zoom pill. */
     private Button zoomButton(String text) {
         Button b = new Button(this);
         b.setText(text); b.setTextSize(22); b.setTextColor(TEXT);
         b.setAllCaps(false);
-        b.setBackground(ripple(PANEL, 24));
+        b.setBackground(ripple(Color.TRANSPARENT, 24));
         b.setStateListAnimator(null);
         b.setMinWidth(0); b.setMinimumWidth(0);
         b.setMinHeight(0); b.setMinimumHeight(0);
@@ -737,7 +1036,7 @@ public class MainActivity extends Activity {
 
     @Override public boolean onCreateOptionsMenu(android.view.Menu menu) {
         android.view.MenuItem cam = menu.add(0, MENU_CAMERA, 0, "Back camera");
-        cam.setIcon(android.R.drawable.ic_menu_camera);
+        cam.setIcon(new Glyphs(Glyphs.CAMERA, TEXT, dp(24)));
         cam.setShowAsAction(android.view.MenuItem.SHOW_AS_ACTION_ALWAYS);
         return true;
     }
@@ -801,6 +1100,7 @@ public class MainActivity extends Activity {
                 lastLessonFile = f;
                 recordStartMs = SystemClock.elapsedRealtime();
                 recordButton.setText("■ Stop  0:00"); paintRecordButton(true);
+                recordButton.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
                 if (recBadge != null) { recBadge.setText("● REC  0:00"); recBadge.setVisibility(View.VISIBLE); }
                 handler.post(timerRunnable);
                 // Fresh mic state, then watch the level.
@@ -832,6 +1132,7 @@ public class MainActivity extends Activity {
         handler.removeCallbacks(speechRunnable);
         hideSpeechWarn();
         recordButton.setText("● Record"); paintRecordButton(false);
+        recordButton.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY);
         if (recBadge != null) recBadge.setVisibility(View.GONE);
     }
 
@@ -880,28 +1181,66 @@ public class MainActivity extends Activity {
         }
     }
 
+    // One background probe per session gives both its length and a
+    // frame of the video for the row's thumbnail (MediaMetadataRetriever
+    // off the UI thread; the caches are only touched on the UI thread).
     private final Map<String,String> durationCache = new java.util.HashMap<String,String>();
+    private final Map<String,android.graphics.Bitmap> thumbCache = new java.util.HashMap<String,android.graphics.Bitmap>();
+    private final Set<String> probing = new HashSet<String>();
+
     private String durationFor(String name) {
         if (durationCache.containsKey(name)) return durationCache.get(name);
-        String out = "";
-        try {
-            File f = new File(clipsDir, name);
+        probeClip(name);
+        return "";
+    }
+
+    private android.graphics.Bitmap thumbFor(String name) {
+        if (!durationCache.containsKey(name)) probeClip(name);
+        return thumbCache.get(name);
+    }
+
+    private void probeClip(final String name) {
+        if (probing.contains(name) || clipsDir == null) return;
+        probing.add(name);
+        final File f = new File(clipsDir, name);
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            String out = "";
+            android.graphics.Bitmap thumb = null;
             android.media.MediaMetadataRetriever mmr = new android.media.MediaMetadataRetriever();
-            mmr.setDataSource(f.getAbsolutePath());
-            String dur = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
-            mmr.release();
-            if (dur != null) {
-                long ms = Long.parseLong(dur);
-                long s = ms / 1000;
-                long m = s / 60;
-                long h = m / 60;
-                s = s % 60; m = m % 60;
-                if (h > 0) out = String.format(Locale.US, "%d:%02d:%02d", h, m, s);
-                else out = String.format(Locale.US, "%d:%02d", m, s);
+            try {
+                mmr.setDataSource(f.getAbsolutePath());
+                String dur = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                long ms = 0;
+                if (dur != null) {
+                    ms = Long.parseLong(dur);
+                    long s = ms / 1000;
+                    long m = s / 60;
+                    long h = m / 60;
+                    s = s % 60; m = m % 60;
+                    if (h > 0) out = String.format(Locale.US, "%d:%02d:%02d", h, m, s);
+                    else out = String.format(Locale.US, "%d:%02d", m, s);
+                }
+                android.graphics.Bitmap frame = mmr.getFrameAtTime(Math.min(1000000L, ms * 500L),
+                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC);
+                if (frame != null) {
+                    int side = Math.min(frame.getWidth(), frame.getHeight());
+                    android.graphics.Bitmap sq = android.graphics.Bitmap.createBitmap(frame,
+                            (frame.getWidth() - side) / 2, (frame.getHeight() - side) / 2, side, side);
+                    thumb = android.graphics.Bitmap.createScaledBitmap(sq, dp(56), dp(56), true);
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                try { mmr.release(); } catch (Throwable ignored) {}
             }
-        } catch (Throwable ignored) {}
-        durationCache.put(name, out);
-        return out;
+            final String fOut = out;
+            final android.graphics.Bitmap fThumb = thumb;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                probing.remove(name);
+                durationCache.put(name, fOut);
+                if (fThumb != null) thumbCache.put(name, fThumb);
+                refreshClipList();
+            } });
+        } });
     }
 
     private void downloadSingle(String name) {
@@ -928,22 +1267,48 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void addRowButton(LinearLayout row, String text, int sp, int color,
-                              Integer bg, View.OnClickListener onClick) {
-        TextView tv = new TextView(this);
-        tv.setText(text);
-        tv.setTextSize(sp);
-        tv.setTextColor(color);
-        // Every right-hand action is a 48dp-class round target with a ripple.
-        tv.setBackground(ripple(bg != null ? bg : Color.TRANSPARENT, 24));
-        tv.setGravity(Gravity.CENTER);
-        tv.setPadding(dp(6), dp(4), dp(6), dp(4));
-        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
-        bp.setMargins(dp(4), 0, 0, 0);
-        tv.setLayoutParams(bp);
-        tv.setClickable(true);
-        tv.setOnClickListener(onClick);
-        row.addView(tv);
+    /** A 56dp video frame with the length on it; a warm cover with a
+     *  video (or mic) glyph until the frame is ready. */
+    private View thumbView(String name) {
+        android.widget.FrameLayout box = new android.widget.FrameLayout(this);
+        box.setBackground(rounded(Color.BLACK, 14));
+        box.setClipToOutline(true);
+        android.graphics.Bitmap bmp = thumbFor(name);
+        String dur = durationFor(name);
+        if (bmp != null) {
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            iv.setImageBitmap(bmp);
+            iv.setScaleType(android.widget.ImageView.ScaleType.CENTER_CROP);
+            box.addView(iv, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        } else {
+            int w = washIndex(name);
+            box.setBackground(rounded(WASH[w], 14));
+            android.widget.ImageView iv = new android.widget.ImageView(this);
+            String mime = mimeFor(name);
+            iv.setImageDrawable(new Glyphs(mime != null && mime.startsWith("audio") ? Glyphs.MIC : Glyphs.VIDEO, WASH_INK[w], dp(24)));
+            iv.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+            box.addView(iv, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        }
+        if (!dur.isEmpty()) {
+            TextView d = new TextView(this);
+            d.setText(dur); d.setTextSize(11); d.setTextColor(Color.WHITE); d.setTypeface(MEDIUM);
+            d.setBackground(rounded(Color.parseColor("#9E000000"), 6));
+            d.setPadding(dp(5), dp(1), dp(5), dp(1));
+            android.widget.FrameLayout.LayoutParams dl = new android.widget.FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            dl.gravity = Gravity.BOTTOM | Gravity.END;
+            dl.setMargins(0, 0, dp(4), dp(4));
+            box.addView(d, dl);
+        }
+        box.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+        box.setLayoutParams(new LinearLayout.LayoutParams(dp(56), dp(56)));
+        return box;
+    }
+
+    private void addRowButton(LinearLayout row, int glyph, int color, Integer bg, String desc,
+                              View.OnClickListener onClick) {
+        // Every right-hand action is a 48dp round target with a ripple.
+        row.addView(iconButton(glyph, color, bg, desc, onClick));
     }
 
     private void refreshClipList() {
@@ -952,102 +1317,119 @@ public class MainActivity extends Activity {
         if (lessonContainer == null) return;
         lessonContainer.removeAllViews();
         if (clipNames.isEmpty()) {
-            TextView empty = label("Nothing yet.", 15, DIM);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(16), dp(20), dp(16), dp(20));
+            // Empty state: a glyph in an ember wash, a title, one line of help.
+            LinearLayout empty = new LinearLayout(this);
+            empty.setOrientation(LinearLayout.VERTICAL);
+            empty.setGravity(Gravity.CENTER_HORIZONTAL);
+            empty.setPadding(dp(20), dp(24), dp(20), dp(24));
+            android.widget.ImageView eg = glyphBadge(Glyphs.VIDEO, EMBER_INK, EMBER_SOFT, 56, 28);
+            empty.addView(eg);
+            TextView et = label("Nothing yet.", 17, TEXT);
+            et.setTypeface(MEDIUM);
+            et.setGravity(Gravity.CENTER);
+            et.setPadding(dp(4), dp(10), dp(4), 0);
+            empty.addView(et);
+            TextView eh = label("Sessions you record or upload appear here.", 14, DIM);
+            eh.setGravity(Gravity.CENTER);
+            empty.addView(eh);
             lessonContainer.addView(empty);
             return;
         }
+        boolean first = true;
         for (final String name : clipNames) {
-            File file = new File(clipsDir, name);
+            if (!first) {
+                View divider = new View(this);
+                divider.setBackgroundColor(LINE);
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
+                dl.setMargins(dp(82), 0, 0, 0);
+                lessonContainer.addView(divider, dl);
+            }
+            first = false;
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setBackground(rowRipple());
-            row.setMinimumHeight(dp(56));
-            row.setPadding(dp(12), dp(4), dp(4), dp(4));
+            row.setMinimumHeight(dp(80));
+            row.setPadding(dp(12), dp(10), dp(6), dp(10));
 
-            // left: cloud/device icon
-            TextView left = label(leftIconFor(name), 16, TEXT);
-            left.setMinWidth(dp(32)); left.setGravity(Gravity.CENTER);
+            // left: a frame of the video (the old cloud/device icon is a chip now)
+            View left = thumbView(name);
             row.addView(left);
 
-            // middle: date + duration (click to play in viewfinder)
-            String date = displayDateFor(name);
+            // middle: the date, then the status in words
             String dur = durationFor(name);
-            String middleText = dur.isEmpty() ? date : date + "  \u2022  " + dur;
-            TextView mid = new TextView(this);
-            mid.setText(middleText);
-            mid.setTextColor(TEXT); mid.setTextSize(15); mid.setSingleLine(true);
-            mid.setPadding(dp(8), 0, dp(8), 0);
+            LinearLayout mid = new LinearLayout(this);
+            mid.setOrientation(LinearLayout.VERTICAL);
+            mid.setPadding(dp(14), 0, dp(6), 0);
             LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             mid.setLayoutParams(mp);
-            mid.setClickable(true);
+            TextView date = new TextView(this);
+            date.setText(displayDateFor(name));
+            date.setTextColor(TEXT); date.setTextSize(16); date.setTypeface(MEDIUM);
+            date.setSingleLine(true);
+            date.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            mid.addView(date);
+            LinearLayout chips = new LinearLayout(this);
+            chips.setOrientation(LinearLayout.HORIZONTAL);
+            mid.addView(chips);
             row.addView(mid);
-            // whole row (including left icon) plays in viewfinder; right button is separate
+            // whole row plays in the viewfinder; the right buttons are separate
             row.setClickable(true);
             View.OnClickListener playClick = new View.OnClickListener() { @Override public void onClick(View v) { playInViewfinder(name); } };
             row.setOnClickListener(playClick);
-            mid.setOnClickListener(playClick);
-            left.setOnClickListener(playClick);
+            row.setContentDescription("Session " + displayDateFor(name) + (dur.isEmpty() ? "" : ", " + dur)
+                    + ". " + leftIconWords(name) + ". Tap to play, touch and hold to delete.");
 
-            // right: share icon if cloud ready, download icon if device-only, otherwise status
+            // right: save a copy always; then share when ready, progress
+            // while uploading, a spinner while preparing, retry on failure
             JSONObject link = cloudLink(name);
             String st = link == null ? "" : link.optString("state", "");
             boolean isReady = "ready".equals(st);
             if (link == null) {
-                // device-only: simple down arrow, no background
-                addRowButton(row, "\u2193", 20, DIM, null, new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+                chips.addView(chip("On this phone", PRESSED, DIM));
+                addRowButton(row, Glyphs.DOWNLOAD, TEXT, null, "Save a copy", new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
             } else if (isReady) {
                 // Cloud-linking never removes the on-device download:
                 // ready rows keep ↓ next to ↗.
-                addRowButton(row, "\u2193", 20, DIM, null, new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
-                addRowButton(row, "\u2197", 20, TEXT, PANEL, new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
+                chips.addView(chip("In the cloud", SAGE_SOFT, SAGE));
+                addRowButton(row, Glyphs.DOWNLOAD, TEXT, null, "Save a copy", new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+                addRowButton(row, Glyphs.SHARE, TEXT, PRESSED, "Share session link", new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
             } else {
-                // uploading: show progress %; processing: show share; failed: !
+                addRowButton(row, Glyphs.DOWNLOAD, TEXT, null, "Save a copy", new View.OnClickListener() { @Override public void onClick(View v) { downloadSingle(name); } });
+                // uploading: progress; processing: share once it has an id; failed: retry
                 if ("uploading".equals(st)) {
-                    String badge = link.optInt("progress", 0) + "%";
-                    TextView stv = label(badge, 13, DIM);
-                    stv.setPadding(dp(8), 0, 0, 0);
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
-                    bp.setMargins(dp(8), 0, 0, 0);
-                    stv.setGravity(Gravity.CENTER);
-                    stv.setLayoutParams(bp);
-                    row.addView(stv);
+                    int pct = link.optInt("progress", 0);
+                    chips.addView(chip("Uploading " + pct + "%", EMBER_SOFT, EMBER_INK));
+                    TextView ring = new TextView(this);
+                    ring.setText(pct + "%");
+                    ring.setTextSize(10); ring.setTextColor(EMBER_INK); ring.setTypeface(BOLD);
+                    ring.setGravity(Gravity.CENTER);
+                    ring.setBackground(progressRing(pct));
+                    ring.setContentDescription("Uploading " + pct + " percent");
+                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(40), dp(40));
+                    bp.setMargins(dp(6), 0, dp(4), 0);
+                    ring.setLayoutParams(bp);
+                    row.addView(ring);
                 } else if ("processing".equals(st)) {
+                    chips.addView(chip("Preparing", HONEY_SOFT, HONEY));
                     String vid = link.optString("videoId", "");
                     if (!vid.isEmpty()) {
-                        TextView sh = new TextView(this);
-                        sh.setText("\u2197");
-                        sh.setTextSize(20);
-                        sh.setTextColor(DIM);
-                        sh.setBackground(ripple(PANEL, 24));
-                        sh.setGravity(Gravity.CENTER);
-                        sh.setPadding(dp(6), dp(4), dp(6), dp(4));
-                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
-                        bp.setMargins(dp(8), 0, 0, 0);
-                        sh.setLayoutParams(bp);
-                        sh.setClickable(true);
-                        sh.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
-                        row.addView(sh);
+                        addRowButton(row, Glyphs.SHARE, DIM, PRESSED, "Share session link", new View.OnClickListener() { @Override public void onClick(View v) { shareCloudLinkFor(name); } });
                     } else {
-                        TextView stv = label("\u2026", 13, DIM);
-                        stv.setPadding(dp(8), 0, 0, 0);
-                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
-                        bp.setMargins(dp(8), 0, 0, 0);
-                        stv.setGravity(Gravity.CENTER);
-                        stv.setLayoutParams(bp);
-                        row.addView(stv);
+                        android.widget.ProgressBar spin = new android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleSmall);
+                        spin.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(HONEY));
+                        spin.setContentDescription("Preparing");
+                        LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(24), dp(24));
+                        bp.setMargins(dp(14), 0, dp(12), 0);
+                        spin.setLayoutParams(bp);
+                        row.addView(spin);
                     }
                 } else if ("failed".equals(st)) {
-                    TextView stv = label("!", 13, DIM);
-                    stv.setPadding(dp(8), 0, 0, 0);
-                    LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(dp(48), dp(48));
-                    bp.setMargins(dp(8), 0, 0, 0);
-                    stv.setGravity(Gravity.CENTER);
-                    stv.setLayoutParams(bp);
-                    stv.setBackground(ripple(Color.TRANSPARENT, 24));
-                    stv.setClickable(true);
+                    TextView retryChip = chip("Upload failed · Retry", EMBER_SOFT, EMBER_INK);
+                    retryChip.setClickable(true);
+                    retryChip.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { retryCloud(name); } });
+                    chips.addView(retryChip);
+                    android.widget.ImageButton stv = iconButton(Glyphs.RETRY, EMBER_INK, null, "Retry cloud upload", null);
                     stv.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { retryCloud(name); } });
                     row.addView(stv);
                 }
@@ -1057,31 +1439,50 @@ public class MainActivity extends Activity {
             // never reach the hub; the reason rides along for readers
             String ignReason = ignoredReasonFor(name);
             if (ignReason != null) {
-                TextView stv = label("ignored", 13, DIM);
-                stv.setPadding(dp(8), 0, 0, 0);
-                LinearLayout.LayoutParams bp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48));
-                bp.setMargins(dp(8), 0, 0, 0);
-                stv.setGravity(Gravity.CENTER);
-                stv.setLayoutParams(bp);
+                TextView stv = chip("Ignored", PRESSED, DIM);
                 stv.setContentDescription(ignReason.isEmpty() ? "Ignored by the operator" : "Ignored by the operator: " + ignReason);
-                row.addView(stv);
+                chips.addView(stv);
             }
 
-            // long-press row to delete — also on children so anywhere on row triggers it
+            // long-press row to delete
             View.OnLongClickListener longDelete = new View.OnLongClickListener() {
                 @Override public boolean onLongClick(View v) { confirmDeleteLesson(name); return true; }
             };
             row.setOnLongClickListener(longDelete);
-            mid.setOnLongClickListener(longDelete);
-            left.setOnLongClickListener(longDelete);
 
             lessonContainer.addView(row);
-            View divider = new View(this);
-            divider.setBackgroundColor(LINE);
-            LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
-            dl.setMargins(dp(52), 0, 0, 0);
-            lessonContainer.addView(divider, dl);
         }
+    }
+
+    /** Upload progress as a ring: a sunken track with an ember arc. */
+    private android.graphics.drawable.Drawable progressRing(final int pct) {
+        final android.graphics.Paint p = new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG);
+        p.setStyle(android.graphics.Paint.Style.STROKE);
+        p.setStrokeWidth(dp(4));
+        p.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        return new android.graphics.drawable.Drawable() {
+            @Override public void draw(android.graphics.Canvas c) {
+                android.graphics.RectF r = new android.graphics.RectF(getBounds());
+                r.inset(dp(3), dp(3));
+                p.setColor(PRESSED);
+                c.drawOval(r, p);
+                p.setColor(BRIGHT);
+                c.drawArc(r, -90, 360f * Math.max(0, Math.min(100, pct)) / 100f, false, p);
+            }
+            @Override public void setAlpha(int alpha) { }
+            @Override public void setColorFilter(android.graphics.ColorFilter cf) { }
+            @Override public int getOpacity() { return android.graphics.PixelFormat.TRANSLUCENT; }
+        };
+    }
+
+    /** The left icon's link state, in words (for TalkBack). */
+    private String leftIconWords(String name) {
+        String icon = leftIconFor(name);
+        if ("\uD83D\uDCF1".equals(icon)) return "On this phone";
+        if ("\u2601\u2191".equals(icon)) return "Uploading";
+        if ("\u2601\u2026".equals(icon)) return "Preparing";
+        if ("\u2601!".equals(icon)) return "Upload failed";
+        return "In the cloud";
     }
 
     private String mimeFor(String name) {
@@ -1276,6 +1677,13 @@ public class MainActivity extends Activity {
 
     private void paintCloudToggle() {
         if (cloudToggleButton == null) return;
+        // The Cloud glyph sits on a sage wash when on, sunken when off.
+        if (cloudGlyph != null) {
+            boolean on = cloudEnabledCfg();
+            cloudGlyph.setBackground(rounded(on ? SAGE_SOFT : PRESSED, 14));
+            android.graphics.drawable.Drawable g = cloudGlyph.getDrawable();
+            if (g instanceof Glyphs) ((Glyphs) g).setColor(on ? SAGE : DIM);
+        }
         // Set the switch without firing its listener (no echo toggle).
         cloudToggleButton.setOnCheckedChangeListener(null);
         cloudToggleButton.setChecked(cloudEnabledCfg());
@@ -1491,37 +1899,59 @@ public class MainActivity extends Activity {
         hubContainer.removeAllViews();
         if (hubDetail != null) hubContainer.addView(hubDetailView(hubDetail));
         if (hubRows == null || hubRows.length() == 0) {
-            TextView empty = label(hubStatusText(), 15, DIM);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(16), dp(20), dp(16), dp(20));
+            // The reason (or simply empty), with a glyph in an ember wash.
+            LinearLayout empty = new LinearLayout(this);
+            empty.setOrientation(LinearLayout.VERTICAL);
+            empty.setGravity(Gravity.CENTER_HORIZONTAL);
+            empty.setPadding(dp(20), dp(24), dp(20), dp(24));
+            empty.addView(glyphBadge(Glyphs.BOOK, EMBER_INK, EMBER_SOFT, 56, 28));
+            TextView et = label(hubStatusText(), 15, DIM);
+            et.setGravity(Gravity.CENTER);
+            et.setPadding(dp(4), dp(10), dp(4), 0);
+            empty.addView(et);
             hubContainer.addView(empty);
             return;
         }
         for (int i = 0; i < hubRows.length(); i++) {
             final JSONObject row = hubRows.optJSONObject(i);
             if (row == null) continue;
+            if (i > 0 || hubDetail != null) {
+                View divider = new View(this);
+                divider.setBackgroundColor(LINE);
+                LinearLayout.LayoutParams dl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
+                dl.setMargins(dp(82), 0, 0, 0);
+                hubContainer.addView(divider, dl);
+            }
             LinearLayout r = new LinearLayout(this);
             r.setOrientation(LinearLayout.HORIZONTAL);
             r.setGravity(Gravity.CENTER_VERTICAL);
             r.setBackground(rowRipple());
-            r.setMinimumHeight(dp(56));
-            r.setPadding(dp(12), dp(6), dp(4), dp(6));
-            TextView left = label("☁", 16, DIM);
-            left.setMinWidth(dp(32));
-            r.addView(left);
+            r.setMinimumHeight(dp(80));
+            r.setPadding(dp(12), dp(10), dp(8), dp(10));
             String title = row.optString("title", row.optString("videoId", ""));
             String date = row.optString("lessonDate", "");
-            TextView mid = label(title + (date.isEmpty() ? "" : "  •  " + date), 15, TEXT);
-            LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            mid.setLayoutParams(mp);
-            mid.setPadding(dp(8), 0, dp(8), 0);
-            mid.setSingleLine(true);
-            mid.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            r.addView(mid);
-            TextView go = label("›", 20, DIM);
-            go.setMinWidth(dp(48));
-            go.setGravity(Gravity.CENTER);
-            r.addView(go);
+            // A cover tile: the lesson's initial on its warm wash.
+            r.addView(cover(title, 56, 24, 14));
+            LinearLayout mid = new LinearLayout(this);
+            mid.setOrientation(LinearLayout.VERTICAL);
+            mid.setPadding(dp(14), 0, dp(8), 0);
+            TextView t = new TextView(this);
+            t.setText(title); t.setTextSize(17); t.setTextColor(TEXT); t.setTypeface(MEDIUM);
+            t.setSingleLine(true);
+            t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            mid.addView(t);
+            if (!date.isEmpty()) {
+                TextView d = new TextView(this);
+                d.setText(date); d.setTextSize(14); d.setTextColor(DIM);
+                d.setPadding(0, dp(3), 0, 0);
+                mid.addView(d);
+            }
+            r.addView(mid, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            android.widget.ImageView go = new android.widget.ImageView(this);
+            go.setImageDrawable(new Glyphs(Glyphs.CHEVRON, DIM, dp(18)));
+            go.setScaleType(android.widget.ImageView.ScaleType.CENTER);
+            r.addView(go, new LinearLayout.LayoutParams(dp(32), dp(48)));
+            r.setContentDescription(title + (date.isEmpty() ? "" : ", " + date) + ". Opens the lesson.");
             r.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { openHubSession(row.optString("videoId", "")); } });
             hubContainer.addView(r);
         }
@@ -1542,79 +1972,159 @@ public class MainActivity extends Activity {
         } });
     }
 
-    /** A 44dp-tall ripple button that shares a row (weight 1). */
+    /** A 48dp-tall ripple button that shares a row (weight 1). */
     private Button smallHubButton(String text) {
         Button b = styledButton(text, PRESSED, TEXT);
         b.setTextSize(15);
-        b.setMinHeight(dp(44)); b.setMinimumHeight(dp(44));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(44), 1f);
+        b.setMinHeight(dp(48)); b.setMinimumHeight(dp(48));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(48), 1f);
         lp.setMargins(dp(3), dp(6), dp(3), dp(6));
         b.setLayoutParams(lp);
         return b;
     }
 
+    /** Write-ups are Markdown: inline bold and italic render, line
+     *  breaks stay — the same inline-only reading as iOS and the web. */
+    private CharSequence inlineMarkdown(String md) {
+        String html = android.text.TextUtils.htmlEncode(md)
+            .replaceAll("\\*\\*([^*\\n]+)\\*\\*", "<b>$1</b>")
+            .replaceAll("(^|[^*])\\*([^*\\n]+)\\*", "$1<i>$2</i>")
+            .replace("\n", "<br>");
+        return android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY);
+    }
+
+    /** A lesson, listing style: a warm cover banner with its initial,
+     *  the title and date, an ember Play pill with round Share and
+     *  Delete, the write-up, corrections as quote cards, and chapters
+     *  as a list of time chips. */
     private View hubDetailView(final JSONObject obj) {
+        String title = obj.optString("title", obj.optString("videoId", ""));
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setBackground(rounded(PRESSED, 14));
-        try { card.setElevation(dp(4)); } catch (Throwable ignored) {}
-        card.setPadding(dp(14), dp(14), dp(14), dp(14));
+        card.setBackground(rounded(PANEL, 20));
+        try { card.setElevation(dp(night ? 0 : 4)); } catch (Throwable ignored) {}
+        card.setClipToOutline(true);
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.setMargins(dp(8), dp(8), dp(8), dp(8));
         card.setLayoutParams(cardLp);
-        LinearLayout top = new LinearLayout(this);
-        top.setOrientation(LinearLayout.HORIZONTAL);
-        TextView t = label(obj.optString("title", obj.optString("videoId", "")), 17, TEXT);
-        LinearLayout.LayoutParams tp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        t.setLayoutParams(tp);
-        top.addView(t);
-        Button close = smallHubButton("✕");
-        close.setLayoutParams(new LinearLayout.LayoutParams(dp(48), dp(44)));
-        close.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+        // The cover banner, with Close in its corner.
+        android.widget.FrameLayout banner = new android.widget.FrameLayout(this);
+        int w = washIndex(title);
+        banner.setBackgroundColor(WASH[w]);
+        TextView big = new TextView(this);
+        big.setText(initialOf(title)); big.setTextSize(64); big.setTypeface(BOLD);
+        big.setTextColor(WASH_INK[w]); big.setGravity(Gravity.CENTER);
+        big.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
+        banner.addView(big, new android.widget.FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+        android.widget.ImageButton close = iconButton(Glyphs.CLOSE, TEXT, PANEL, "Close", new View.OnClickListener() { @Override public void onClick(View v) {
             hubDetail = null;
             if (isViewfinderPlaying) stopLocalPlayback();
             refreshHubRows();
         } });
-        top.addView(close);
-        card.addView(top);
-        card.addView(label(obj.optString("lessonDate", ""), 14, DIM));
+        android.widget.FrameLayout.LayoutParams closeLp = new android.widget.FrameLayout.LayoutParams(dp(48), dp(48));
+        closeLp.gravity = Gravity.TOP | Gravity.END;
+        closeLp.setMargins(0, dp(10), dp(10), 0);
+        close.setElevation(dp(2));
+        banner.addView(close, closeLp);
+        card.addView(banner);
+
+        LinearLayout body = new LinearLayout(this);
+        body.setOrientation(LinearLayout.VERTICAL);
+        body.setPadding(dp(18), dp(16), dp(18), dp(18));
+        card.addView(body);
+        TextView t = label(title, 24, TEXT);
+        t.setTypeface(BOLD);
+        t.setPadding(0, 0, 0, 0);
+        body.addView(t);
+        String date = obj.optString("lessonDate", "");
+        if (!date.isEmpty()) {
+            TextView d = label(date, 15, DIM);
+            d.setPadding(0, dp(4), 0, 0);
+            body.addView(d);
+        }
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button play = smallHubButton("▶ Play");
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setPadding(0, dp(14), 0, dp(4));
+        Button play = primaryButton("▶  Play", BRIGHT);
         play.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { playHubRemote(obj); } });
-        Button share = smallHubButton("↗");
-        share.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { shareHubSession(obj); } });
-        Button del = smallHubButton("🗑");
-        del.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+        actions.addView(play, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.ImageButton share = iconButton(Glyphs.SHARE, TEXT, PRESSED, "Share session link",
+                new View.OnClickListener() { @Override public void onClick(View v) { shareHubSession(obj); } });
+        ((LinearLayout.LayoutParams) share.getLayoutParams()).setMargins(dp(10), 0, 0, 0);
+        actions.addView(share);
+        android.widget.ImageButton del = iconButton(Glyphs.TRASH, RED, PRESSED, "Delete from the hub and the cloud",
+                new View.OnClickListener() { @Override public void onClick(View v) {
             confirmDeleteHub(obj.optString("title", obj.optString("videoId", "")), obj.optString("videoId", ""));
         } });
-        actions.addView(play);
-        actions.addView(share);
+        ((LinearLayout.LayoutParams) del.getLayoutParams()).setMargins(dp(8), 0, 0, 0);
         actions.addView(del);
-        card.addView(actions);
+        body.addView(actions);
         String writeup = obj.optString("writeupMd", "");
-        if (!writeup.isEmpty()) card.addView(label(writeup, 15, TEXT));
+        if (!writeup.isEmpty()) {
+            View rule = new View(this);
+            rule.setBackgroundColor(LINE);
+            LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
+            rl.setMargins(0, dp(12), 0, dp(12));
+            body.addView(rule, rl);
+            TextView wu = label("", 16, TEXT);
+            wu.setText(inlineMarkdown(writeup));
+            wu.setLineSpacing(0, 1.3f);
+            wu.setTextIsSelectable(true);
+            wu.setPadding(0, 0, 0, 0);
+            body.addView(wu);
+        }
         JSONArray corrections = obj.optJSONArray("corrections");
-        if (corrections != null) {
+        if (corrections != null && corrections.length() > 0) {
+            body.addView(detailHeader("Corrections"));
             for (int i = 0; i < corrections.length(); i++) {
                 JSONObject c = corrections.optJSONObject(i);
                 if (c == null) continue;
-                card.addView(label("• " + c.optString("start", "") + "  " + c.optString("quote", ""), 15, TEXT));
+                // A quote card: time chip, the mentor's words, what they corrected.
+                LinearLayout q = new LinearLayout(this);
+                q.setOrientation(LinearLayout.VERTICAL);
+                q.setBackground(rounded(BG, 18));
+                q.setPadding(dp(14), dp(12), dp(14), dp(12));
+                LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ql.setMargins(0, 0, 0, dp(10));
+                TextView tc = chip(c.optString("start", ""), EMBER_SOFT, EMBER_INK);
+                q.addView(tc);
+                TextView quote = label("\u201C" + c.optString("quote", "") + "\u201D", 16, TEXT);
+                quote.setPadding(0, dp(8), 0, 0);
+                q.addView(quote);
                 if (!c.optString("correcting", "").isEmpty()) {
-                    card.addView(label("  → " + c.optString("correcting", ""), 14, DIM));
+                    TextView fix = label("Correcting: " + c.optString("correcting", ""), 14, DIM);
+                    fix.setPadding(0, dp(4), 0, 0);
+                    q.addView(fix);
                 }
+                body.addView(q, ql);
             }
         }
         JSONArray chapters = obj.optJSONArray("chapters");
-        if (chapters != null) {
+        if (chapters != null && chapters.length() > 0) {
+            body.addView(detailHeader("Chapters"));
             for (int i = 0; i < chapters.length(); i++) {
                 JSONObject c = chapters.optJSONObject(i);
                 if (c == null) continue;
-                card.addView(label("§ " + c.optString("start", "") + "  " + c.optString("label", ""), 14, DIM));
+                LinearLayout ch = new LinearLayout(this);
+                ch.setOrientation(LinearLayout.HORIZONTAL);
+                ch.setGravity(Gravity.CENTER_VERTICAL);
+                ch.setMinimumHeight(dp(44));
+                TextView tc = chip(c.optString("start", ""), EMBER_SOFT, EMBER_INK);
+                ((LinearLayout.LayoutParams) tc.getLayoutParams()).setMargins(0, 0, dp(12), 0);
+                ch.addView(tc);
+                ch.addView(label(c.optString("label", ""), 15, TEXT));
+                body.addView(ch);
             }
         }
         return card;
+    }
+
+    private TextView detailHeader(String text) {
+        TextView h = label(text, 19, TEXT);
+        h.setTypeface(BOLD);
+        h.setPadding(0, dp(20), 0, dp(10));
+        return h;
     }
 
     private String hubEmbedUrl(JSONObject obj) {
@@ -1845,6 +2355,8 @@ public class MainActivity extends Activity {
         if (name.equals(savedLastName))
             cloudPrefs().edit().remove("lastLink").remove("lastName").apply();
         if (lastLessonFile != null && name.equals(lastLessonFile.getName())) lastLessonFile = null;
+        durationCache.remove(name);
+        thumbCache.remove(name);
         refreshClipList();
         Toast.makeText(this, doneToast, Toast.LENGTH_SHORT).show();
     }

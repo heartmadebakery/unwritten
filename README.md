@@ -121,5 +121,8 @@ mentor data — samples are fictional.
 - `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real mentor data.
 - `docs/` — design notes, test logs, and the (undecided) submission draft.
+  [`docs/DESIGN.md`](docs/DESIGN.md) is the apps' shared design
+  language ("Hearth"): tokens, components, and how each platform
+  draws them.
 - `CHANGELOG.md` — the running changelog, at the repo root. Every
   commit to `main` updates it in the same commit.

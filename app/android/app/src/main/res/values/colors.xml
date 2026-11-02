@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hearth (docs/DESIGN.md): the launcher's ember background. The
+     app's own palette lives in MainActivity.applyPalette(). -->
+<resources>
+    <color name="uw_ember">#D2452A</color>
+</resources>

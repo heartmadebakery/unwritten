@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Launcher foreground: the amber record dot on the craft dark.
+<!-- Launcher foreground (Hearth, docs/DESIGN.md): the record glyph —
+     a cream ring around a cream dot — on the ember background.
      60dp of art inside the 66dp adaptive safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -7,6 +8,11 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#E8A13A"
-        android:pathData="M54,54 m-30,0 a30,30 0 1,0 60,0 a30,30 0 1,0 -60,0" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FAF6F1"
+        android:strokeWidth="6"
+        android:pathData="M54,54 m-27,0 a27,27 0 1,0 54,0 a27,27 0 1,0 -54,0" />
+    <path
+        android:fillColor="#FAF6F1"
+        android:pathData="M54,54 m-14,0 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0" />
 </vector>
