@@ -43,11 +43,16 @@ def fake_urlopen(req, timeout=None):
     if url.endswith("/hub/ignored") and req.get_method() == "GET":
         return FakeResponse(200, SENT.get("remote_ignored", []))
     if url.endswith("/hub/ignored"):
-        SENT.setdefault("ignored", []).append(
-            json.loads(req.data.decode("utf-8")))
+        posted = json.loads(req.data.decode("utf-8"))
+        SENT.setdefault("ignored", []).append(posted)
         if SENT.get("refuse_ignored"):
             return FakeResponse(500, {"error": "boom"})
-        return FakeResponse(200, {"ignored": "x"})
+        if SENT.get("misshapen_ignored"):
+            # A stale worker that routes unknown paths into the video
+            # trio answers 200 with a mint payload instead of a marker.
+            return FakeResponse(200, {"videoId": posted.get("videoId"),
+                                      "signature": "abc"})
+        return FakeResponse(200, {"ignored": posted.get("videoId")})
     if "/hub/ignored/" in url:
         SENT.setdefault("unignored", []).append(url.rsplit("/", 1)[-1])
         return FakeResponse(200, {"deleted": True})
@@ -204,6 +209,25 @@ class TestSyncIgnored(unittest.TestCase):
                 publish.main(["--sync-ignored", "--state", state_path,
                               "--signer", "https://signer.test",
                               "--token", "sekret"])
+
+    def test_wrong_shaped_success_fails_loudly(self):
+        # A stale worker answers the marker POST with 200 and a mint
+        # payload (unknown paths fall into the video trio). A 200 with
+        # the wrong shape must fail like a refusal — never read as a
+        # stored marker.
+        with tempfile.TemporaryDirectory() as td:
+            SENT["misshapen_ignored"] = True
+            with self.assertRaises(SystemExit) as ctx:
+                self.run_sync(td, {"junk": {"title": "T",
+                                            "result": "ignored"}})
+        self.assertIn("junk", str(ctx.exception))
+
+    def test_non_list_ignored_answers_loudly(self):
+        with tempfile.TemporaryDirectory() as td:
+            SENT["remote_ignored"] = {"error": "not a list"}
+            with self.assertRaises(SystemExit):
+                self.run_sync(td, {"junk": {"title": "T",
+                                            "result": "ignored"}})
 
     def test_refusal_names_the_video(self):
         with tempfile.TemporaryDirectory() as td:

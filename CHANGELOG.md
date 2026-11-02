@@ -8,6 +8,14 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-01
 
+### Fixed
+- **Ignored sync verifies worker responses.** A stale worker answers
+  the marker POST with 200 and a mint payload (unknown paths fall
+  into the video trio) — now a 200 without `{"ignored": <that
+  guid>}` fails naming a redeploy, like a refusal, and a non-list
+  GET is loud too. Found live: production predates the route
+  hardening, so the sync stays red until it is deployed.
+
 ### Added
 - **Ignored takes: hub-backed set-asides with Record-screen badges.**
   Operator `ignored` entries sync to a new `ignored_videos` table

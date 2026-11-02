@@ -152,6 +152,17 @@ def sync_ignored(state_path, signer, token):
         if status < 200 or status >= 300:
             raise SystemExit("hub ignore refused for %s (%s): %s"
                              % (guid, status, body))
+        try:
+            ack = json.loads(body)
+        except ValueError:
+            ack = None
+        # A stale worker answers 200 with a mint payload (unknown
+        # paths fall into the video trio) — a 200 with the wrong
+        # shape is a refusal, never a stored marker.
+        if not isinstance(ack, dict) or ack.get("ignored") != guid:
+            raise SystemExit("hub ignore for %s answered 200 without "
+                             "a marker (stale worker? redeploy): %.80s"
+                             % (guid, body.strip()))
     status, body = get_json(base, token)
     if status < 200 or status >= 300:
         raise SystemExit("hub ignored list refused (%s): %s"
@@ -161,10 +172,12 @@ def sync_ignored(state_path, signer, token):
     except ValueError:
         raise SystemExit("hub ignored list answered not JSON: %.80s"
                          % body.strip())
+    if not isinstance(remote, list):
+        raise SystemExit("hub ignored list answered not a list: %.80s"
+                         % body.strip())
     remote_ids = set(entry.get("videoId", "")
                      for entry in remote
-                     if isinstance(entry, dict)) if isinstance(remote, list) \
-        else set()
+                     if isinstance(entry, dict))
     removed = 0
     for guid in sorted(remote_ids - set(ignored)):
         status, body = delete_url("%s/%s" % (base, guid), token)
