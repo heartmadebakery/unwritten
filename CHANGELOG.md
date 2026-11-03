@@ -8,6 +8,15 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-03
 
+### Changed
+- **iOS: signing team set in the Xcode project.** Both build
+  configurations now carry `DEVELOPMENT_TEAM`, so Xcode and
+  `build.sh` produce a signed device build without passing the team
+  by hand. First device build installed and launched on a paired
+  iPhone (iPhone15,2) with `devicectl`. Xcode's own project rewrite
+  (objectVersion downgrade) was discarded; only the two team lines
+  are committed.
+
 ### Fixed
 - **Android build: new value resources link, wrong JDK fails fast.**
   The first official-SDK build of the Hearth redesign failed twice:
