@@ -354,7 +354,9 @@ class IOSBaselineTests(unittest.TestCase):
 
     def test_ios17_iphone_baseline(self):
         self.assertIn("IPHONEOS_DEPLOYMENT_TARGET = 17.0", self.pbxproj)
-        self.assertIn("TARGETED_DEVICE_FAMILY = 1", self.pbxproj)
+        # User-ordered Nov 3: iPhone + iPad (was iPhone-only);
+        # see test_ios_ipad.py.
+        self.assertIn('TARGETED_DEVICE_FAMILY = "1,2"', self.pbxproj)
         self.assertIn("SDKROOT = iphoneos", self.pbxproj)
 
     def test_app_icon_matches_web_pwa_icon(self):
@@ -569,8 +571,15 @@ class IOSParityTests(unittest.TestCase):
         cls.cloud = read(CLOUD)
 
     def test_android_dark_palette(self):
-        for color in ["17130E", "241C12", "F5EAD6", "B8A888"]:
-            self.assertIn(color, self.view, color)
+        # User-ordered Nov 2 (Hearth redesign, docs/DESIGN.md): the one
+        # dark palette became dynamic light/dark colours that follow
+        # the system — the same tokens as Android and the web.
+        for light, dark in [("FAF6F1", "171310"), ("FFFFFF", "221C18"),
+                            ("2A211C", "F7EFE6"), ("6F625A", "B9AA9C"),
+                            ("B83A20", "FF8A6B")]:
+            self.assertIn('Color(light: "%s", dark: "%s")' % (light, dark), self.view)
+        self.assertIn('Color(hex: "D2452A")', self.view)
+        self.assertIn("userInterfaceStyle == .dark", self.view)
 
     def test_title_and_sessions_wording(self):
         # Post-restructure contract (user-ordered): Unwritten Craft

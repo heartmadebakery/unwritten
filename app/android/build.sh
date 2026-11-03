@@ -21,7 +21,16 @@ AJAR="$SDK/platforms/android-34/android.jar"
 OUT="$HERE/build-manual"
 MIN_API=29
 
+[ -n "${JAVA_HOME:-}" ] && PATH="$JAVA_HOME/bin:$PATH"
 command -v javac >/dev/null || { echo "javac not found — set JAVA_HOME (JDK 17)"; exit 1; }
+# JDK 18+ javac gives anonymous-class constructors a Signature attribute
+# that build-tools 34's d8 crashes on (an NPE inside R8) — check first.
+JAVAC_MAJOR="$(javac -version 2>&1 | grep '^javac ' | grep -o '[0-9][0-9]*' | head -1 || true)"
+if [ "${JAVAC_MAJOR:-0}" -gt 17 ]; then
+  echo "javac $JAVAC_MAJOR found — this build needs JDK 17 (d8 34 crashes on newer javac output)."
+  echo "Set JAVA_HOME to a JDK 17, e.g. JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 bash build.sh"
+  exit 1
+fi
 [ -f "$AJAR" ] || { echo "android.jar missing at $AJAR"; exit 1; }
 [ -d "$NDK" ] || { echo "NDK missing at $NDK"; exit 1; }
 CMAKE="$(command -v cmake || echo "$SDK/cmake/3.22.1/bin/cmake")"
@@ -53,7 +62,7 @@ echo "== resources (aapt2) =="
 "$BT/aapt2" compile --dir "$APP/src/main/res" -o "$OUT/res.zip"
 "$BT/aapt2" link -o "$OUT/base.apk" -I "$AJAR" \
   --manifest "$APP/src/main/AndroidManifest.xml" \
-  -R "$OUT/res.zip" \
+  -R "$OUT/res.zip" --auto-add-overlay \
   --java "$OUT/gen" --min-sdk-version "$MIN_API" --target-sdk-version 34
 
 echo "== stamp (signer token) =="

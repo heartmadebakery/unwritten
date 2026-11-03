@@ -3,12 +3,13 @@
 One page per screen sharing a common core: home (`index.html`) holds
 Record and Upload actions with the published hub last, `record.html`
 is the viewfinder screen with cloud, device sessions, and a debug
-Advanced settings link below, and `upload.html` takes a video file.
+Advanced settings link below, `upload.html` takes a video file or points to `link.html`, the
+Fetch from link page.
 `common.js` holds the vault, cloud, hub (rows open a session's detail
 — write-up, corrections, chapters — with Play, Share, and Delete, as
 on Android and iOS), and session rows;
-`home.js` / `record.js` / `upload.js` wire each page; `app.css` holds
-the dark palette. Plain HTML/CSS/JS — no dependencies, no modules
+`home.js` / `record.js` / `upload.js` / `link.js` wire each page; `app.css` holds
+the Hearth design language ([docs/DESIGN.md](../../docs/DESIGN.md)). Plain HTML/CSS/JS — no dependencies, no modules
 (`file://` keeps working); one tiny build step stamps a signer token
 into a servable copy. Every take is saved to the on-device vault
 (IndexedDB) with no download prompt, and with Cloud on (a default) a
@@ -20,17 +21,23 @@ watch-page links queue to the pipeline (`POST /fetch/jobs`), which
 fetches them with yt-dlp, processes them like a recording, and
 publishes them to the hub.
 
-The layout mirrors the [native Android app](../android/): the same dark
-palette, the same session rows — newest first, date + length, tap to
-play inside the viewfinder, ↓ to download one file, long-press to
+The layout mirrors the [native Android app](../android/) and the iOS
+app: the same Hearth tokens, the same session rows — newest first, a
+frame of the video with its length, the date, the status in a chip,
+tap to play inside the viewfinder, ↓ to save one file, long-press to
 delete it from the device and the cloud.
 
-It is drawn as a phone app, not a web page: a large title on home, a
-top bar with a back chevron on Record and Upload (camera switch on the
-right), grouped inset lists, a real **Cloud** switch, and a round
-shutter for Record. `common.js` tags the page `ios` or `android` so the
-CSS can nudge radii, type and the header per platform; touch targets
-are 48px and keyboard focus is visible.
+It is drawn as a friendly phone app, not a web page: warm paper (and
+a matching dark set that follows `prefers-color-scheme`), a greeting
+and large title on home over two action tiles (Record in ember,
+Upload video), lesson cards with warm cover tiles for the hub, a
+translucent top bar with a back chevron on Record and Upload (camera
+switch on the right), the shutter in a dock with the status line
+under it, a real **Cloud** switch, and words in chips for every
+upload state. `common.js` tags the page `ios` or `android` so the CSS
+can nudge type, radii and the header per platform; touch targets are
+48px, keyboard focus is visible, and reduced motion turns off the
+press squish.
 
 There are no roles, steps, prompts, or session codes. The mentor
 teaches the way they would anyway; afterwards the pipeline transcribes
@@ -128,8 +135,8 @@ access. Without one, the native-app capture path still works:
 ## Install as an app (PWA)
 
 Served over HTTPS, the recorder is an installable PWA:
-`manifest.webmanifest` (standalone display, dark theme matching the
-Android app), home-screen
+`manifest.webmanifest` (standalone display, the warm canvas as its
+theme colour, with light/dark `theme-color` metas on every page), home-screen
 icons in `icons/`, and `sw.js`, a service worker that caches the app
 shell for offline use — pages and scripts are network-first, so updates
 still arrive together when online, and calls to other origins (the

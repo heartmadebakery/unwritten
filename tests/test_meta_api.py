@@ -724,11 +724,12 @@ class TestSchemas(unittest.TestCase):
             dw.parse_draft('{"title": "T"}')
 
     def test_render_writeup_shape(self):
-        md = dw.render_writeup({"title": "Mentor's Soup", "intro": "Intro.",
+        # User-ordered 2026-11-02: titles are simple summaries, no possessive prefix/suffix.
+        md = dw.render_writeup({"title": "Soup", "intro": "Intro.",
                                 "needs": ["water"], "steps": ["Boil."],
                                 "knows": []})
         self.assertEqual(
-            md, "# Mentor's Soup — the write-up\n\nIntro.\n\n"
+            md, "# Soup\n\nIntro.\n\n"
                 "## What you need\n\n- water\n\n## Steps\n\n1. Boil.\n")
         self.assertEqual(dw.validate_writeup(md), "")
         self.assertNotIn("## What the mentor knows", md)
@@ -739,10 +740,11 @@ class TestSchemas(unittest.TestCase):
 
 
 class TestDraftRouting(unittest.TestCase):
-    GOOD_JSON = json.dumps({"title": "Mentor's Soup", "intro": "Intro.",
+    # User-ordered 2026-11-02: simple title without possessive/suffix.
+    GOOD_JSON = json.dumps({"title": "Soup", "intro": "Intro.",
                             "needs": ["water"], "steps": ["Boil."],
                             "knows": []})
-    GOOD_MD = ("# Mentor's Soup — the write-up\n\nIntro.\n\n"
+    GOOD_MD = ("# Soup\n\nIntro.\n\n"
                "## What you need\n\n- water\n\n## Steps\n\n1. Boil.\n")
 
     def test_video_path_used_with_key_and_mp4(self):

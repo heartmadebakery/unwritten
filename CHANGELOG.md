@@ -6,6 +6,88 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-03
+
+### Fixed
+- **Merge: Nov 2 bug sweep with the Hearth / link-screen / duration
+  work.** Conflict fallout, kept green (493 unittest, 69 hub
+  checks): the service worker is the same-origin network-first shell
+  plus the link page at v12; the upload and link pages both say
+  "saved" only once the vault write lands; `publish.py` uniquifies
+  the title, then fingerprints, `--if-changed` skips, 404s skip, and
+  the probed duration rides along; `wrangler.toml` lists 0001–0004
+  all with `--remote`. `dist/` and the APK rebuilt from the merged
+  sources on JDK 17 (device install still pending).
+
+### Added
+- **Hub: duration on home + unique titles via chapters.** Hub rows now show video duration to the right of date (`lessonDate • m:ss`, `h:mm:ss` when needed) on web (`app/recorder/common.js:hubRowHTML`), Android (`MainActivity.refreshHubRows`) and iOS (`SessionStore.hubSubtitle`/`ContentView`). `duration_seconds` column added via `app/cloud-signer/migrations/0004_duration.sql` (applied to live D1, `hub-check` updated); `worker.js` computes `durationSeconds` from `ffprobe` on publish and returns it in `GET /hub/sessions` list/detail; `pipeline/publish.py` probes the lesson file and sends `durationSeconds`; `pipeline/title_utils.py` ensures new hub titles stay unique via chapter summarization (distinctive chapter words, fallback date/increment) at first creation and the worker enforces it server-side for all new publishers. Prompt extended (`prompts/writeup_drafter.md`). Verified: republished 13 work dirs + fixed remaining "Yes" to "Yes — Core Concepts" (14/14 unique, durations 4s–506s live at `GET /hub/sessions`), `node app/cloud-signer/hub-check.mjs` PASS (60), `python -m unittest` 452 pass (1 pre-existing), `app/recorder/build.sh` token #10/10, `app/android/build.sh` APK ok, `npx wrangler deploy` live.
+
+### Added
+- **iOS: a real iPad app, portrait and landscape.** The target is now
+  iPhone + iPad (`TARGETED_DEVICE_FAMILY = "1,2"`) with all four
+  orientations on the iPad (`UISupportedInterfaceOrientations~ipad`);
+  the iPhone stays portrait. On the iPad the viewfinder and the take
+  follow the screen rotation (`PreviewUIView` -> `setInterfaceRotation`
+  -> `captureAngle`, default 90 so the iPhone is unchanged). On wide
+  screens every screen is a centered 760 pt column, the home title
+  moves into it, and the viewfinder is taller. Contract tests first
+  (`tests/test_ios_ipad.py`). Verified: Release simulator build and
+  both orientations of home on the iPad Pro 13-inch simulator; the
+  camera rotation itself is untested (the simulator has no camera) —
+  film a landscape take on the iPad before relying on it.
+
+### Changed
+- **Upload video is a screen with two options; Fetch from link is its
+  own screen; status lines stay on their screen.** Home is now just
+  Record and Upload video above the hub — no paste-a-link card, no
+  status footer. Upload video opens *Choose a video* (iOS: Photos or
+  Files; Android: system picker; web: the file drop zone) and *Fetch
+  from link*, which opens its own screen (web: new `link.html` /
+  `link.js`, precached and shipped by `build.sh`, cache bumped to v12).
+  The camera help ("Point the camera at the mentor's hands…") no longer
+  boots into the iOS store's shared status: it is the Record screen's
+  own line, and iOS clears the status on every navigation so one
+  screen's message never follows you to another. Contract tests added
+  first (`tests/test_upload_link_screens.py`); the old web link tests
+  now read the link page. Verified: iOS Release simulator build and a
+  walk through home → Upload → Fetch from link → Record on the iPhone
+  17 Pro Max simulator; web JS `node --check`, `dist/` rebuilt. Android
+  not compiled — no JDK 17 / Android SDK on this host (braces balance
+  only); build it on a machine with the SDK before shipping.
+
+### Changed
+- **Repo hygiene: `.gitignore` covers Finder metadata and Xcode
+  per-user state** (`.DS_Store`, `xcuserdata/`, `*.xcuserstate`,
+  `DerivedData/`), and the stray nested clone beside the tree is
+  ignored, so `git status` shows only real changes.
+- **iOS: Xcode Cloud setup + Xcode's recommended project updates.**
+  Adds `xcshareddata/xcodecloud/manifest.json` (Xcode Cloud product
+  link), accepts Xcode 27.2's recommended build-setting updates
+  (compiler warning flags, dead-code stripping, user-script
+  sandboxing, whole-module Release) and bumps the scheme's
+  `LastUpgradeVersion`. The personal `xcuserstate` stays untracked.
+- **iOS: signing team set in the Xcode project.** Both build
+  configurations now carry `DEVELOPMENT_TEAM`, so Xcode and
+  `build.sh` produce a signed device build without passing the team
+  by hand. First device build installed and launched on a paired
+  iPhone (iPhone15,2) with `devicectl`. Xcode's own project rewrite
+  (objectVersion downgrade) was discarded; only the two team lines
+  are committed.
+
+### Fixed
+- **Android build: new value resources link, wrong JDK fails fast.**
+  The first official-SDK build of the Hearth redesign failed twice:
+  `aapt2 link` takes the app's resources as an overlay (`-R`), which
+  may not add a resource the base lacks, so the new
+  `values/colors.xml` was refused — the link step now passes
+  `--auto-add-overlay`. And JDK 21's javac output crashes
+  build-tools 34's `d8` (an NPE inside R8 on an anonymous class), so
+  `build.sh` now honours `JAVA_HOME` and stops early on javac 18+,
+  naming the JDK 17 fix. Two contract tests added first. With both
+  fixes the full official route (CMake/NDK, aapt2, javac 17, d8,
+  apksigner) builds and verifies here; the committed APK is not
+  replaced, since no token pool is on this host to stamp it.
+
 ## 2026-11-02
 
 ### Fixed
@@ -16,10 +98,9 @@ history (30 commits) and is maintained in the open from then on.
     including the signer's API on other origins, so the hub list
     froze and upload status polls ended "taking too long"; and
     scripts lagged pages by a cache bump. Now same-origin only,
-    network-first, offline deep links keep their page; cache v10
-    (version test rewritten for this fix). `dist/` rebuilt.
+    network-first, offline deep links keep their page; cache v12 with the link page (v10/v11 dropped on activate). `dist/` rebuilt.
   - *Web, second pass:* `serve_https.py` serves the stamped `dist/`
-    (phones got the tokenless source); the upload page says "saved"
+    (phones got the tokenless source); the upload and link pages say "saved"
     only once the IndexedDB write lands (leaving earlier aborted
     it); the record page starts sessions that never got an upload
     link; and the ignored-badge fetch honors Cloud off — no
@@ -90,6 +171,37 @@ history (30 commits) and is maintained in the open from then on.
   - *Tests:* the two "single positional" CLI tests locked the live
     `work/cloud` and flaked whenever cron held it; they use a temp
     root now.
+### Changed
+- **"Hearth": a friendlier design language across all three apps
+  (user-ordered).** Inspired by Airbnb's warm whites and photo-first
+  cards and the old Path app's warm red and round buttons, specified
+  once in the new `docs/DESIGN.md` and drawn in each platform's own
+  idiom; features unchanged and in parity. Warm paper by default with
+  a matching dark set that follows the system (CSS
+  `prefers-color-scheme`; Android `Theme.DeviceDefault.DayNight` plus
+  a runtime palette and light system bars; iOS dynamic colours, no
+  more forced dark), one ember accent (`#D2452A`, AA with white),
+  a time-of-day greeting over Record / Upload video action tiles,
+  hub lessons on warm cover tiles (same colour per title everywhere),
+  device sessions shown by a frame of the video with its length, and
+  statuses in word chips ("Uploading 42%", "In the cloud", "Upload
+  failed · Retry") with an upload progress ring. Record gets a
+  shutter dock (status under the shutter), a sage Cloud badge, a
+  pill zoom track; lessons open listing-style (cover banner, ember
+  Play pill, corrections as quote cards, chapters as time chips,
+  inline Markdown in the write-up). Platform touches: SF Pro Rounded
+  titles and press squish on iOS; on Android an in-content large
+  title (the ActionBar steps aside on home), line icons drawn in code
+  (`Glyphs.java`), video frames probed off the UI thread, haptics on
+  Record/Stop; on the web a translucent top bar, a drop-zone upload
+  card and a hub refresh button. New ember app icons (PWA, iOS,
+  Android adaptive). Design-pinned contract tests rewritten with the
+  order noted; 15 new cross-platform tests in
+  `tests/test_design_language.py`. Web verified by Playwright
+  screenshots (light/dark, every page); Android javac-checked against
+  the API 34 framework (no Android SDK on this host, so the APK and
+  web `dist/` are not rebuilt — no token pool here either); iOS
+  syntax-checked only (no Xcode).
 
 ## 2026-11-01
 

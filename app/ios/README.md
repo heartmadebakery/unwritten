@@ -36,12 +36,18 @@ does). Native iOS wins where the web cannot:
   stays Android-only — it drives an API with no iOS equivalent.
 
 Swift handles what it is good at: the capture-session wrapper and the
-UI (built programmatically — no storyboards). It is the same design
-as the web and Android apps, built from iOS parts: a `NavigationStack`
-home (a grouped list with Record and Upload over the hub last, pull
-to refresh) that pushes Record (an inset-grouped list: the
-viewfinder card with zoom, a round camera-style shutter, the Cloud
-switch, and the device sessions — a swipe deletes — plus a
+UI (built programmatically — no storyboards). It draws the same
+Hearth design language as the web and Android apps
+([docs/DESIGN.md](../../docs/DESIGN.md)) from iOS parts: dynamic
+light/dark colours that follow the system, SF Pro Rounded titles, a
+`NavigationStack` home (a greeting, Record and Upload video action
+tiles, and the hub's
+lessons on warm cover tiles, pull to refresh) that pushes Upload (Choose a video from Photos or Files, or Fetch
+from link — a screen of its own) and Record (an
+inset-grouped list: the rounded viewfinder with zoom, the shutter in a
+dock with haptics, the Cloud toggle on a sage badge, and the device
+sessions — a frame of the video, the date, a status chip; a swipe
+deletes — plus a
 full-screen native player for a tapped session, camera switch in the toolbar, and an Advanced settings link
 opening the Cloud settings sheet) and hub sessions (their own player, never the camera,
 plus the write-up, corrections and chapters, with Share/Delete in the
@@ -55,8 +61,8 @@ parks. Upload offers the Photos picker and Files.
 UnwrittenRecorder.xcodeproj/         (project + shared scheme)
 build.sh                             (stamp + simulator build — see below)
 UnwrittenRecorder/
-    Info.plist             camera/mic usage, Files sharing, portrait
-    Assets.xcassets        AppIcon (same art as the web PWA icon)
+    Info.plist             camera/mic usage, Files sharing, orientations (iPhone portrait; iPad all four)
+    Assets.xcassets        AppIcon (same ember record glyph as the web PWA icon)
     UnwrittenRecorderApp.swift   app entry
     ContentView.swift      home + record screens, upload picker + link queue, playback
     CameraEngine.swift     AVCaptureSession + movie output + zoom + luma hook
@@ -114,7 +120,7 @@ third-party libraries.
 
 - Permissions: camera + microphone, plus network — used *only* for
   the Cloud upload. With Cloud toggled off the app makes no network
-  calls. Recording stays portrait; the screen stays awake while
+  calls. The iPhone records portrait; the iPad rotates all four ways and films what you see upright, in a centered readable column; the screen stays awake while
   recording, and leaving the app mid-recording stops and keeps the
   take.
 - Lessons live in the app's clips folder (`Documents/clips`) —

@@ -40,13 +40,13 @@
  *
  *   POST /hub/publish  {videoId, libraryId?, title?, lessonDate?,
  *                       hlsUrl?, mp4Url?, writeupMd?, corrections?,
- *                       chapters?, glossary?} -> {published: videoId}
+ *                       chapters?, glossary?, durationSeconds?} -> {published: videoId}
  *                     Upserts the session row. pipeline/publish.py pushes
  *                     finished runs here; videoId is required, everything
  *                     else defaults to empty.
  *
  *   GET  /hub/sessions -> [{videoId, libraryId, title, lessonDate,
- *                           publishedAt}]  (newest first)
+ *                           durationSeconds, publishedAt}]  (newest first)
  *
  *   GET  /hub/sessions/<videoId> -> the full session row
  *
@@ -318,26 +318,64 @@ export default {
         const videoId = String(body.videoId || "").trim();
         if (!videoId) return json({ error: "videoId required" }, 400);
         const now = Math.floor(Date.now() / 1000);
+        const durationSeconds = Math.max(0, Math.floor(Number(body.durationSeconds) || 0));
+        let hubTitle = String(body.title || "");
+        if (hubTitle) {
+          const dup = await store.prepare(`SELECT video_id FROM sessions WHERE title = ? AND video_id != ? LIMIT 1`).bind(hubTitle, videoId).first();
+          if (dup) {
+            const chs = Array.isArray(body.chapters) ? body.chapters : [];
+            const STOP = new Set(["introduction","intro","overview","welcome","summary","conclusion","closing","next","steps","questions","answered","discussion","explained","general","and","the","a","an","of","for","in","on","to","with"]);
+            const baseWords = new Set((hubTitle.toLowerCase().match(/[a-z0-9]+/g) || []));
+            let phrase = "";
+            for (const ch of chs) {
+              const label = ch && ch.label ? String(ch.label) : "";
+              const words = (label.toLowerCase().match(/[a-z0-9]+/g) || []);
+              const keep = words.filter(w => !STOP.has(w) && !baseWords.has(w));
+              if (keep.length) { phrase = keep.slice(0,3).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" "); break; }
+            }
+            if (!phrase) {
+              for (const ch of chs) {
+                const label = ch && ch.label ? String(ch.label) : "";
+                const words = (label.toLowerCase().match(/[a-z0-9]+/g) || []);
+                const keep = words.filter(w => !STOP.has(w));
+                if (keep.length) { const cand = keep.slice(0,3).map(w=>w.charAt(0).toUpperCase()+w.slice(1)).join(" "); if (cand.toLowerCase() !== hubTitle.toLowerCase()) { phrase = cand; break; } }
+              }
+            }
+            let cand = "";
+            if (phrase) cand = `${hubTitle} \u2014 ${phrase}`;
+            else if (body.lessonDate) cand = `${hubTitle} \u2014 ${String(body.lessonDate)}`;
+            if (cand) {
+              let tries = cand, n = 2;
+              while (await store.prepare(`SELECT video_id FROM sessions WHERE title = ? AND video_id != ? LIMIT 1`).bind(tries, videoId).first()) { tries = `${cand} (${n++})`; }
+              hubTitle = tries;
+            } else {
+              let tries = hubTitle, n = 2;
+              do { tries = `${hubTitle} (${n++})`; } while (await store.prepare(`SELECT video_id FROM sessions WHERE title = ? AND video_id != ? LIMIT 1`).bind(tries, videoId).first());
+              hubTitle = tries;
+            }
+          }
+        }
         await store
           .prepare(
             `INSERT INTO sessions
-               (video_id, library_id, title, lesson_date, hls_url, mp4_url,
-                writeup_md, corrections_json, chapters_json, glossary_json,
-                published_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT(video_id) DO UPDATE SET
-               library_id=excluded.library_id, title=excluded.title,
-               lesson_date=excluded.lesson_date, hls_url=excluded.hls_url,
-               mp4_url=excluded.mp4_url, writeup_md=excluded.writeup_md,
-               corrections_json=excluded.corrections_json,
-               chapters_json=excluded.chapters_json,
-               glossary_json=excluded.glossary_json,
-               published_at=excluded.published_at`
+                (video_id, library_id, title, lesson_date, hls_url, mp4_url,
+                 writeup_md, corrections_json, chapters_json, glossary_json,
+                 published_at, duration_seconds)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(video_id) DO UPDATE SET
+                library_id=excluded.library_id, title=excluded.title,
+                lesson_date=excluded.lesson_date, hls_url=excluded.hls_url,
+                mp4_url=excluded.mp4_url, writeup_md=excluded.writeup_md,
+                corrections_json=excluded.corrections_json,
+                chapters_json=excluded.chapters_json,
+                glossary_json=excluded.glossary_json,
+                published_at=excluded.published_at,
+                duration_seconds=excluded.duration_seconds`
           )
           .bind(
             videoId,
             String(body.libraryId || env.CLOUD_LIBRARY_ID || ""),
-            String(body.title || ""),
+            hubTitle,
             String(body.lessonDate || ""),
             String(body.hlsUrl || ""),
             String(body.mp4Url || ""),
@@ -345,7 +383,8 @@ export default {
             JSON.stringify(body.corrections || []),
             JSON.stringify(body.chapters || []),
             JSON.stringify(body.glossary || {}),
-            now
+            now,
+            durationSeconds
           )
           .run();
         return json({ published: videoId });
@@ -355,7 +394,7 @@ export default {
         if (!store) return json({ error: "hub store not configured" }, 503);
         const rows = await store
           .prepare(
-            `SELECT video_id, library_id, title, lesson_date, published_at
+            `SELECT video_id, library_id, title, lesson_date, published_at, duration_seconds
              FROM sessions
              WHERE video_id NOT IN (SELECT video_id FROM ignored_videos)
              ORDER BY published_at DESC, video_id ASC`
@@ -367,6 +406,7 @@ export default {
             libraryId: r.library_id,
             title: r.title,
             lessonDate: r.lesson_date,
+            durationSeconds: r.duration_seconds | 0,
             publishedAt: r.published_at,
           }))
         );
@@ -400,6 +440,7 @@ export default {
               corrections: parseList(row.corrections_json),
               chapters: parseList(row.chapters_json),
               glossary: parseObj(row.glossary_json),
+              durationSeconds: row.duration_seconds | 0,
               publishedAt: row.published_at,
             });
           }

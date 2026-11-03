@@ -21,6 +21,7 @@ REC_COMMON = os.path.join(ROOT, "app", "recorder", "common.js")
 REC_HOME_JS = os.path.join(ROOT, "app", "recorder", "home.js")
 REC_RECORD_JS = os.path.join(ROOT, "app", "recorder", "record.js")
 REC_UPLOAD_JS = os.path.join(ROOT, "app", "recorder", "upload.js")
+REC_LINK_JS = os.path.join(ROOT, "app", "recorder", "link.js")
 REC_CSS = os.path.join(ROOT, "app", "recorder", "app.css")
 MANIFEST = os.path.join(ROOT, "app", "recorder", "manifest.webmanifest")
 MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
@@ -61,6 +62,7 @@ class WebRecorderTests(unittest.TestCase):
         cls.homejs = read(REC_HOME_JS)
         cls.recordjs = read(REC_RECORD_JS)
         cls.uploadjs = read(REC_UPLOAD_JS)
+        cls.linkjs = read(REC_LINK_JS)
         cls.all = "\n".join([cls.home, cls.record, cls.upload, cls.common,
                              cls.homejs, cls.recordjs, cls.uploadjs])
 
@@ -84,20 +86,26 @@ class WebRecorderTests(unittest.TestCase):
         # on this device — watch its progress on the record screen",
         # and leaving a page aborts its IndexedDB writes: a large
         # upload could vanish. saveBlob hands back the write; the
-        # page says "saved" only after it lands.
+        # page says "saved" only after it lands. Since the Nov 3
+        # split the file choice lives on the upload page and the link
+        # download on the link page; both handlers keep the promise.
         save = self.common.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("return saved", save)
         saved_msg = self.uploadjs.split("var SAVED_HERE", 1)[1].split(";\n", 1)[0]
         self.assertIn("Saved on this device", saved_msg)
-        for handler in (self.uploadjs.split('$("uploadbtn").onclick', 1)[1]
-                        .split("function isDirectMediaUrl", 1)[0],
-                        self.uploadjs.split("isDirectMediaUrl(u)", 1)[1]
-                        .split("cloudToken()", 1)[0]):
+        upload_handler = self.uploadjs.split('$("uploadbtn").onclick', 1)[1]
+        link_handler = self.linkjs.split('$("urlfetchbtn").onclick', 1)[1] \
+                                  .split("cloudToken()", 1)[0]
+        link_before, _, link_after = link_handler.partition("await saved")
+        for handler in (upload_handler, link_before):
             self.assertIn("Saving on this device", handler)
             self.assertNotIn("Saved on this device", handler)
-            self.assertLess(handler.index("saveBlob("), handler.index("await saved"))
-            self.assertLess(handler.index("await saved"),
-                            handler.index("SAVED_HERE"))
+            self.assertIn("saveBlob(", handler)
+        self.assertLess(upload_handler.index("saveBlob("),
+                        upload_handler.index("await saved"))
+        self.assertLess(upload_handler.index("await saved"),
+                        upload_handler.index("SAVED_HERE"))
+        self.assertIn("Saved on this device", link_after)
 
     def test_resume_starts_sessions_that_never_linked(self):
         # A session whose page closed before its upload got a link
@@ -314,15 +322,22 @@ async function go(url, mode) {
     def test_url_upload_field_queues_watch_links(self):
         # User-ordered Oct 31: paste a link — direct files download
         # in the page, watch pages queue to the pipeline fetcher.
+        # User-ordered Nov 3: the link field moved off the upload page
+        # to its own page (link.html / link.js); see
+        # test_upload_link_screens.py for the split.
+        link = read(os.path.join(ROOT, "app", "recorder", "link.html"))
+        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
         for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"']:
-            self.assertIn(token, self.upload, token)
-        self.assertIn("/fetch/jobs", self.uploadjs)
-        self.assertIn("Queued.", self.uploadjs)
-        self.assertIn("Signer refused the token", self.uploadjs)
+            self.assertIn(token, link, token)
+        self.assertIn("/fetch/jobs", linkjs)
+        self.assertIn("Queued.", linkjs)
+        self.assertIn("Signer refused the token", linkjs)
 
     def test_direct_links_download_in_browser(self):
-        self.assertIn("function isDirectMediaUrl", self.uploadjs)
-        up = self.uploadjs.split("isDirectMediaUrl(u)", 1)[1] \
+        # User-ordered Nov 3: lives in link.js now.
+        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
+        self.assertIn("function isDirectMediaUrl", linkjs)
+        up = linkjs.split("isDirectMediaUrl(u)", 1)[1] \
                           .split("cloudToken()", 1)[0]
         self.assertIn("saveBlob(", up)
         self.assertIn("unwritten_lesson_upload_", up)
@@ -489,9 +504,11 @@ class AndroidRecorderTests(unittest.TestCase):
                         .split("private void buildRecordScreen", 1)[0]
         record = self.main.split("private void buildRecordScreen", 1)[1] \
                           .split("// ---------- permissions", 1)[0]
-        for token in ['"● Record"', '"⬆ Upload video"', "hubContainer"]:
+        # User-ordered Nov 2 (Hearth redesign): the Record and Upload
+        # buttons became action tiles (glyphs drawn, not ●/⬆ text).
+        for token in ['actionTile("Record"', 'actionTile("Upload video"', "hubContainer"]:
             self.assertIn(token, home, token)
-        self.assertLess(home.index('"⬆ Upload video"'),
+        self.assertLess(home.index('actionTile("Upload video"'),
                         home.index("hubContainer"))
         for token in ["cloudToggleButton", "lessonContainer", "exportBtn",
                       "Advanced settings"]:
@@ -595,6 +612,29 @@ class AndroidBuildExitTests(unittest.TestCase):
                 if "dump badging" in ln and not ln.lstrip().startswith("#")]
         self.assertEqual(len(hits), 1, hits)
         self.assertTrue(hits[0].rstrip().endswith("|| true"), hits[0])
+
+    def test_link_accepts_new_value_resources(self):
+        # Found by the first real build of the Hearth redesign (Nov 3):
+        # the app's compiled resources reach `aapt2 link` as an overlay
+        # (-R), and an overlay may not add a resource the base lacks —
+        # so the new values/colors.xml (the launcher's ember background)
+        # failed with "does not override an existing resource". The
+        # link step must auto-add overlay resources.
+        link = self.build_sh.split('"$BT/aapt2" link', 1)[1].split("\n\n", 1)[0]
+        self.assertIn("-R ", link)
+        self.assertIn("--auto-add-overlay", link)
+
+    def test_wrong_jdk_fails_fast_naming_the_fix(self):
+        # Found the same day: JDK 21's javac gives anonymous-class
+        # constructors a Signature attribute that build-tools 34's d8
+        # crashes on (an NPE deep in R8, naming MainActivity$25). The
+        # script asks for JDK 17; it must check before compiling and
+        # say which JAVA_HOME to use instead of dying inside d8.
+        pre = self.build_sh.split('echo "== native', 1)[0]
+        self.assertIn("javac -version", pre)
+        self.assertIn("JDK 17", pre)
+        self.assertIn("JAVA_HOME", pre)
+        self.assertIn("exit 1", pre.split("javac -version", 1)[1])
 
 
 CLOUD_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
@@ -974,7 +1014,11 @@ class AndroidNativeFeelTests(unittest.TestCase):
                              .split("// ---------- permissions", 1)[0]
 
     def test_theme_has_an_action_bar(self):
-        self.assertIn("@android:style/Theme.Material", self.manifest)
+        # User-ordered Nov 2 (Hearth redesign, docs/DESIGN.md): the
+        # always-dark Theme.Material became DeviceDefault.DayNight, so
+        # dialogs, toasts and widgets follow the system's light/dark
+        # setting along with the app's own palette. Still an ActionBar.
+        self.assertIn("@android:style/Theme.DeviceDefault.DayNight", self.manifest)
         self.assertNotIn("NoActionBar", self.manifest)
         for token in ["getActionBar()", "setDisplayHomeAsUpEnabled",
                       "onOptionsItemSelected", "android.R.id.home",
@@ -998,7 +1042,12 @@ class AndroidNativeFeelTests(unittest.TestCase):
             self.assertNotIn("exportBtn.setBackgroundColor", region)
 
     def test_record_is_the_primary_action(self):
-        self.assertIn('primaryButton("● Record"', self.home)
+        # User-ordered Nov 2 (Hearth redesign): home's Record is the
+        # filled ember action tile; the record screen keeps the shared
+        # primaryButton("● Record") label, drawn as the shutter.
+        self.assertIn('actionTile("Record"', self.home)
+        tile = self.home.split('actionTile("Record"', 1)[1].split(");", 1)[0]
+        self.assertIn("true", tile)  # primary: filled ember
         self.assertIn('primaryButton("● Record"', self.record)
 
     def test_cloud_is_a_real_switch_that_only_acts_on_change(self):
@@ -1064,8 +1113,15 @@ class WebAndroidParityTests(unittest.TestCase):
         cls.manifest = read(MANIFEST)
 
     def test_android_dark_palette(self):
-        for color in ["#17130E", "#241C12", "#F5EAD6", "#B8A888"]:
-            self.assertIn(color, self.css, color)
+        # User-ordered Nov 2 (Hearth redesign, docs/DESIGN.md): the one
+        # dark palette became warm paper with a matching dark set that
+        # follows the system — the same tokens as Android and iOS.
+        light, dark = self.css.split("@media (prefers-color-scheme: dark)", 1)
+        for color in ["#FAF6F1", "#FFFFFF", "#2A211C", "#6F625A", "#D2452A"]:
+            self.assertIn(color, light, color)
+        for color in ["#171310", "#221C18", "#F7EFE6", "#B9AA9C", "#FF8A6B"]:
+            self.assertIn(color, dark, color)
+        self.assertIn("color-scheme:light dark", self.css)
 
     def test_title_and_sessions_wording(self):
         # Post-restructure contract (user-ordered): the app is Unwritten
@@ -1114,7 +1170,12 @@ class WebAndroidParityTests(unittest.TestCase):
         self.assertIn("shareCloudLinkFor", self.common)
 
     def test_manifest_uses_android_theme_color(self):
-        self.assertIn("#17130E", self.manifest)
+        # User-ordered Nov 2 (Hearth redesign): the canvas colour, with
+        # light/dark theme-color metas on every page.
+        self.assertIn("#FAF6F1", self.manifest)
+        for page in (self.home, self.record):
+            self.assertIn('content="#FAF6F1" media="(prefers-color-scheme: light)"', page)
+            self.assertIn('content="#171310" media="(prefers-color-scheme: dark)"', page)
 
     def test_live_mic_check_warns_after_quiet_minute(self):
         self.assertIn('id="speechwarn"', self.record)
@@ -1178,9 +1239,12 @@ class AndroidSyncTests(unittest.TestCase):
 
     def test_hub_refresh_action(self):
         # iOS pulls to refresh; Android (no SwipeRefreshLayout without
-        # AndroidX) offers a ⟳ action on the hub header instead of
-        # reloading only when home is re-entered.
-        self.assertIn('"⟳"', self.home)
+        # AndroidX) offers a refresh action on the hub header instead of
+        # reloading only when home is re-entered. User-ordered Nov 2
+        # (Hearth redesign): the ⟳ text became a drawn glyph button
+        # with a spoken label.
+        self.assertIn("Glyphs.REFRESH", self.home)
+        self.assertIn('"Refresh the hub"', self.home)
         self.assertIn("loadHub()", self.home)
 
     def test_device_empty_state(self):
@@ -1200,13 +1264,19 @@ class AndroidSyncTests(unittest.TestCase):
     def test_action_bar_titles_and_up(self):
         # Android idiom: the ActionBar carries the screen title and the
         # Up button off the record screen (iOS's NavigationStack back).
-        self.assertIn('android:theme="@android:style/Theme.Material"',
+        # User-ordered Nov 2 (Hearth redesign): DayNight, not dark-only.
+        self.assertIn('android:theme="@android:style/Theme.DeviceDefault.DayNight"',
                       self.manifest)
         self.assertIn("setDisplayHomeAsUpEnabled", self.main)
         self.assertIn("android.R.id.home", self.main)
         show = self.main.split("private void showScreen", 1)[1] \
                         .split("\n    private ", 1)[0]
         self.assertIn("setTitle(", show)
+        # User-ordered Nov 2 (Hearth redesign): home carries its own
+        # greeting and large title (Material's expanded large app bar),
+        # so the bar steps aside there and returns with Up on Record.
+        self.assertIn("bar.hide()", show)
+        self.assertIn("bar.show()", show)
 
     def test_launcher_icon(self):
         # The worklog's open icon item: an adaptive icon (minSdk 29
@@ -1300,10 +1370,14 @@ class WebNativeFeelTests(unittest.TestCase):
             self.assertNotIn("‹ Home", page)
 
     def test_actions_are_a_grouped_list_with_chevrons(self):
-        self.assertIn('class="group"', self.home)
-        self.assertIn('class="grow"', self.home)
-        self.assertIn(".group", self.css)
+        # User-ordered Nov 2 (Hearth redesign): home's actions became
+        # two action tiles (Record filled ember, Upload on surface);
+        # hub rows keep their chevrons as lesson cards.
+        self.assertIn('class="tile primary" id="gorecord"', self.home)
+        self.assertIn('class="tile" id="goupload"', self.home)
+        self.assertIn(".tile.primary", self.css)
         self.assertIn(".chev", self.css)
+        self.assertIn("class='chev'", self.common)
 
     def test_cloud_is_a_real_switch(self):
         self.assertIn('role="switch"', self.record)
@@ -1333,12 +1407,15 @@ class WebNativeFeelTests(unittest.TestCase):
         self.assertIn("html.android", self.css)
 
     def test_service_worker_cache_bumped_for_the_restyle(self):
-        # Rewritten for the Nov 2 bug sweep (user-ordered "fix all
-        # bugs"): v9 served scripts cache-first and cached the
-        # signer's API answers; v10 drops that poisoned cache on
-        # activate. Bumped past v9, never back.
-        self.assertIn("unwritten-recorder-v10", self.sw)
-        self.assertNotIn("unwritten-recorder-v9", self.sw)
+        # Merged Nov 2 sweep + Hearth + link page (user-ordered): v9
+        # served scripts cache-first and cached the signer's API
+        # answers; the same-origin network-first shell and the link
+        # page ship as v12, dropping every older cache on activate.
+        # Bumped past v11, never back.
+        self.assertIn("unwritten-recorder-v12", self.sw)
+        for old in ("unwritten-recorder-v9", "unwritten-recorder-v10",
+                    "unwritten-recorder-v11"):
+            self.assertNotIn(old, self.sw)
 
 
 class CameraEngineTests(unittest.TestCase):

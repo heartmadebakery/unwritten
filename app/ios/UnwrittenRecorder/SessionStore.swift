@@ -29,6 +29,7 @@ struct HubSession: Decodable, Identifiable {
     var libraryId: String?
     var title: String?
     var lessonDate: String?
+    var durationSeconds: Int?
     var publishedAt: Int64?
     var hlsUrl: String?
     var mp4Url: String?
@@ -73,7 +74,7 @@ struct SessionRow: Identifiable {
 @MainActor
 final class SessionStore: ObservableObject {
     @Published var rows: [SessionRow] = []
-    @Published var status: String = "Point the camera at the mentor's hands and the work. Press Record, let the lesson happen, press Stop at the end."
+    @Published var status: String = ""
     @Published var cloudOn: Bool = true
 
     let clipsDir: URL
@@ -160,6 +161,19 @@ final class SessionStore: ObservableObject {
         return dst.string(from: date)
     }
 
+    func hubDurationText(_ sec: Int) -> String {
+        let h = sec / 3600, m = (sec / 60) % 60, s = sec % 60
+        if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
+        return String(format: "%d:%02d", m, s)
+    }
+    func hubSubtitle(for row: HubSession) -> String {
+        let dur = row.durationSeconds ?? 0
+        let durStr = dur > 0 ? hubDurationText(dur) : ""
+        let date = row.lessonDate ?? ""
+        if !date.isEmpty && !durStr.isEmpty { return date + " \u2022 " + durStr }
+        if !date.isEmpty { return date }
+        return durStr
+    }
     private func durationText(_ ms: Int64) -> String {
         let s = ms / 1000
         let m = (s / 60) % 60

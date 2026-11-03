@@ -30,7 +30,7 @@ A single JSON object — no markdown, no code fences — in exactly this
 shape (a schema is enforced on the call, so match it precisely):
 
 ```
-{"title": "<Mentor>'s <Task, no suffix>",
+{"title": "<simple summary title for the task — no possessive, no 'Mentor\\'s' prefix, no suffix; distinctive from other lessons — the hub disambiguates collisions from chapter labels>",
  "intro": "<one or two sentences: what this makes or teaches, and the
 shape of the work — grounded in the lesson, no preamble>",
  "needs": ["<each material, ingredient, or tool used, with the quantity

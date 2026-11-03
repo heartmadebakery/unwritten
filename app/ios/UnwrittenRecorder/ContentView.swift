@@ -4,28 +4,97 @@ import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
 
-extension Color {
-    init(hex: String) {
+extension UIColor {
+    convenience init(hex: String) {
         let v = UInt32(hex, radix: 16) ?? 0
-        self.init(red: Double((v >> 16) & 0xFF) / 255.0,
-                  green: Double((v >> 8) & 0xFF) / 255.0,
-                  blue: Double(v & 0xFF) / 255.0)
+        self.init(red: CGFloat((v >> 16) & 0xFF) / 255.0,
+                  green: CGFloat((v >> 8) & 0xFF) / 255.0,
+                  blue: CGFloat(v & 0xFF) / 255.0, alpha: 1)
     }
 }
 
-// Same dark palette as the Android app and the web app.
-private let BG = Color(hex: "17130E")
-private let PANEL = Color(hex: "241C12")
-private let INK = Color(hex: "F5EAD6")
-private let DIM = Color(hex: "B8A888")
-private let UWB_RED = Color(hex: "C0392B")
-private let BRIGHT = Color(hex: "E74C3C")
-private let LINE = Color(hex: "2E2213")
+extension Color {
+    init(hex: String) { self.init(uiColor: UIColor(hex: hex)) }
 
-/// Screens pushed over home. Record owns the camera; a hub session
-/// opens its own detail screen with its own player.
+    /// A colour that follows the system appearance: light hex, dark hex.
+    init(light: String, dark: String) {
+        self.init(uiColor: UIColor { traits in
+            UIColor(hex: traits.userInterfaceStyle == .dark ? dark : light)
+        })
+    }
+}
+
+// Hearth (docs/DESIGN.md): warm paper by default, a matching dark set
+// that follows the system — the same tokens as the web and Android
+// apps. Names kept from the old dark palette: BG canvas, PANEL
+// surface, INK, DIM secondary ink, BRIGHT the ember accent, UWB_RED
+// the danger fill.
+private let BG = Color(light: "FAF6F1", dark: "171310")
+private let PANEL = Color(light: "FFFFFF", dark: "221C18")
+private let SUNKEN = Color(light: "F3ECE4", dark: "2D2621")
+private let INK = Color(light: "2A211C", dark: "F7EFE6")
+private let DIM = Color(light: "6F625A", dark: "B9AA9C")
+private let LINE = Color(light: "EADFD3", dark: "3A312A")
+private let RING = Color(light: "DCCFC2", dark: "5A4E44")
+private let BRIGHT = Color(hex: "D2452A")
+private let EMBER_INK = Color(light: "B83A20", dark: "FF8A6B")
+private let EMBER_SOFT = Color(light: "FCE8E1", dark: "3A2420")
+private let SAGE = Color(light: "2F7A4B", dark: "7FD39B")
+private let SAGE_SOFT = Color(light: "E3F2E7", dark: "1F2E24")
+private let HONEY = Color(light: "8A5A00", dark: "F2C46B")
+private let HONEY_SOFT = Color(light: "FFF3D6", dark: "33281A")
+private let UWB_RED = Color(hex: "C23B22")
+
+// Cover washes, letter on wash, picked by washIndex(title).
+private let WASH: [Color] = [
+    Color(light: "FCE3D9", dark: "3A2420"), Color(light: "FBEFD2", dark: "33281A"),
+    Color(light: "E2EFE1", dark: "1F2E24"), Color(light: "DDEBF4", dark: "1C2A33"),
+    Color(light: "ECE3F3", dark: "2B2233"), Color(light: "F2E3D8", dark: "33251C"),
+]
+private let WASH_INK: [Color] = [
+    Color(light: "B5432A", dark: "FF9C82"), Color(light: "8A5A00", dark: "F2C46B"),
+    Color(light: "2F6B3F", dark: "7FD39B"), Color(light: "2B5F80", dark: "8CC4E6"),
+    Color(light: "6A4486", dark: "C7A6E0"), Color(light: "8A4F2E", dark: "E0A884"),
+]
+
+/// A lesson wears the same warm wash on every platform: the sum of
+/// the title's UTF-16 code units, modulo the six cover pairs.
+private func washIndex(_ title: String) -> Int {
+    title.utf16.reduce(0) { $0 + Int($1) } % 6
+}
+
+private func initialOf(_ title: String) -> String {
+    if let ch = title.first(where: { $0.isLetter || $0.isNumber }) { return String(ch).uppercased() }
+    return "•"
+}
+
+/// Tiles and the shutter dip a little while pressed, Path-style.
+extension View {
+    /// A centered column on wide screens (the iPad, either way up):
+    /// tiles and rows stay readable instead of stretching edge to edge.
+    /// On the iPhone it is the screen itself.
+    func readableColumn(_ maxWidth: CGFloat = 760) -> some View {
+        frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
+            .background(BG.ignoresSafeArea())
+    }
+}
+
+private struct SquishStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.18), value: configuration.isPressed)
+    }
+}
+
+/// Screens pushed over home. Record owns the camera; Upload offers a
+/// file or a link, and Fetch from link is a screen of its own; a hub
+/// session opens its own detail screen with its own player.
 enum Route: Hashable {
     case record
+    case upload
+    case fetchLink
     case hub(String)
 }
 
@@ -43,6 +112,10 @@ struct ContentView: View {
     @StateObject private var store = SessionStore()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Regular width: the iPad, full screen in either orientation.
+    private var wide: Bool { horizontalSizeClass == .regular }
 
     @State private var path: [Route] = []
 
@@ -75,21 +148,52 @@ struct ContentView: View {
     /// Record is the top screen: the camera may run.
     private var onRecordScreen: Bool { path.last == .record }
 
+    init() {
+        // Hearth's headings are SF Pro Rounded — the navigation bar's
+        // large and inline titles included.
+        func rounded(_ size: CGFloat, _ weight: UIFont.Weight) -> UIFont {
+            let base = UIFont.systemFont(ofSize: size, weight: weight)
+            guard let d = base.fontDescriptor.withDesign(.rounded) else { return base }
+            return UIFont(descriptor: d, size: size)
+        }
+        UINavigationBar.appearance().largeTitleTextAttributes = [.font: rounded(34, .heavy)]
+        UINavigationBar.appearance().titleTextAttributes = [.font: rounded(17, .bold)]
+    }
+
+    /// A personal hello under the title, by the phone's own clock.
+    private var greeting: String {
+        let h = Calendar.current.component(.hour, from: Date())
+        return h < 5 ? "Good evening" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             homeView
-                .navigationTitle("Unwritten Craft")
+                .readableColumn()
+                // The iPad (regular width) carries the large title
+                // inside its column, so the bar stays quiet.
+                .navigationTitle(wide ? "" : "Unwritten Craft")
+                .navigationBarTitleDisplayMode(wide ? .inline : .large)
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .record:
                         recordView
+                            .readableColumn()
+                    case .upload:
+                        uploadView
+                            .readableColumn()
+                    case .fetchLink:
+                        fetchLinkView
+                            .readableColumn()
                     case let .hub(videoId):
                         hubScreen(videoId)
+                            .readableColumn()
                     }
                 }
         }
-        .tint(INK)
-        .preferredColorScheme(.dark)
+        // Links, the back button and system controls wear the ember
+        // ink; light or dark follows the system (Hearth has both).
+        .tint(EMBER_INK)
         .onAppear {
             let engine = self.engine
             let store = self.store
@@ -105,6 +209,10 @@ struct ContentView: View {
             // Every way on or off the record screen (button, row tap,
             // back button, edge swipe) changes the path; the camera
             // follows it.
+            //
+            // A status line reports on the screen it was raised on, so
+            // it never follows you to another one.
+            store.status = ""
             let was = old.last == .record
             let now = new.last == .record
             if now && !was { showScreen("record") }
@@ -219,15 +327,167 @@ struct ContentView: View {
     // behind it, with cloud and device sessions below.
     private var homeView: some View {
         List {
+            // Two action tiles: Record (filled ember, the primary
+            // action) and Upload video (Photos or Files).
             Section {
-                Button {
-                    path.append(.record)
-                } label: {
-                    Label { Text("Record").foregroundColor(INK) } icon: {
-                        Image(systemName: "record.circle").foregroundColor(BRIGHT)
+                HStack(spacing: 12) {
+                    Button {
+                        path.append(.record)
+                    } label: {
+                        actionTile(Text("Record"), Text("Film a lesson, the way you'd teach anyway"),
+                                   symbol: "record.circle", primary: true)
                     }
-                    .font(.system(size: 18))
+                    .buttonStyle(SquishStyle())
+                    .accessibilityLabel("Record")
+                    Button {
+                        path.append(.upload)
+                    } label: {
+                        actionTile(Text("Upload video"), Text("From your phone or a link"),
+                                   symbol: "square.and.arrow.up", primary: false)
+                    }
+                    .buttonStyle(SquishStyle())
+                    .accessibilityLabel("Upload video")
                 }
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+            } header: {
+                VStack(alignment: .leading, spacing: 2) {
+                    if wide {
+                        Text("Unwritten Craft")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .foregroundStyle(INK)
+                    }
+                    Text(greeting)
+                        .font(.system(size: 15, weight: .semibold, design: .rounded))
+                        .foregroundStyle(DIM)
+                    Text("Record, upload, and revisit craft lessons.")
+                        .font(.system(size: 16))
+                        .foregroundStyle(DIM)
+                }
+                .textCase(nil)
+                .padding(.bottom, 8)
+            }
+
+            Section {
+                if store.hubRows.isEmpty {
+                    emptyState(symbol: "book.closed", title: nil, help: store.hubStatusText())
+                        .listRowBackground(PANEL)
+                } else {
+                    ForEach(store.hubRows) { row in
+                        NavigationLink(value: Route.hub(row.videoId)) {
+                            HStack(spacing: 14) {
+                                coverTile(row.title ?? row.videoId)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(row.title ?? row.videoId)
+                                        .font(.system(size: 17, weight: .semibold))
+                                        .foregroundStyle(INK)
+                                        .lineLimit(1)
+                                    let hubSub = store.hubSubtitle(for: row)
+                                    if !hubSub.isEmpty {
+                                        Text(hubSub)
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(DIM)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                    }
+                    .listRowBackground(PANEL)
+                }
+            } header: {
+                sectionTitle(Text("Hub"), subtitle: "Lessons the pipeline has written up")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(BG)
+        .refreshable {
+            store.refresh()
+            store.loadHub()
+        }
+    }
+
+    /// A home action tile: glyph on top, title and a line of help at
+    /// the bottom; filled ember for the primary action, surface else.
+    private func actionTile(_ title: Text, _ sub: Text, symbol: String, primary: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Image(systemName: symbol)
+                .font(.system(size: 24, weight: .semibold))
+                .foregroundStyle(primary ? Color.white : EMBER_INK)
+                .frame(width: 48, height: 48)
+                .background(primary ? Color.white.opacity(0.2) : EMBER_SOFT,
+                            in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            Spacer(minLength: 14)
+            title
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(primary ? Color.white : INK)
+            sub
+                .font(.system(size: 14))
+                .foregroundStyle(primary ? Color.white.opacity(0.88) : DIM)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 172, alignment: .topLeading)
+        .background(primary ? BRIGHT : PANEL, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Color.black.opacity(primary ? 0.14 : 0.06), radius: 14, y: 6)
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+    }
+
+    /// Section header: sentence case, bold rounded, a line of help.
+    private func sectionTitle(_ title: Text, subtitle: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            title
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .foregroundStyle(INK)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 14))
+                    .foregroundStyle(DIM)
+            }
+        }
+        .textCase(nil)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+
+    /// A cover tile: the lesson's initial on its warm wash.
+    private func coverTile(_ title: String, size: CGFloat = 56, radius: CGFloat = 14, font: CGFloat = 24) -> some View {
+        let w = washIndex(title)
+        return Text(initialOf(title))
+            .font(.system(size: font, weight: .heavy, design: .rounded))
+            .foregroundStyle(WASH_INK[w])
+            .frame(width: size, height: size)
+            .background(WASH[w], in: RoundedRectangle(cornerRadius: radius, style: .continuous))
+            .accessibilityHidden(true)
+    }
+
+    /// An empty state: a glyph in an ember wash, a title, a line of help.
+    private func emptyState(symbol: String, title: String?, help: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(EMBER_INK)
+                .frame(width: 56, height: 56)
+                .background(EMBER_SOFT, in: Circle())
+            if let title {
+                Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(INK)
+            }
+            Text(help)
+                .font(.system(size: 14))
+                .foregroundStyle(DIM)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+    }
+
+    /// Upload video: two ways in — choose a file (Photos or Files) or
+    /// fetch from a link. Its status line reports only on the pick.
+    private var uploadView: some View {
+        List {
+            Section {
                 Menu {
                     Button {
                         showPhotosPicker = true
@@ -240,77 +500,111 @@ struct ContentView: View {
                         Label("Files", systemImage: "folder")
                     }
                 } label: {
-                    Label("Upload video", systemImage: "square.and.arrow.up.on.square")
-                        .font(.system(size: 18))
-                        .foregroundColor(INK)
+                    uploadOption("Choose a video", "From your Photos or Files",
+                                 symbol: "square.and.arrow.up")
                 }
-                // Or paste a link: watch pages queue to the pipeline
-                // fetcher, which downloads and processes them.
-                TextField("Paste a video link…", text: $fetchUrl)
-                    .font(.system(size: 16))
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .submitLabel(.go)
-                    .onSubmit { fetchLink() }
+                .accessibilityLabel("Choose a video")
                 Button {
-                    fetchLink()
+                    path.append(.fetchLink)
                 } label: {
-                    Label("Fetch from link", systemImage: "arrow.down.circle")
-                        .font(.system(size: 18))
-                        .foregroundColor(canFetchLink ? INK : DIM)
+                    uploadOption("Fetch from link", "A YouTube or video link, instead of a file",
+                                 symbol: "link")
                 }
-                .disabled(!canFetchLink)
             } header: {
-                Text("Record, upload, and revisit craft lessons.")
-                    .textCase(nil)
+                Text("Add a lesson video. It is saved as a session and uploaded to Cloud, and the pipeline picks it up like a recording.")
                     .font(.system(size: 15))
-                    .foregroundColor(DIM)
+                    .foregroundStyle(DIM)
+                    .textCase(nil)
+                    .padding(.bottom, 6)
             } footer: {
-                Text(store.status)
-                    .font(.system(size: 14))
-                    .foregroundColor(DIM)
-            }
-            .listRowBackground(PANEL)
-
-            Section {
-                if store.hubRows.isEmpty {
-                    Text(store.hubStatusText())
-                        .font(.system(size: 15))
-                        .foregroundColor(DIM)
-                } else {
-                    ForEach(store.hubRows) { row in
-                        NavigationLink(value: Route.hub(row.videoId)) {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(row.title ?? row.videoId)
-                                        .font(.system(size: 16))
-                                        .foregroundColor(INK)
-                                        .lineLimit(1)
-                                    if let date = row.lessonDate, !date.isEmpty {
-                                        Text(date)
-                                            .font(.system(size: 13))
-                                            .foregroundColor(DIM)
-                                    }
-                                }
-                            } icon: {
-                                Image(systemName: "play.rectangle").foregroundColor(DIM)
-                            }
-                        }
-                    }
+                if !store.status.isEmpty {
+                    Text(store.status)
+                        .font(.system(size: 14))
+                        .foregroundStyle(DIM)
                 }
-            } header: {
-                Text("Hub").sectionHeader()
             }
             .listRowBackground(PANEL)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(BG)
-        .refreshable {
-            store.refresh()
-            store.loadHub()
+        .navigationTitle("Upload video")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// One row of the Upload screen: ember glyph, title, a line of help.
+    private func uploadOption(_ title: String, _ sub: String, symbol: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(EMBER_INK)
+                .frame(width: 44, height: 44)
+                .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(INK)
+                Text(sub)
+                    .font(.system(size: 14))
+                    .foregroundStyle(DIM)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DIM)
         }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    /// Fetch from link: paste a link, watch pages queue to the pipeline
+    /// fetcher, which downloads and processes them. Its status line
+    /// reports only on the fetch.
+    private var fetchLinkView: some View {
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "link")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(EMBER_INK)
+                        .frame(width: 36, height: 36)
+                        .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    TextField("Paste a video link…", text: $fetchUrl)
+                        .font(.system(size: 16))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.go)
+                        .onSubmit { fetchLink() }
+                }
+                Button {
+                    fetchLink()
+                } label: {
+                    Label("Fetch from link", systemImage: "arrow.down.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(canFetchLink ? EMBER_INK : DIM)
+                }
+                .disabled(!canFetchLink)
+            } header: {
+                Text("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DIM)
+                    .textCase(nil)
+                    .padding(.bottom, 6)
+            } footer: {
+                if !store.status.isEmpty {
+                    Text(store.status)
+                        .font(.system(size: 14))
+                        .foregroundStyle(DIM)
+                }
+            }
+            .listRowBackground(PANEL)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(BG)
+        .navigationTitle("Fetch from link")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var recordView: some View {
@@ -320,14 +614,14 @@ struct ContentView: View {
             Section {
                 ZStack(alignment: .bottom) {
                     CameraPreview(engine: engine)
-                        .frame(height: 280)
+                        .frame(height: wide ? 428 : 300)
                         .background(Color.black)
                     if engine.isRecording {
                         HStack {
                             HStack(spacing: 8) {
-                                Circle().fill(BRIGHT).frame(width: 12, height: 12)
+                                Circle().fill(Color(hex: "FF5A3C")).frame(width: 11, height: 11)
                                 Text("REC\u{00A0}\u{00A0}\(elapsedText)")
-                                    .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                                    .font(.system(size: 16, weight: .bold).monospacedDigit())
                                     .foregroundColor(.white)
                             }
                             .padding(.horizontal, 12)
@@ -335,29 +629,30 @@ struct ContentView: View {
                             .background(.black.opacity(0.55), in: Capsule())
                             Spacer()
                         }
-                        .padding(12)
+                        .padding(14)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     }
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.black)
+                .listRowBackground(Color.clear)
 
                 // A video-only stream must never be silent about being
                 // silent: the lesson IS the mentor's words.
                 if engine.micWarning {
-                    Text("🎤 No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings > Privacy > Microphone.")
+                    Label("No microphone. The mentor's words won't be recorded — and the mentor's words are the whole point. Check Settings > Privacy > Microphone.", systemImage: "mic.slash.fill")
                         .font(.system(size: 15))
-                        .foregroundColor(.white)
+                        .foregroundStyle(.white)
                         .listRowBackground(UWB_RED)
                 }
 
                 // Quiet-minute check, mirroring the web app: a full
                 // quiet minute raises this banner; speech clears it.
                 if engine.speechWarning {
-                    Text("🔇 Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.")
+                    Label("Quiet for a while. No speech in the last minute — and the mentor's words are the whole point. Check the mic is close enough.", systemImage: "speaker.slash.fill")
                         .font(.system(size: 15))
-                        .foregroundColor(INK)
-                        .listRowBackground(PANEL)
+                        .foregroundStyle(HONEY)
+                        .listRowBackground(HONEY_SOFT)
                 }
 
                 // Zoom directly below the viewfinder. Hidden when the
@@ -366,7 +661,7 @@ struct ContentView: View {
                     HStack(spacing: 8) {
                         zoomButton("minus", "Zoom out") { engine.nudgeZoom(-0.2) }
                         Slider(value: $zoomProgress, in: 0 ... 100)
-                            .tint(DIM)
+                            .tint(BRIGHT)
                             .onChange(of: zoomProgress) { _, new in
                                 let max = engine.maxZoom
                                 let ratio = 1.0 + Float(new / 100) * (max - 1.0)
@@ -376,7 +671,7 @@ struct ContentView: View {
                             }
                         zoomButton("plus", "Zoom in") { engine.nudgeZoom(0.2) }
                         Text(String(format: "%.1f×", engine.zoom))
-                            .font(.system(size: 14).monospacedDigit())
+                            .font(.system(size: 14, weight: .semibold).monospacedDigit())
                             .foregroundColor(DIM)
                             .frame(minWidth: 48)
                     }
@@ -392,18 +687,22 @@ struct ContentView: View {
                 }
             }
 
-            // The shutter, centred under the viewfinder like a camera
-            // app; the status line is its footer.
+            // The shutter dock: the shutter centred in a card like a
+            // camera app, the status line under it.
             Section {
-                shutterButton
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-            } footer: {
-                Text(store.status)
-                    .font(.system(size: 15))
-                    .foregroundColor(DIM)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .multilineTextAlignment(.center)
+                VStack(spacing: 10) {
+                    shutterButton
+                    Text(store.status.isEmpty
+                         ? (engine.isRecording ? "Recording — teach the way you'd teach anyway. Tap to stop."
+                                               : "Point the camera at the mentor's hands and the work. Press Record, let the lesson happen, press Stop at the end.")
+                         : store.status)
+                        .font(.system(size: 15))
+                        .foregroundStyle(DIM)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                }
+                .padding(.vertical, 10)
+                .listRowBackground(PANEL)
             }
 
             // Cloud + device sessions live on the record screen.
@@ -413,25 +712,40 @@ struct ContentView: View {
                 // flip it back.
                 Toggle(isOn: Binding(get: { store.cloudOn },
                                      set: { on in if on != store.cloudOn { store.toggleCloud() } })) {
-                    Label("Cloud", systemImage: store.cloudOn ? "icloud" : "icloud.slash")
-                        .foregroundColor(INK)
+                    HStack(spacing: 12) {
+                        Image(systemName: store.cloudOn ? "icloud.fill" : "icloud.slash")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(store.cloudOn ? SAGE : DIM)
+                            .frame(width: 44, height: 44)
+                            .background(store.cloudOn ? SAGE_SOFT : SUNKEN,
+                                        in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .contentTransition(.symbolEffect(.replace))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Cloud")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(INK)
+                            Text("Upload a copy for streamed playback")
+                                .font(.system(size: 14))
+                                .foregroundStyle(DIM)
+                        }
+                    }
                 }
-                .tint(.green)
+                .tint(SAGE)
                 // Export is the offline fallback: only with Cloud off.
                 if !store.cloudOn {
                     Button {
                         store.exportSessions()
                     } label: {
                         Label("Export sessions to Downloads", systemImage: "square.and.arrow.up")
-                            .foregroundColor(INK)
+                            .foregroundStyle(INK)
                     }
                 }
             }
             .listRowBackground(PANEL)
 
-            // This device: left status icon, middle date + duration,
-            // right share/download. A List, so the rows' trailing swipe
-            // really deletes (and the context menu offers the rest).
+            // This device: a frame of the video, the date and a status
+            // chip, then save / share. A List, so the rows' trailing
+            // swipe really deletes (and the context menu offers the rest).
             Section {
                 if store.rows.isEmpty {
                     ContentUnavailableView {
@@ -440,7 +754,7 @@ struct ContentView: View {
                         Text("Sessions you record or upload appear here.")
                     }
                     .foregroundStyle(DIM)
-                    .listRowBackground(Color.clear)
+                    .listRowBackground(PANEL)
                 } else {
                     ForEach(store.rows) { row in
                         sessionRow(row)
@@ -448,7 +762,7 @@ struct ContentView: View {
                     .listRowBackground(PANEL)
                 }
             } header: {
-                Text("This device").sectionHeader()
+                sectionTitle(Text("This device"))
             } footer: {
                 Text("Every session is saved on this device, and with Cloud on a copy is uploaded for streamed playback. Tap a session to play it; swipe it, or touch and hold, to share or delete it from the device and the cloud.")
                     .font(.system(size: 13))
@@ -463,10 +777,11 @@ struct ContentView: View {
                 } label: {
                     Text("Advanced settings")
                         .font(.system(size: 15))
+                        .underline()
                         .foregroundColor(DIM)
                 }
             }
-            .listRowBackground(PANEL)
+            .listRowBackground(Color.clear)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -494,24 +809,25 @@ struct ContentView: View {
         }
     }
 
-    /// The camera-style shutter: a white ring with a red disc, which
+    /// The camera-style shutter: a ring with an ember disc, which
     /// becomes a rounded square while recording. The label keeps the
     /// shared "● Record" / "■ Stop  m:ss" text (assistive tech reads
     /// it, and it is the same contract as the web and Android buttons).
     private var shutterButton: some View {
         Button(action: toggleRecord) {
             ZStack {
-                Circle().stroke(Color.white, lineWidth: 4)
-                    .frame(width: 74, height: 74)
-                RoundedRectangle(cornerRadius: engine.isRecording ? 8 : 29)
+                Circle().stroke(RING, lineWidth: 5)
+                    .frame(width: 80, height: 80)
+                RoundedRectangle(cornerRadius: engine.isRecording ? 9 : 31, style: .continuous)
                     .fill(BRIGHT)
-                    .frame(width: engine.isRecording ? 30 : 58,
-                           height: engine.isRecording ? 30 : 58)
+                    .frame(width: engine.isRecording ? 30 : 62,
+                           height: engine.isRecording ? 30 : 62)
             }
-            .frame(width: 84, height: 84)
-            .animation(.easeInOut(duration: 0.18), value: engine.isRecording)
+            .frame(width: 88, height: 88)
+            .contentShape(Circle())
+            .animation(.spring(response: 0.28, dampingFraction: 0.7), value: engine.isRecording)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(SquishStyle())
         .frame(maxWidth: .infinity)
         .accessibilityLabel(engine.isRecording ? "■ Stop  \(elapsedText)" : "● Record")
         .sensoryFeedback(.impact, trigger: engine.isRecording)
@@ -717,45 +1033,71 @@ struct ContentView: View {
 
     // ---------- sessions ----------
 
-    /// SF Symbol for the row's link state (the store's text icons stay
-    /// the shared contract with Android and the web).
-    private func symbolFor(_ leftIcon: String) -> String {
-        switch leftIcon {
-        case "📱": return "iphone"
-        case "☁↑": return "icloud.and.arrow.up"
-        case "☁…": return "icloud"
-        case "☁!": return "exclamationmark.icloud"
-        default: return "checkmark.icloud"
+    /// The row's link state in words, as a chip (the store's text
+    /// icons stay the shared contract with Android and the web).
+    @ViewBuilder
+    private func statusChip(_ row: SessionRow) -> some View {
+        switch row.leftIcon {
+        case "📱": chip("On this phone", SUNKEN, DIM)
+        case "☁↑":
+            if case let .progress(pct) = row.rightKind { chip("Uploading \(pct)%", EMBER_SOFT, EMBER_INK) }
+            else { chip("Uploading", EMBER_SOFT, EMBER_INK) }
+        case "☁…": chip("Preparing", HONEY_SOFT, HONEY)
+        case "☁!": chip("Upload failed", EMBER_SOFT, EMBER_INK)
+        default: chip("In the cloud", SAGE_SOFT, SAGE)
         }
     }
 
+    private func chip(_ text: String, _ bg: Color, _ fg: Color) -> some View {
+        Text(text)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(fg)
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 3)
+            .background(bg, in: Capsule())
+    }
+
+    /// The store's middle text is "date  •  length"; the row shows the
+    /// date as its title and the length on the thumbnail.
+    private func dateAndLength(_ row: SessionRow) -> (String, String) {
+        let parts = row.middleText.components(separatedBy: "  •  ")
+        return (parts.first ?? row.middleText, parts.count > 1 ? parts[1] : "")
+    }
+
     private func sessionRow(_ row: SessionRow) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbolFor(row.leftIcon))
-                .foregroundColor(row.leftIcon == "☁!" ? BRIGHT : DIM)
-                .frame(width: 26)
-            Text(row.middleText)
-                .font(.system(size: 15).monospacedDigit())
-                .foregroundColor(INK)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            // Ignored badge: takes the pipeline operator set aside
-            // never reach the hub.
-            if let reason = row.ignoredReason {
-                Text("ignored")
-                    .font(.system(size: 13))
-                    .foregroundColor(DIM)
-                    .accessibilityLabel(reason.isEmpty ? "Ignored by the operator" : "Ignored by the operator: \(reason)")
+        let (date, length) = dateAndLength(row)
+        return HStack(spacing: 12) {
+            LessonThumb(url: row.url, length: length, wash: washIndex(row.name),
+                        audio: ["m4a", "wav", "mp3"].contains(row.url.pathExtension.lowercased()))
+            VStack(alignment: .leading, spacing: 5) {
+                Text(date)
+                    .font(.system(size: 16, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(INK)
+                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    statusChip(row)
+                    // Ignored badge: takes the pipeline operator set
+                    // aside never reach the hub.
+                    if let reason = row.ignoredReason {
+                        chip("Ignored", SUNKEN, DIM)
+                            .accessibilityLabel(reason.isEmpty ? "Ignored by the operator" : "Ignored by the operator: \(reason)")
+                    }
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             // Cloud-linking never removes the on-device download:
             // linked rows keep ↓ next to their cloud action.
             if row.rightKind != .download {
-                rowIconButton("arrow.down.circle", "Save a copy") { store.downloadSingle(row.name) }
+                rowIconButton("arrow.down", "Save a copy") { store.downloadSingle(row.name) }
             }
             rightAction(row)
         }
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
         .onTapGesture { playInViewfinder(row.name) }
+        .accessibilityElement(children: .contain)
+        .accessibilityHint("Plays the session")
         .contextMenu {
             Button {
                 playInViewfinder(row.name)
@@ -801,17 +1143,27 @@ struct ContentView: View {
     private func rightAction(_ row: SessionRow) -> some View {
         switch row.rightKind {
         case .download:
-            rowIconButton("arrow.down.circle", "Save a copy") { store.downloadSingle(row.name) }
+            rowIconButton("arrow.down", "Save a copy") { store.downloadSingle(row.name) }
         case .share:
-            rowIconButton("square.and.arrow.up", "Share Cloud link") { shareCloudLinkFor(row.name) }
+            rowIconButton("square.and.arrow.up", "Share Cloud link", filled: true) { shareCloudLinkFor(row.name) }
         case let .progress(pct):
-            Text("\(pct)%")
-                .font(.system(size: 13).monospacedDigit())
-                .foregroundColor(DIM)
-                .frame(width: 40, height: 32)
+            // Upload progress as a ring: a sunken track, an ember arc.
+            ZStack {
+                Circle().stroke(SUNKEN, lineWidth: 4)
+                Circle().trim(from: 0, to: CGFloat(pct) / 100)
+                    .stroke(BRIGHT, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                Text("\(pct)%")
+                    .font(.system(size: 10, weight: .bold).monospacedDigit())
+                    .foregroundStyle(EMBER_INK)
+            }
+            .frame(width: 36, height: 36)
+            .padding(4)
+            .accessibilityLabel("Uploading \(pct) percent")
         case .processing:
             ProgressView()
-                .frame(width: 40, height: 32)
+                .tint(HONEY)
+                .frame(width: 44, height: 44)
         case .failed:
             rowIconButton("arrow.clockwise", "Retry upload") { store.retryCloud(row.name) }
         }
@@ -819,12 +1171,17 @@ struct ContentView: View {
 
     // ---------- widgets ----------
 
-    private func rowIconButton(_ symbol: String, _ label: String, action: @escaping () -> Void) -> some View {
+    /// A 44pt round icon button; filled ones sit on a sunken disc.
+    private func rowIconButton(_ symbol: String, _ label: String, filled: Bool = false,
+                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: 18))
-                .foregroundColor(INK)
-                .frame(width: 40, height: 32)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(INK)
+                .frame(width: 40, height: 40)
+                .background(filled ? SUNKEN : Color.clear, in: Circle())
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
@@ -835,9 +1192,8 @@ struct ContentView: View {
             Image(systemName: symbol)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(INK)
-                .frame(width: 44, height: 34)
-                .background(PANEL)
-                .cornerRadius(8)
+                .frame(width: 44, height: 44)
+                .background(SUNKEN, in: Circle())
         }
         .accessibilityLabel(label)
     }
@@ -882,8 +1238,7 @@ struct ContentView: View {
             .onChange(of: libraryId) { _, v in store.cloud.libraryId = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
             .onChange(of: apiKey) { _, v in store.cloud.apiKey = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
         }
-        .tint(INK)
-        .preferredColorScheme(.dark)
+        .tint(EMBER_INK)
     }
 
     private func loadCloudFields() {
@@ -923,7 +1278,7 @@ struct ContentView: View {
     private func hubScreen(_ videoId: String) -> some View {
         Group {
             if let detail = store.hubDetail, detail.videoId == videoId {
-                ScrollView { hubDetailCard(detail).padding(14) }
+                ScrollView { hubDetailCard(detail).padding(.horizontal, 18).padding(.vertical, 10) }
             } else {
                 VStack(spacing: 12) {
                     ProgressView()
@@ -967,74 +1322,109 @@ struct ContentView: View {
         }
     }
 
+    /// A lesson, listing style: the player (or a warm cover banner
+    /// with the lesson's initial), the title and date, an ember Play
+    /// pill, the write-up, corrections as quote cards, and chapters as
+    /// time chips. Share and Delete live in the toolbar.
     private func hubDetailCard(_ detail: HubSession) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let title = detail.title ?? detail.videoId
+        let w = washIndex(title)
+        return VStack(alignment: .leading, spacing: 0) {
             if let hubPlayer {
                 VideoPlayer(player: hubPlayer)
-                    .frame(height: 220)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .padding(.bottom, 10)
+                    .frame(height: 230)
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .padding(.bottom, 16)
             } else {
+                Text(initialOf(title))
+                    .font(.system(size: 72, weight: .heavy, design: .rounded))
+                    .foregroundStyle(WASH_INK[w])
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 170)
+                    .background(WASH[w], in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .accessibilityHidden(true)
+                    .padding(.bottom, 16)
+            }
+            Text(title)
+                .font(.system(size: 26, weight: .heavy, design: .rounded))
+                .foregroundColor(INK)
+            let detailSub = store.hubSubtitle(for: detail)
+            if !detailSub.isEmpty {
+                Text(detailSub)
+                    .font(.system(size: 15))
+                    .foregroundColor(DIM)
+                    .padding(.top, 2)
+            }
+            if hubPlayer == nil {
                 Button {
                     playHubSession(detail)
                 } label: {
                     Label("Play", systemImage: "play.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(INK)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .background(PANEL)
-                        .cornerRadius(10)
+                        .padding(.vertical, 8)
                 }
-                .padding(.bottom, 10)
-            }
-            Text(detail.title ?? detail.videoId)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(INK)
-            if let date = detail.lessonDate, !date.isEmpty {
-                Text(date)
-                    .font(.system(size: 14))
-                    .foregroundColor(DIM)
-                    .padding(.top, 2)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .tint(BRIGHT)
+                .padding(.top, 16)
             }
             // Share/delete/play outcomes report here, so no action on
             // this screen ever fails silently.
-            Text(store.status)
-                .font(.system(size: 14))
-                .foregroundColor(DIM)
-                .padding(.top, 8)
+            if !store.status.isEmpty {
+                Text(store.status)
+                    .font(.system(size: 14))
+                    .foregroundColor(DIM)
+                    .padding(.top, 10)
+            }
             if let writeup = detail.writeupMd, !writeup.isEmpty {
+                Divider().overlay(LINE).padding(.top, 18)
                 Text(ContentView.markdown(writeup))
-                    .font(.system(size: 16))
+                    .font(.system(size: 17))
                     .foregroundColor(INK)
-                    .lineSpacing(4)
+                    .lineSpacing(5)
                     .textSelection(.enabled)
-                    .padding(.top, 12)
+                    .padding(.top, 16)
             }
             if let corrections = detail.corrections, !corrections.isEmpty {
-                Text("Corrections").sectionHeader().padding(.top, 18).padding(.bottom, 6)
+                sectionTitle(Text("Corrections")).padding(.top, 14).padding(.bottom, 6)
                 ForEach(Array(corrections.enumerated()), id: \.offset) { _, c in
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("• \(c.start ?? "")  \(c.quote ?? "")")
-                            .font(.system(size: 15))
+                    // A quote card: time chip, the mentor's words, and
+                    // what they were correcting.
+                    VStack(alignment: .leading, spacing: 8) {
+                        chip(c.start ?? "", EMBER_SOFT, EMBER_INK)
+                        Text("“\(c.quote ?? "")”")
+                            .font(.system(size: 16))
                             .foregroundColor(INK)
                         if let fix = c.correcting, !fix.isEmpty {
-                            Text("  → \(fix)")
+                            Text("Correcting: \(fix)")
                                 .font(.system(size: 14))
                                 .foregroundColor(DIM)
                         }
                     }
-                    .padding(.bottom, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(PANEL, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(.bottom, 10)
                 }
             }
             if let chapters = detail.chapters, !chapters.isEmpty {
-                Text("Chapters").sectionHeader().padding(.top, 12).padding(.bottom, 6)
-                ForEach(Array(chapters.enumerated()), id: \.offset) { _, ch in
-                    Text("§ \(ch.start ?? "")  \(ch.label ?? "")")
-                        .font(.system(size: 14))
-                        .foregroundColor(DIM)
-                        .padding(.bottom, 3)
+                sectionTitle(Text("Chapters")).padding(.top, 8).padding(.bottom, 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(chapters.enumerated()), id: \.offset) { i, ch in
+                        HStack(spacing: 12) {
+                            chip(ch.start ?? "", EMBER_SOFT, EMBER_INK)
+                            Text(ch.label ?? "")
+                                .font(.system(size: 15))
+                                .foregroundColor(INK)
+                            Spacer()
+                        }
+                        .frame(minHeight: 44)
+                        if i < chapters.count - 1 { Divider().overlay(LINE) }
+                    }
                 }
+                .padding(.horizontal, 14)
+                .background(PANEL, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1048,11 +1438,59 @@ struct ContentView: View {
     }
 }
 
-private extension Text {
-    func sectionHeader() -> some View {
-        self.font(.system(size: 13, weight: .semibold))
-            .foregroundColor(DIM)
-            .textCase(.uppercase)
+/// A device session's picture: a frame of the video with its length
+/// on it, generated once off the main thread and cached; a warm cover
+/// with a video (or mic) symbol until then, or for audio takes.
+private struct LessonThumb: View {
+    let url: URL
+    let length: String
+    let wash: Int
+    let audio: Bool
+    @State private var image: UIImage?
+    private static let cache = NSCache<NSURL, UIImage>()
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+            } else {
+                WASH[wash]
+                    .overlay(
+                        Image(systemName: audio ? "mic.fill" : "video.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(WASH_INK[wash])
+                    )
+            }
+            if !length.isEmpty {
+                Text(length)
+                    .font(.system(size: 11, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(.black.opacity(0.62), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                    .padding(4)
+            }
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityHidden(true)
+        .task(id: url) { await load() }
+    }
+
+    private func load() async {
+        if audio { return }
+        if let hit = Self.cache.object(forKey: url as NSURL) { image = hit; return }
+        let gen = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+        gen.appliesPreferredTrackTransform = true
+        gen.maximumSize = CGSize(width: 168, height: 168)
+        if let frame = try? await gen.image(at: CMTime(seconds: 1, preferredTimescale: 600)) {
+            let ui = UIImage(cgImage: frame.image)
+            Self.cache.setObject(ui, forKey: url as NSURL)
+            image = ui
+        }
     }
 }
 
@@ -1077,6 +1515,38 @@ struct PickedMovie: Transferable {
 final class PreviewUIView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
     var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    weak var engine: CameraEngine?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyInterfaceRotation()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyInterfaceRotation()
+    }
+
+    /// The iPhone is portrait-only (90, the default). The iPad turns
+    /// every way: the viewfinder and the take follow the screen, so
+    /// what you see upright is what is filmed upright.
+    private func applyInterfaceRotation() {
+        guard UIDevice.current.userInterfaceIdiom == .pad,
+              let orientation = window?.windowScene?.effectiveGeometry.interfaceOrientation
+        else { return }
+        let angle: CGFloat
+        switch orientation {
+        case .portraitUpsideDown: angle = 270
+        case .landscapeLeft: angle = 180
+        case .landscapeRight: angle = 0
+        default: angle = 90
+        }
+        if let connection = previewLayer.connection,
+           connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
+        engine?.setInterfaceRotation(angle)
+    }
 }
 
 struct CameraPreview: UIViewRepresentable {
@@ -1085,6 +1555,7 @@ struct CameraPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewUIView {
         let view = PreviewUIView()
         view.backgroundColor = .black
+        view.engine = engine
         engine.attachPreview(view.previewLayer)
         return view
     }

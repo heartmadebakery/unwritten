@@ -35,19 +35,26 @@ does, including iPhones). Native Android wins where the web cannot:
   mode and are no longer driven by the UI.
 
 Managed Java handles what it is good at: the Camera2 state machine and
-the two-screen UI (built programmatically — no layout XML): home
-(record and upload actions with the hub last) and record (preview
-with REC badge, auto-hiding zoom, one primary Record/Stop action,
-in-viewfinder playback with ▶/⏸/✕, a `Switch` for Cloud, device
-sessions, advanced link). It is drawn in Material idioms without
-AndroidX: `Theme.Material` with an ActionBar (the title, the up arrow
-on Record, the camera switch as a menu action), dark status and
-navigation bars, rounded ripple buttons, card-style lists with ripple
-rows, 48dp targets, and empty states. The hub detail is an elevated
-card, and hub playback runs in its own dialog player (MP4 then HLS
-with the embed URL as `Referer`, Cloud embed last) so watching a
-published lesson never opens the camera. The launcher icon is an
-adaptive amber-record-dot (`res/`, minSdk 29 needs no legacy PNGs).
+the four-screen UI (built programmatically — no layout XML): home
+(greeting, Record and Upload video action tiles, the hub last), upload
+(Choose a video or Fetch from link), link (the paste-a-link field) and record (preview with REC badge, an auto-hiding zoom
+pill, the shutter in a dock, in-viewfinder playback with ▶/⏸/✕, a
+`Switch` for Cloud, device sessions, advanced link). It draws the
+Hearth design language ([docs/DESIGN.md](../../docs/DESIGN.md)) in
+Material idioms without AndroidX: `Theme.DeviceDefault.DayNight` with
+a palette chosen at start from the system night mode (light status
+and navigation bars on the warm canvas), the ActionBar stepping aside
+on home for an in-content large title and returning with the up arrow
+on Record (camera switch as a menu action), elevated cards, ripple
+rows and tiles that dip when pressed, line icons drawn in code
+(`Glyphs.java` — no icon assets), video-frame thumbnails probed off the
+UI thread, status chips, 48dp targets, haptics on Record/Stop, and
+friendly empty states. The hub detail is an elevated listing-style
+card (cover banner, ember Play pill, quote cards for corrections), and
+hub playback runs in its own dialog player (MP4 then HLS with the
+embed URL as `Referer`, Cloud embed last) so watching a published
+lesson never opens the camera. The launcher icon is an adaptive cream
+record glyph on ember (`res/`, minSdk 29 needs no legacy PNGs).
 
 ## Layout
 
@@ -57,9 +64,10 @@ build.sh                                           (offline route — see below)
 app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
-app/src/main/res/         drawable/uw_icon_fg.xml, mipmap-anydpi-v26/ icons
+app/src/main/res/         drawable/uw_icon_fg.xml, mipmap-anydpi-v26/ icons, values/colors.xml
 app/src/main/java/org/tinio/unwritten/
     MainActivity.java    home + record screens, upload picker + link queue, cloud, hub
+    Glyphs.java          the line icons, drawn in code (Hearth)
     TinyFileProvider.java read-only content:// clips for external players
     CameraEngine.java    Camera2 + MediaRecorder + YUV/still readers
     NativeCore.java      JNI bridge to libuwcore

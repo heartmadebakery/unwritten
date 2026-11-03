@@ -13,7 +13,10 @@
    their elements. */
 
 /* Native-leaning look: the CSS nudges radii, type and the header per
-   platform (html.ios / html.android); everything else is shared. */
+   platform (html.ios / html.android); everything else is shared. The
+   design language itself ("Hearth", docs/DESIGN.md) is app.css plus
+   the renderers below: cover tiles, words in status chips, frames of
+   the video as thumbnails. */
 (function(){
   var ua = navigator.userAgent || "", root = document.documentElement;
   if(/Android/i.test(ua)) root.classList.add("android");
@@ -35,7 +38,42 @@ var state = { stream:null, recorder:null, chunks:[], recording:false,
               timerInt:null, t0:0, clips:[], facing:"environment",
               zoom:{min:1, max:1, val:1}, playing:null };
 var $ = function(id){ return document.getElementById(id); };
-var durationCache = {};
+var durationCache = {}, thumbCache = {};
+
+/* Line icons, drawn the same way as the page's inline SVGs. */
+var ICON = (function(){
+  function i(d){ return "<svg class='i' viewBox='0 0 24 24' aria-hidden='true'>" + d + "</svg>"; }
+  return {
+    download: i("<path d='M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14'/>"),
+    share: i("<path d='M12 15V4M7.5 8.5 12 4l4.5 4.5M5 13v4.5A2.5 2.5 0 0 0 7.5 20h9a2.5 2.5 0 0 0 2.5-2.5V13'/>"),
+    retry: i("<path d='M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7'/>"),
+    close: i("<path d='M6 6l12 12M18 6 6 18'/>"),
+    trash: i("<path d='M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3'/>"),
+    play: i("<path d='M8 5.5v13l10.5-6.5z' fill='currentColor'/>"),
+    video: i("<rect x='3' y='5' width='18' height='14' rx='3'/><path d='m10 9.5 4.5 2.5-4.5 2.5z'/>"),
+    mic: i("<rect x='9' y='3' width='6' height='11' rx='3'/><path d='M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21'/>"),
+    book: i("<path d='M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20'/>")
+  };
+})();
+/* A lesson wears the same warm wash on every platform: the sum of the
+   title's UTF-16 code units, modulo the six cover pairs. */
+function washIndex(title){
+  var s = String(title || ""), n = 0;
+  for(var k = 0; k < s.length; k++) n += s.charCodeAt(k);
+  return n % 6;
+}
+function initialOf(title){
+  var m = /[A-Za-z0-9À-￿]/.exec(String(title || ""));
+  return m ? m[0].toUpperCase() : "•";
+}
+function coverHTML(title){
+  return "<span class='cover cw" + washIndex(title) + "' aria-hidden='true'>" +
+    escHtml(initialOf(title)) + "</span>";
+}
+function emptyHTML(icon, title, help){
+  return "<div class='sempty empty'><span class='eglyph'>" + icon + "</span><b>" + title +
+    "</b>" + (help ? "<span>" + help + "</span>" : "") + "</div>";
+}
 
 async function wakeLock(){
   try{ if("wakeLock" in navigator) await navigator.wakeLock.request("screen"); }catch(e){}
@@ -177,41 +215,87 @@ function displayDateFor(name){
     return MONTHS[mo - 1] + " " + d + ", " + y + " " + ("0" + h).slice(-2) + ":" + ("0" + mi).slice(-2);
   }catch(e){ return name; }
 }
-function durationFor(name){
-  if(durationCache[name] !== undefined) return durationCache[name];
+/* One metadata load per session gives both its length and a frame of
+   the video for the row's thumbnail (cached as a small JPEG, so the
+   frequent progress re-renders never reload the video). A frame that
+   can't be drawn (audio takes, old Safari) leaves the warm cover. */
+function probeClip(name){
+  if(durationCache[name] !== undefined) return;
   var c = clipByName(name);
-  if(!c) return "";
-  durationCache[name] = "";
-  var el = document.createElement((c.type || "").indexOf("audio") === 0 ? "audio" : "video");
-  el.preload = "metadata";
+  if(!c) return;
+  durationCache[name] = ""; thumbCache[name] = "";
+  var audio = (c.type || "").indexOf("audio") === 0;
+  var el = document.createElement(audio ? "audio" : "video");
+  var done = false;
+  function finish(){
+    if(done) return;
+    done = true;
+    try{ el.removeAttribute("src"); el.load(); }catch(e){}
+    renderClips();
+  }
+  el.preload = "metadata"; el.muted = true;
+  el.setAttribute("playsinline", "");
   el.onloadedmetadata = function(){
     if(el.duration && isFinite(el.duration)) durationCache[name] = fmtDur(el.duration);
-    try{ el.removeAttribute("src"); }catch(e){}
-    renderClips();
+    if(audio || !el.videoWidth){ finish(); return; }
+    try{ el.currentTime = Math.min(1, (isFinite(el.duration) ? el.duration : 2) / 2); }
+    catch(e){ finish(); }
   };
-  el.onerror = function(){ durationCache[name] = ""; };
+  el.onseeked = function(){
+    try{
+      var cv = document.createElement("canvas"), s = 112;
+      var w = el.videoWidth, h = el.videoHeight, side = Math.min(w, h);
+      cv.width = s; cv.height = s;
+      cv.getContext("2d").drawImage(el, (w - side) / 2, (h - side) / 2, side, side, 0, 0, s, s);
+      thumbCache[name] = cv.toDataURL("image/jpeg", 0.72);
+    }catch(e){ thumbCache[name] = ""; }
+    finish();
+  };
+  el.onerror = finish;
+  setTimeout(finish, 8000); /* never leave a row waiting on a stuck decoder */
   el.src = c.url;
-  return "";
 }
+function durationFor(name){ probeClip(name); return durationCache[name] || ""; }
+function thumbFor(name){ probeClip(name); return thumbCache[name] || ""; }
+function thumbHTML(c, dur){
+  var t = thumbFor(c.name), audio = (c.type || "").indexOf("audio") === 0;
+  var face = t ? "<img src='" + t + "' alt=''>"
+               : "<span class='cover cw" + washIndex(c.name) + "'>" + (audio ? ICON.mic : ICON.video) + "</span>";
+  return "<span class='thumb' aria-hidden='true'>" + face +
+    (dur ? "<span class='dur'>" + dur + "</span>" : "") + "</span>";
+}
+/* Statuses in words: the link state the left icon codes for, as a chip. */
+function chipHTML(kind, text){ return "<span class='chip" + (kind ? " " + kind : "") + "'>" + text + "</span>"; }
 function clipHTML(c){
-  var b = loadCloudLinks()[c.name] || null, st = b ? b.state : "", right;
+  var b = loadCloudLinks()[c.name] || null, st = b ? b.state : "", right, chip;
   /* Cloud-linking never removes the on-device download: every linked
      row keeps ↓ next to its cloud action. */
-  var dl = "<a class='sright dim' href='" + c.url + "' download='" + c.name + "' title='Download " + c.name + "'>↓</a>";
-  if(!b) right = dl;
-  else if(st === "uploading") right = dl + "<span class='rstat'>" + (b.progress | 0) + "%</span>";
-  else if(st === "processing" && !b.videoId) right = dl + "<span class='rstat'>…</span>";
-  else if(st === "failed") right = dl + "<a class='sright' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload'>!</a>";
-  else right = dl + "<a class='sright box' href='#' data-cloud-watch='" + c.name + "' title='Share session link'>↗</a>";
+  var dl = "<a class='iconbtn' href='" + c.url + "' download='" + c.name + "' title='Save a copy of " + c.name + "' aria-label='Save a copy'>" + ICON.download + "</a>";
+  if(!b){ right = dl; chip = chipHTML("", "On this device"); }
+  else if(st === "uploading"){
+    right = dl + "<span class='prog' style='--p:" + (b.progress | 0) + "' role='img' aria-label='Uploading " + (b.progress | 0) + " percent'>" + (b.progress | 0) + "%</span>";
+    chip = chipHTML("ember", "Uploading " + (b.progress | 0) + "%");
+  }
+  else if(st === "processing" && !b.videoId){ right = dl + "<span class='spin' role='img' aria-label='Preparing'></span>"; chip = chipHTML("honey", "Preparing"); }
+  else if(st === "failed"){
+    right = dl + "<a class='iconbtn' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload' aria-label='Retry cloud upload'>" + ICON.retry + "</a>";
+    chip = "<a class='chip ember' href='#' data-cloud-retry='" + c.name + "'>Upload failed · Retry</a>";
+  }
+  else {
+    right = dl + "<a class='iconbtn tonal' href='#' data-cloud-watch='" + c.name + "' title='Share session link' aria-label='Share session link'>" + ICON.share + "</a>";
+    chip = st === "processing" ? chipHTML("honey", "Preparing") : chipHTML("sage", "In the cloud");
+  }
   var ign = ignoredFor(c.name);
-  if(ign) right += " <span class='rstat dim' title='Ignored by the operator" + (ign.reason ? ": " + escHtml(ign.reason) : "") + "'>ignored</span>";
-  var dur = durationFor(c.name);
+  if(ign) chip += " <span class='chip ign' title='Ignored by the operator" + (ign.reason ? ": " + escHtml(ign.reason) : "") + "'>ignored</span>";
   var memOnly = c.persisted === false;
-  var mid = displayDateFor(c.name) + (dur ? "  •  " + dur : "") + (memOnly ? " ⚠" : "");
+  if(memOnly) chip += " " + chipHTML("honey", "⚠ Not saved yet");
+  var dur = durationFor(c.name);
   var rowTitle = "Play — long-press to delete" + (memOnly ? " — in memory only, download before closing" : "");
-  return "<div class='srow' data-row='" + c.name + "' title='" + rowTitle + "'>" +
-    "<span class='sleft'>" + leftIconFor(c.name) + "</span>" +
-    "<span class='smid'>" + mid + "</span>" + right +
+  return "<div class='srow' data-row='" + c.name + "' title='" + rowTitle + "' data-state='" + leftIconFor(c.name) + "'>" +
+    thumbHTML(c, dur) +
+    "<span class='ltext'><span class='ltitle'>" + displayDateFor(c.name) + "</span>" +
+    "<span class='chips'>" + chip + "</span></span>" +
+    "<span class='sright'>" + right + "</span>" +
     "<button class='vh' data-cloud-delete='" + c.name + "'>Delete " + c.name + "</button></div>";
 }
 /* Ignored badges: the pipeline operator's set-asides sync to the
@@ -248,7 +332,8 @@ function ignoredFor(name){
 function renderClips(){
   var box = $("clips");
   if(!box) return; /* only the home page lists sessions */
-  box.innerHTML = state.clips.map(clipHTML).join("") || "<div class='sempty'>Nothing yet.</div>";
+  box.innerHTML = state.clips.map(clipHTML).join("") ||
+    emptyHTML(ICON.video, "Nothing yet.", "Sessions you record or upload appear here.");
 }
 
 /* ------------------------------------------------------------------
@@ -587,10 +672,16 @@ function escHtml(s){
    playback URLs — a row opens the session's detail, like Android and
    iOS, and the detail holds Play / Share / Delete. */
 function hubRowHTML(r){
-  return "<div class='srow' data-hub-open='" + escHtml(r.videoId || "") + "'>" +
-    "<span class='sleft'>☁</span><span class='smid'>" + escHtml(r.title || r.videoId || "Untitled") +
-    (r.lessonDate ? "  •  " + escHtml(r.lessonDate) : "") + "</span>" +
-    "<span class='sright dim'>›</span></div>";
+  var sub = "";
+  if(r.lessonDate || r.durationSeconds){
+    var dur = r.durationSeconds ? fmtDur(r.durationSeconds) : "";
+    sub = "<span class='lsub'>" + escHtml(r.lessonDate || "") + (dur ? (r.lessonDate ? " \u2022 " : "") + dur : "") + "</span>";
+  }
+  return "<button class='lesson' data-hub-open='" + escHtml(r.videoId || "") + "'>" +
+    coverHTML(r.title || r.videoId) +
+    "<span class='ltext'><span class='ltitle'>" + escHtml(r.title || r.videoId || "Untitled") + "</span>" +
+    sub + "</span>" +
+    "<span class='chev' aria-hidden='true'></span></button>";
 }
 var hubDetail = null;
 function hubEmbedUrl(d){
@@ -598,23 +689,38 @@ function hubEmbedUrl(d){
   var lib = d.libraryId || cloudLibraryId();
   return lib ? "https://player.mediadelivery.net/embed/" + lib + "/" + d.videoId : "";
 }
+/* Write-ups are Markdown: inline bold and italic render (after
+   escaping), line breaks stay — the same inline-only reading as iOS. */
+function inlineMd(text){
+  return escHtml(text).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+                      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+}
+/* A lesson, listing style: a warm cover banner with its initial, the
+   title and date, an ember Play pill with round Share and Delete, the
+   write-up, corrections as quote cards, chapters as a time list. */
 function hubDetailHTML(d){
-  var h = "<div class='hubcard'><div class='hubtop'><span class='hubtitle'>" +
-    escHtml(d.title || d.videoId) + "</span>" +
-    "<button class='hubbtn' data-hub-act='close' title='Close'>✕</button></div>" +
-    (d.lessonDate ? "<div class='hubdate'>" + escHtml(d.lessonDate) + "</div>" : "") +
-    "<div class='hubacts'><button class='hubbtn' data-hub-act='play'>▶ Play</button>" +
-    "<button class='hubbtn' data-hub-act='share' title='Share session link'>↗</button>" +
-    "<button class='hubbtn' data-hub-act='delete' title='Delete from the hub and the cloud'>🗑</button></div>";
-  if(d.writeupMd) h += "<div class='hubwriteup'>" + escHtml(d.writeupMd) + "</div>";
+  var title = d.title || d.videoId;
+  var h = "<article class='detail'>" +
+    "<div class='banner-cover cw" + washIndex(title) + "'><span aria-hidden='true'>" + escHtml(initialOf(title)) + "</span>" +
+    "<button class='iconbtn' data-hub-act='close' title='Close' aria-label='Close'>" + ICON.close + "</button></div>" +
+    "<div class='dbody'><h3 class='dtitle'>" + escHtml(title) + "</h3>" +
+    (function(){ var dur=d.durationSeconds?fmtDur(d.durationSeconds):""; return (d.lessonDate||dur)?"<div class='ddate'>"+escHtml(d.lessonDate||"")+(dur?(d.lessonDate?" \u2022 ":"")+dur:"")+"</div>":""; })() +
+    "<div class='dacts'><button class='pill primary' data-hub-act='play'>" + ICON.play + "Play</button>" +
+    "<button class='iconbtn tonal' data-hub-act='share' title='Share session link' aria-label='Share session link'>" + ICON.share + "</button>" +
+    "<button class='iconbtn tonal danger' data-hub-act='delete' title='Delete from the hub and the cloud' aria-label='Delete from the hub and the cloud'>" + ICON.trash + "</button></div>";
+  if(d.writeupMd) h += "<div class='writeup'>" + inlineMd(d.writeupMd) + "</div>";
+  if((d.corrections || []).length) h += "<h4 class='dsec'>Corrections</h4>";
   (d.corrections || []).forEach(function(c){
-    h += "<div class='hubline'>• " + escHtml(c.start || "") + "  " + escHtml(c.quote || "") + "</div>";
-    if(c.correcting) h += "<div class='hubline dim'>  → " + escHtml(c.correcting) + "</div>";
+    h += "<figure class='quote'><span class='tchip'>" + escHtml(c.start || "") + "</span>" +
+      "<blockquote>“" + escHtml(c.quote || "") + "”</blockquote>" +
+      (c.correcting ? "<figcaption>Correcting: " + escHtml(c.correcting) + "</figcaption>" : "") + "</figure>";
   });
+  if((d.chapters || []).length) h += "<h4 class='dsec'>Chapters</h4><ol class='chapters'>";
   (d.chapters || []).forEach(function(c){
-    h += "<div class='hubline dim'>§ " + escHtml(c.start || "") + "  " + escHtml(c.label || "") + "</div>";
+    h += "<li><span class='tchip'>" + escHtml(c.start || "") + "</span>" + escHtml(c.label || "") + "</li>";
   });
-  return h + "</div>";
+  if((d.chapters || []).length) h += "</ol>";
+  return h + "</div></article>";
 }
 function renderHubDetail(){
   var box = $("hubdetail");
@@ -662,6 +768,7 @@ function playHubSession(d){
   };
   p.src = url;
   p.classList.remove("hidden"); $("hubclose").classList.remove("hidden");
+  try{ p.scrollIntoView({behavior: "smooth", block: "center"}); }catch(e){}
   p.play().catch(function(){});
 }
 async function shareHubSession(d){
@@ -733,7 +840,7 @@ async function loadHub(){
     if(rs.status === 503){ st.innerHTML = "Hub isn't switched on at the server yet."; box.innerHTML = ""; return; }
     if(!rs.ok) throw new Error("HTTP " + rs.status);
     var rows = await rs.json();
-    if(!rows || !rows.length){ st.innerHTML = ""; box.innerHTML = '<div class="sempty">Nothing published yet.</div>'; return; }
+    if(!rows || !rows.length){ st.innerHTML = ""; box.innerHTML = emptyHTML(ICON.book, "Nothing published yet.", "Finished lessons show up here once the pipeline has written them up."); return; }
     st.innerHTML = "";
     box.innerHTML = rows.map(hubRowHTML).join("");
     if(hubDetail && !rows.some(function(r){ return r.videoId === hubDetail.videoId; })) closeHubSession();

@@ -16,6 +16,7 @@ const db = new DatabaseSync(":memory:");
 db.exec(readFileSync(join(dir, "migrations", "0001_sessions.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0002_fetch_jobs.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0003_ignored.sql"), "utf8"));
+db.exec(readFileSync(join(dir, "migrations", "0004_duration.sql"), "utf8"));
 
 // D1-compatible stub over the real database: prepare/bind/first/all/run
 // (bind is optional on real D1 when the query takes no parameters).
