@@ -9,6 +9,38 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-02
 
 ### Fixed
+- **Bug sweep, part 2: web, Android, and iOS**
+  (user-ordered "fix all bugs"; every fix test-first; sibling
+  platforms move together).
+  - *Web:* the service worker served every GET cache-first —
+    including the signer's API on other origins, so the hub list
+    froze and upload status polls ended "taking too long"; and
+    scripts lagged pages by a cache bump. Now same-origin only,
+    network-first, offline deep links keep their page; cache v10
+    (version test rewritten for this fix). `dist/` rebuilt.
+  - *Web, second pass:* `serve_https.py` serves the stamped `dist/`
+    (phones got the tokenless source); the upload page says "saved"
+    only once the IndexedDB write lands (leaving earlier aborted
+    it); the record page starts sessions that never got an upload
+    link; and the ignored-badge fetch honors Cloud off — no
+    network, as on Android (iOS too).
+  - *Android:* camera-thread errors now reset the Record button on
+    the UI thread (it stuck on "■ Stop"); the take being written is
+    no longer a session row (blank duration for good, deletable or
+    sweep-uploaded mid-take); picked uploads land atomically; `.mkv`
+    uploads list; Export and the per-row copy move off the UI thread
+    (ANR). A take that fails to start deletes the empty file
+    MediaRecorder made, and an empty take is reported like on iOS
+    and the web. APK rebuilt; device install pending (the Pixel 4's
+    wireless-debugging port had rotated).
+  - *iOS (contract-only, no Xcode here):* the remux exports to the
+    temp dir and moves in when complete (a refresh mid-export listed
+    half a lesson and cached its blank duration for good); the hub
+    and ignored badges empty with Cloud off, like Android and the
+    web. A granted-but-unattachable mic raises the video-only
+    banner, and the level tap reads only the contiguous sample
+    bytes. 5 new `IOSBugSweepTests`; 7 new `AndroidBugSweepTests`
+    on the Android side.
 - **Bug sweep, part 1: pipeline, hub publish, and worker**
   (user-ordered "fix all bugs"; every fix test-first).
   - *HLS fallback always failed.* Since downloads land in a

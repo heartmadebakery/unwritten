@@ -69,6 +69,48 @@ class WebRecorderTests(unittest.TestCase):
         for word in CUT_WORDS:
             self.assertNotIn(word.lower(), low, word)
 
+    def test_https_server_serves_the_stamped_build(self):
+        # The phone-camera path served the unstamped source, so every
+        # upload from a phone failed "credentials missing" — the same
+        # build the plain-HTTP command serves goes out here, and the
+        # unstamped fallback says so.
+        serve = read(os.path.join(ROOT, "app", "recorder", "serve_https.py"))
+        self.assertIn('"dist"', serve)
+        self.assertIn("unstamped", serve)
+        self.assertIn("directory=SITE", serve)
+
+    def test_upload_page_claims_saved_only_once_saved(self):
+        # The vault write was still running when the page said "saved
+        # on this device — watch its progress on the record screen",
+        # and leaving a page aborts its IndexedDB writes: a large
+        # upload could vanish. saveBlob hands back the write; the
+        # page says "saved" only after it lands.
+        save = self.common.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("return saved", save)
+        saved_msg = self.uploadjs.split("var SAVED_HERE", 1)[1].split(";\n", 1)[0]
+        self.assertIn("Saved on this device", saved_msg)
+        for handler in (self.uploadjs.split('$("uploadbtn").onclick', 1)[1]
+                        .split("function isDirectMediaUrl", 1)[0],
+                        self.uploadjs.split("isDirectMediaUrl(u)", 1)[1]
+                        .split("cloudToken()", 1)[0]):
+            self.assertIn("Saving on this device", handler)
+            self.assertNotIn("Saved on this device", handler)
+            self.assertLess(handler.index("saveBlob("), handler.index("await saved"))
+            self.assertLess(handler.index("await saved"),
+                            handler.index("SAVED_HERE"))
+
+    def test_resume_starts_sessions_that_never_linked(self):
+        # A session whose page closed before its upload got a link
+        # (the upload page, a reload mid-start) has no link at all:
+        # with Cloud on and credentials present, the next page load
+        # starts it instead of leaving it local-only, silently.
+        resume = self.common.split("function cloudResumePending", 1)[1] \
+                            .split("function paintCloudToggle", 1)[0]
+        self.assertIn("state.clips.forEach", resume)
+        self.assertIn("cloudCanUpload()", resume)
+        self.assertIn("isVideoLesson(null, name)", resume)
+        self.assertIn("startCloudUpload(name, blob, null)", resume)
+
     def test_no_roles_steps_or_session_code(self):
         for token in ["data-role", "STEPS", "uw_role", "uw_step",
                       "session_code", "makeCode"]:
@@ -115,6 +157,101 @@ class WebRecorderTests(unittest.TestCase):
         for asset in ["record.html", "upload.html", "app.css",
                       "common.js", "home.js", "record.js", "upload.js"]:
             self.assertIn(asset, sw, asset)
+
+    def test_service_worker_never_touches_cross_origin_calls(self):
+        # The signer (hub list, hub detail, ignored marks, upload
+        # status) and Stream live on other origins. Cached, the first
+        # hub list showed forever and every status poll saw the first
+        # "processing" until the upload was marked failed.
+        sw = read(SW)
+        handler = sw.split('addEventListener("fetch"', 1)[1]
+        guard = handler.index("self.location.origin")
+        self.assertLess(guard, handler.index("respondWith"))
+
+    def test_service_worker_serves_scripts_network_first(self):
+        # Pages were network-first but scripts cache-first: an online
+        # load paired new pages with old code until the next cache
+        # bump. Every same-origin GET tries the network first.
+        sw = read(SW)
+        handler = sw.split('addEventListener("fetch"', 1)[1]
+        self.assertEqual(handler.count("respondWith"), 1)
+        self.assertLess(handler.index("fetch(e.request)"),
+                        handler.index("caches.match"))
+
+    @unittest.skipUnless(__import__("shutil").which("node"), "needs node")
+    def test_service_worker_behavior_in_node(self):
+        # Drive the real sw.js with stubbed caches/fetch: cross-origin
+        # passes through untouched, online answers come from the
+        # network (and refresh the cache), offline answers come from
+        # the cache, and an offline deep link (?play=) still finds its
+        # page.
+        import json
+        import subprocess
+        script = r"""
+const fs = require("fs");
+const src = fs.readFileSync(process.argv[1], "utf8");
+const handlers = {};
+const store = new Map();
+let online = true;
+const cache = {
+  put: async (req, res) => { store.set(new URL(req.url || req, "https://app.test/").pathname, res); },
+  addAll: async () => {},
+};
+const caches = {
+  open: async () => cache,
+  keys: async () => [],
+  delete: async () => true,
+  match: async (req, opts) => {
+    const u = new URL(req.url || req, "https://app.test/");
+    const key = u.pathname;
+    if (!(opts && opts.ignoreSearch) && u.search) return undefined;
+    const hit = store.get(key);
+    return hit ? hit.clone() : undefined;
+  },
+};
+const self = {
+  location: new URL("https://app.test/sw.js"),
+  addEventListener: (t, f) => { handlers[t] = f; },
+  skipWaiting: () => {}, clients: { claim: () => {} },
+};
+const fetch = async (req) => {
+  if (!online) throw new TypeError("offline");
+  return new Response("net:" + new URL(req.url).pathname, { status: 200 });
+};
+new Function("self", "caches", "fetch", src)(self, caches, fetch);
+async function go(url, mode) {
+  let responded = null;
+  const headers = new Headers(mode === "navigate" ? { accept: "text/html" } : {});
+  handlers.fetch({ request: { url, method: "GET", mode: mode || "cors", headers },
+                   respondWith: (p) => { responded = p; } });
+  if (!responded) return null;
+  const res = await responded;
+  return res ? [res.status, await res.text()] : ["undefined", ""];
+}
+(async () => {
+  const out = {};
+  out.cross = await go("https://signer.test/hub/sessions");
+  out.asset1 = await go("https://app.test/common.js");
+  await new Promise((r) => setTimeout(r, 10));
+  online = false;
+  out.assetOffline = await go("https://app.test/common.js");
+  online = true;
+  out.page = await go("https://app.test/record.html", "navigate");
+  await new Promise((r) => setTimeout(r, 10));
+  online = false;
+  out.deepLinkOffline = await go("https://app.test/record.html?play=x.webm", "navigate");
+  console.log(JSON.stringify(out));
+})();
+"""
+        proc = subprocess.run(["node", "-e", script, SW],
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        out = json.loads(proc.stdout)
+        self.assertIsNone(out["cross"])
+        self.assertEqual(out["asset1"], [200, "net:/common.js"])
+        self.assertEqual(out["assetOffline"], [200, "net:/common.js"])
+        self.assertEqual(out["page"], [200, "net:/record.html"])
+        self.assertEqual(out["deepLinkOffline"], [200, "net:/record.html"])
 
     def test_manifest_is_the_recorder_not_the_apprentice(self):
         manifest = read(MANIFEST)
@@ -1196,7 +1333,12 @@ class WebNativeFeelTests(unittest.TestCase):
         self.assertIn("html.android", self.css)
 
     def test_service_worker_cache_bumped_for_the_restyle(self):
-        self.assertIn("unwritten-recorder-v9", self.sw)
+        # Rewritten for the Nov 2 bug sweep (user-ordered "fix all
+        # bugs"): v9 served scripts cache-first and cached the
+        # signer's API answers; v10 drops that poisoned cache on
+        # activate. Bumped past v9, never back.
+        self.assertIn("unwritten-recorder-v10", self.sw)
+        self.assertNotIn("unwritten-recorder-v9", self.sw)
 
 
 class CameraEngineTests(unittest.TestCase):
@@ -1271,6 +1413,17 @@ class IgnoredBadgeTests(unittest.TestCase):
                             .split("function renderClips", 1)[0]
         self.assertIn("videoId", match)
 
+    def test_web_ignored_fetch_respects_cloud_off(self):
+        # Cloud off means no network calls (Android's loadIgnored
+        # checks it); the badge fetch called the signer anyway.
+        fetch = self.common.split("async function refreshIgnored", 1)[1] \
+                           .split("function ignoredFor", 1)[0]
+        self.assertLess(fetch.index("cloudEnabled()"), fetch.index("fetch("))
+        # Toggling Cloud re-reads the marks: off clears the badges.
+        toggle = self.record_js.split('$("cloudtoggle").onclick', 1)[1] \
+                               .split("function sweepBacklog", 1)[0]
+        self.assertIn("refreshIgnored()", toggle)
+
     def test_android_lists_ignored(self):
         self.assertIn("/hub/ignored", self.hub)
         self.assertIn("public JSONArray ignored()", self.hub)
@@ -1281,6 +1434,100 @@ class IgnoredBadgeTests(unittest.TestCase):
                         .split("private String mimeFor", 1)[0]
         self.assertIn("ignored", rows)
         self.assertIn("ignoredReasonFor", rows)
+
+
+class AndroidBugSweepTests(unittest.TestCase):
+    """Nov 2 bug sweep: Android session-list and threading defects."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.main = read(MAIN)
+
+    def method(self, signature):
+        return self.main.split(signature, 1)[1].split("\n    }\n", 1)[0]
+
+    def test_camera_error_resets_the_ui_on_the_ui_thread(self):
+        # CameraEngine reports errors from its camera thread: the
+        # Record button/timer reset must hop to the UI thread, or the
+        # view write throws (swallowed by the engine) and the button
+        # keeps showing "■ Stop" after a failed start.
+        on_error = self.main.split("public void onError(final String message)", 1)[1] \
+                            .split("public void onMicUnavailable", 1)[0]
+        self.assertIn("runOnUiThread", on_error)
+        self.assertLess(on_error.index("runOnUiThread"),
+                        on_error.index("recordButton.setText"))
+
+    def test_every_upload_extension_is_listed(self):
+        # savePickedVideo names an upload by its MIME type; a name
+        # mimeFor does not know never lists — an .mkv upload sat in
+        # the clips folder invisible, undeletable, yet uploaded.
+        pick = self.method("private void savePickedVideo")
+        mime = self.method("private String mimeFor")
+        for ext in re.findall(r'ext = "(\w+)"', pick):
+            self.assertIn('".%s"' % ext, mime, ext)
+
+    def test_live_take_is_not_a_session(self):
+        # MediaRecorder writes the take under its final name: until
+        # the stop callback finalizes it, it is no session. Listed, it
+        # cached an empty duration for good, could be tapped or
+        # deleted mid-take, and a backlog sweep could upload it half
+        # written.
+        self.assertIn("liveTake", self.method("private List<File> clipFiles()"))
+        sweep = self.method("private void sweepBacklog()")
+        self.assertIn("clipFiles()", sweep)
+        self.assertNotIn("listFiles()", sweep)
+        toggle = self.method("private void toggleRecord()")
+        self.assertIn("liveTake = f", toggle)
+        stop = self.method("private void stopRecording()")
+        self.assertIn("liveTake = null", stop)
+        self.assertIn("durationCache.remove", stop)
+
+    def test_upload_copy_lands_atomically(self):
+        # The picked video copies under a name the list ignores, then
+        # renames: a refresh mid-copy never lists (or uploads) half a
+        # lesson.
+        pick = self.method("private void savePickedVideo")
+        self.assertIn('".part"', pick)
+        self.assertIn("renameTo(dest)", pick)
+
+    def test_exports_copy_off_the_ui_thread(self):
+        # Copying an hour-long lesson to Downloads on the UI thread is
+        # an ANR; both exports run on the background pool.
+        self.assertIn("copyStream", self.method("private void exportToDownloads"))
+        for sig in ("private void doExport()", "private void downloadSingle"):
+            body = self.method(sig)
+            self.assertIn("cloudExec.execute", body, sig)
+            self.assertNotIn("copyStream", body, sig)
+            self.assertLess(body.index("cloudExec.execute"),
+                            body.index("exportToDownloads"), sig)
+
+    def test_failed_start_leaves_no_file(self):
+        # MediaRecorder creates the output file at prepare(): a take
+        # that then fails to start (setup, start(), or a session that
+        # will not configure) must not leave that empty file behind as
+        # a session row a backlog sweep would upload.
+        engine = read(ENGINE)
+        discard = engine.split("private void discardFailedTake()", 1)[1] \
+                        .split("\n    }\n", 1)[0]
+        self.assertIn(".delete()", discard)
+        setup = engine.split("private void startVideoInternal", 1)[1] \
+                      .split("private boolean hasAudioPermission", 1)[0]
+        self.assertIn("out.delete()", setup.split("MediaRecorder setup failed", 1)[1]
+                      .split("return;", 1)[0])
+        session = engine.split("private void buildSession", 1)[1] \
+                        .split("private void startRepeating", 1)[0]
+        start_failed = session.split("MediaRecorder start failed", 1)[1] \
+                              .split("return;", 1)[0]
+        self.assertIn("discardFailedTake()", start_failed)
+        configure_failed = session.split("public void onConfigureFailed", 1)[1]
+        self.assertIn("discardFailedTake()", configure_failed)
+
+    def test_empty_take_is_reported_not_silent(self):
+        # iOS and the web say "That take was empty"; Android dropped a
+        # too-short take without a word, or listed a zero-byte one.
+        stop = self.method("private void stopRecording()")
+        self.assertIn("length() == 0", stop)
+        self.assertIn("take was empty", stop)
 
 
 if __name__ == "__main__":

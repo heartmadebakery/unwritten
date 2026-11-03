@@ -236,6 +236,8 @@ $("cloudtoggle").onclick = function(){
     ? "☁️ <b>Cloud on.</b> New video sessions will also upload for streamed playback; the ↗ action on each session offers its link when ready."
     : "☁️ <b>Cloud off.</b> Sessions stay on this device only. Export sessions to Downloads below to move them.";
   if(cloudEnabled()) sweepBacklog();
+  /* Ignored badges follow Cloud: off clears them (no network). */
+  refreshIgnored();
   /* The hub lives on another page now; refresh it when present. */
   if($("hublist")) loadHub();
 };

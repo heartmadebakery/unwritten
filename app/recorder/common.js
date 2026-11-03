@@ -124,15 +124,19 @@ async function idbRestore(){
     renderClips();
   }catch(e){}
 }
+/* Returns the vault write: a page must not call the session saved (or
+   send the user elsewhere) before it lands — leaving a page aborts its
+   IndexedDB writes. */
 function saveBlob(blob, name){
   var url = URL.createObjectURL(blob);
   state.clips.unshift({name:name, url:url, type:blob.type || "", persisted:false});
   renderClips();
-  idbPut(name, blob).then(function(){
+  var saved = idbPut(name, blob).then(function(){
     var c = state.clips.find(function(x){ return x.name === name; });
     if(c && CAPS.idb){ c.persisted = true; renderClips(); }
   });
   if(cloudReady() && isVideoLesson(blob, name)) startCloudUpload(name, blob, null);
+  return saved;
 }
 
 function idbDelete(name){
@@ -219,7 +223,8 @@ function clipHTML(c){
    never depends on it. */
 var ignoredMarks = null;
 async function refreshIgnored(){
-  if(!hubAvailable()) return;
+  /* Cloud off means no network calls, badges included (like Android). */
+  if(!cloudEnabled() || !hubAvailable()){ ignoredMarks = null; renderClips(); return; }
   try{
     var rs = await fetch(cloudSignerUrl() + "/hub/ignored", {headers: {"X-Signer-Token": cloudToken()}});
     if(!rs.ok) return;
@@ -740,16 +745,22 @@ async function loadHub(){
 function cloudResumePending(){
   if(!cloudReady()) return;
   var m = loadCloudLinks();
-  Object.keys(m).forEach(function(name){
-    var l = m[name];
-    if(!state.clips.some(function(c){ return c.name === name; })) return;
-    if(l.state === "uploading" && l.uploadUrl && l.videoId){
+  state.clips.forEach(function(c){
+    var name = c.name, l = m[name];
+    if(l && l.state === "uploading" && l.uploadUrl && l.videoId){
       idbGetBlob(name).then(function(blob){
         if(blob) startCloudUpload(name, blob, {videoId: l.videoId, uploadUrl: l.uploadUrl});
         else { setCloudLink(name, {state: "failed"}); renderClips(); }
       });
-    } else if(l.state === "processing" && l.videoId){
+    } else if(l && l.state === "processing" && l.videoId){
       pollCloudStatus(name, l.videoId);
+    } else if((!l || l.state === "uploading") && cloudCanUpload() && isVideoLesson(null, name)){
+      /* Saved with Cloud on but never linked: its page closed before
+         the upload got its link (the upload page, a reload mid-start).
+         Start it now instead of leaving it local-only, silently. */
+      idbGetBlob(name).then(function(blob){
+        if(blob) startCloudUpload(name, blob, null);
+      });
     }
   });
 }

@@ -118,6 +118,9 @@ public class MainActivity extends Activity {
     private SeekBar zoomSeek;
     private long speechQuietSince;
     private File lastLessonFile;
+    // The take MediaRecorder is writing right now (null between
+    // takes): not a session until the stop callback finalizes it.
+    private volatile File liveTake;
     private final ExecutorService cloudExec = Executors.newCachedThreadPool();
     private final Set<String> cloudInFlight = new HashSet<String>();
 
@@ -639,20 +642,25 @@ public class MainActivity extends Activity {
         else if ("video/webm".equals(mime)) ext = "webm";
         else if ("video/x-matroska".equals(mime)) ext = "mkv";
         final File dest = new File(clipsDir, Names.uploadName(ext));
+        // The bytes land under a name the list ignores and rename into
+        // place only when complete: a refresh mid-copy must never list
+        // (or sweep up and upload) half a lesson.
+        final File part = new File(clipsDir, dest.getName() + ".part");
         Toast.makeText(this, "Copying upload…", Toast.LENGTH_SHORT).show();
         cloudExec.execute(new Runnable() { @Override public void run() {
             try {
                 InputStream in = getContentResolver().openInputStream(uri);
                 if (in == null) throw new IOException("Could not open the picked file.");
-                OutputStream out = new java.io.FileOutputStream(dest);
+                OutputStream out = new java.io.FileOutputStream(part);
                 try {
                     copyStream(in, out);
                 } finally {
                     try { in.close(); } catch (Throwable ignored) {}
                     try { out.close(); } catch (Throwable ignored) {}
                 }
+                if (!part.renameTo(dest)) throw new IOException("Could not save the copied upload.");
             } catch (final Exception e) {
-                try { dest.delete(); } catch (Throwable ignored) {}
+                try { part.delete(); } catch (Throwable ignored) {}
                 runOnUiThread(new Runnable() { @Override public void run() {
                     Toast.makeText(MainActivity.this, "Upload failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
                 } });
@@ -676,13 +684,21 @@ public class MainActivity extends Activity {
                     // A failed start posted true and painted recording
                     // before the camera thread refused it: put the
                     // button and timer back so the next tap starts
-                    // cleanly. A live take keeps its UI.
+                    // cleanly. A live take keeps its UI. Errors arrive
+                    // on the camera thread: Handler calls are safe
+                    // here, but the view writes hop to the UI thread
+                    // (a view write here throws, and the engine
+                    // swallows it, stranding "■ Stop").
                     if (engine == null || !engine.isRecording()) {
                         handler.removeCallbacks(timerRunnable);
                         handler.removeCallbacks(speechRunnable);
-                        hideSpeechWarn();
-                        recordButton.setText("● Record"); paintRecordButton(false);
-                        if (recBadge != null) recBadge.setVisibility(View.GONE);
+                        runOnUiThread(new Runnable() { @Override public void run() {
+                            if (engine != null && engine.isRecording()) return;
+                            liveTake = null;
+                            hideSpeechWarn();
+                            recordButton.setText("● Record"); paintRecordButton(false);
+                            if (recBadge != null) recBadge.setVisibility(View.GONE);
+                        } });
                     }
                 }
                 @Override public void onMicUnavailable() {
@@ -799,6 +815,7 @@ public class MainActivity extends Activity {
             File f = new File(clipsDir, Names.lessonName("mp4"));
             if (engine.startVideo(f)) {
                 lastLessonFile = f;
+                liveTake = f;
                 recordStartMs = SystemClock.elapsedRealtime();
                 recordButton.setText("■ Stop  0:00"); paintRecordButton(true);
                 if (recBadge != null) { recBadge.setText("● REC  0:00"); recBadge.setVisibility(View.VISIBLE); }
@@ -816,7 +833,20 @@ public class MainActivity extends Activity {
         try {
             if (engine != null) engine.stopVideo(new Runnable() { @Override public void run() {
                 // The take finalizes on the camera thread first: only
-                // now is the file complete and safe to list and upload.
+                // now is the file complete and safe to list and upload
+                // (and to read a duration from).
+                liveTake = null;
+                if (lastLessonFile != null
+                        && (!lastLessonFile.exists() || lastLessonFile.length() == 0)) {
+                    // The engine drops a take stopped too early, and a
+                    // zero-byte file is no lesson either: say so out
+                    // loud, like iOS and the web, instead of a silent
+                    // no-row (or an empty row that would upload).
+                    try { lastLessonFile.delete(); } catch (Throwable ignored) {}
+                    lastLessonFile = null;
+                    showError("⚠️ That take was empty — nothing was captured. Record the lesson again.");
+                }
+                if (lastLessonFile != null) durationCache.remove(lastLessonFile.getName());
                 refreshClipList();
                 if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);
                 // A stop that finishes off the record screen (the up arrow
@@ -842,7 +872,11 @@ public class MainActivity extends Activity {
         if (clipsDir == null) return out;
         File[] files = clipsDir.listFiles();
         if (files == null) return out;
+        // The take being recorded is not a session yet: listed, it
+        // could be played, deleted, or uploaded half written.
+        File live = liveTake;
         for (File f : files) {
+            if (live != null && f.getName().equals(live.getName())) continue;
             if (f.isFile() && mimeFor(f.getName()) != null) out.add(f);
         }
         Collections.sort(out, new Comparator<File>() {
@@ -904,28 +938,26 @@ public class MainActivity extends Activity {
         return out;
     }
 
+    // Copying a long lesson takes seconds: both exports run on the
+    // background pool (on the UI thread it is an ANR) and report back
+    // with a Toast.
     private void downloadSingle(String name) {
-        File f = new File(clipsDir, name);
+        final File f = new File(clipsDir, name);
         if (!f.exists()) { Toast.makeText(this, "File missing.", Toast.LENGTH_SHORT).show(); return; }
-        try {
-            ContentResolver cr = getContentResolver();
-            ContentValues cv = new ContentValues();
-            cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
-            cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
-            cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
-            cv.put(MediaStore.Downloads.IS_PENDING, 1);
-            Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
-            if (uri == null) throw new Exception("MediaStore insert failed");
-            OutputStream out = cr.openOutputStream(uri);
-            if (out == null) throw new Exception("Could not open output");
-            FileInputStream in = new FileInputStream(f);
-            copyStream(in, out); in.close(); out.close();
-            ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
-            cr.update(uri, done, null, null);
-            Toast.makeText(this, "Saved " + f.getName() + " to Downloads/Unwritten", Toast.LENGTH_LONG).show();
-        } catch (Throwable e) {
-            Toast.makeText(this, "Download failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
-        }
+        Toast.makeText(this, "Saving " + f.getName() + " to Downloads…", Toast.LENGTH_SHORT).show();
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            String msg;
+            try {
+                exportToDownloads(getContentResolver(), f);
+                msg = "Saved " + f.getName() + " to Downloads/Unwritten";
+            } catch (Throwable e) {
+                msg = "Download failed: " + e.getMessage();
+            }
+            final String toast = msg;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                Toast.makeText(MainActivity.this, toast, Toast.LENGTH_LONG).show();
+            } });
+        } });
     }
 
     private void addRowButton(LinearLayout row, String text, int sp, int color,
@@ -1091,6 +1123,7 @@ public class MainActivity extends Activity {
         if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
         if (n.endsWith(".webm")) return "video/webm";
         if (n.endsWith(".mov")) return "video/quicktime";
+        if (n.endsWith(".mkv")) return "video/x-matroska";
         if (n.endsWith(".m4a")) return "audio/mp4";
         return null;
     }
@@ -1107,43 +1140,59 @@ public class MainActivity extends Activity {
     }
 
     private void doExport() {
-        List<File> files = clipFiles();
+        final List<File> files = clipFiles();
         if (files.isEmpty()) { Toast.makeText(this, "Exported 0 sessions to Downloads/Unwritten", Toast.LENGTH_LONG).show(); return; }
-        int count = 0, failed = 0;
-        ContentResolver cr = getContentResolver();
-        for (File f : files) {
-            Uri uri = null;
-            try {
-                ContentValues cv = new ContentValues();
-                cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
-                cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
-                cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
-                cv.put(MediaStore.Downloads.IS_PENDING, 1);
-                uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
-                if (uri == null) throw new Exception("MediaStore insert failed for " + f.getName());
-                OutputStream out = cr.openOutputStream(uri);
-                if (out == null) throw new Exception("Could not open output for " + f.getName());
-                FileInputStream in = new FileInputStream(f);
+        Toast.makeText(this, "Exporting " + files.size() + " sessions to Downloads…", Toast.LENGTH_SHORT).show();
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            int count = 0, failed = 0;
+            ContentResolver cr = getContentResolver();
+            for (File f : files) {
                 try {
-                    copyStream(in, out);
-                } finally {
-                    try { in.close(); } catch (Throwable ignored) {}
-                    try { out.close(); } catch (Throwable ignored) {}
+                    exportToDownloads(cr, f);
+                    count++;
+                } catch (Throwable e) {
+                    failed++;
                 }
-                ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
-                cr.update(uri, done, null, null);
-                count++;
-            } catch (Throwable e) {
-                failed++;
-                // Never orphan the IS_PENDING row: it would sit in
-                // Downloads invisible and unopenable.
-                if (uri != null) { try { cr.delete(uri, null, null); } catch (Throwable ignored) {} }
             }
+            String msg = "Exported " + count + " sessions to Downloads/Unwritten";
+            if (failed > 0) msg += " (" + failed + " failed)";
+            final String toast = msg;
+            runOnUiThread(new Runnable() { @Override public void run() {
+                Toast.makeText(MainActivity.this, toast, Toast.LENGTH_LONG).show();
+                refreshClipList();
+            } });
+        } });
+    }
+
+    /** One file into Downloads/Unwritten. Throws on failure, and never
+     *  orphans the IS_PENDING row: it would sit in Downloads invisible
+     *  and unopenable. */
+    private void exportToDownloads(ContentResolver cr, File f) throws Exception {
+        Uri uri = null;
+        try {
+            ContentValues cv = new ContentValues();
+            cv.put(MediaStore.Downloads.DISPLAY_NAME, f.getName());
+            cv.put(MediaStore.Downloads.MIME_TYPE, mimeFor(f.getName()));
+            cv.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Unwritten");
+            cv.put(MediaStore.Downloads.IS_PENDING, 1);
+            uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, cv);
+            if (uri == null) throw new Exception("MediaStore insert failed for " + f.getName());
+            FileInputStream in = new FileInputStream(f);
+            OutputStream out = null;
+            try {
+                out = cr.openOutputStream(uri);
+                if (out == null) throw new Exception("Could not open output for " + f.getName());
+                copyStream(in, out);
+            } finally {
+                try { in.close(); } catch (Throwable ignored) {}
+                if (out != null) try { out.close(); } catch (Throwable ignored) {}
+            }
+            ContentValues done = new ContentValues(); done.put(MediaStore.Downloads.IS_PENDING, 0);
+            cr.update(uri, done, null, null);
+        } catch (Exception e) {
+            if (uri != null) { try { cr.delete(uri, null, null); } catch (Throwable ignored) {} }
+            throw e;
         }
-        String msg = "Exported " + count + " sessions to Downloads/Unwritten";
-        if (failed > 0) msg += " (" + failed + " failed)";
-        Toast.makeText(this, msg, Toast.LENGTH_LONG).show();
-        refreshClipList();
     }
 
     // ---------- Cloud streaming (optional) ----------
@@ -1208,9 +1257,8 @@ public class MainActivity extends Activity {
     // would stay local-only forever, silently.
     private void sweepBacklog() {
         if (!canUpload() || clipsDir == null) return;
-        File[] files = clipsDir.listFiles();
-        if (files == null) return;
-        for (File f : files) maybeCloudUpload(f);
+        // Sessions only: never a live take or an upload mid-copy.
+        for (File f : clipFiles()) maybeCloudUpload(f);
     }
 
     // Cloud credentials, like the iOS and web settings panels. Fields

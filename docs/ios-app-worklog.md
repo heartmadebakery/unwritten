@@ -6,6 +6,21 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Update — 2026-11-02: bug sweep (contract-only)
+
+`SessionStore`: the passthrough export now writes to the temp dir
+and moves into `clips/` only when complete — a refresh mid-export
+(another lesson's upload progress) listed half a lesson and cached
+its blank duration for good; `registerLesson` also drops any stale
+duration. `loadHub` and `loadIgnored` honor Cloud off, like Android
+(no network calls with Cloud off, as CloudStore promises).
+`CameraEngine`: a granted mic whose input will not attach raises the
+video-only banner (it was cleared), and `captureRms` reads only the
+contiguous bytes at the data pointer. 5 new `IOSBugSweepTests`. No
+Xcode here: needs a Mac compile, then on device record a take while
+another uploads (the row appears once, with its duration) and toggle
+Cloud off (hub and ignored badges empty).
+
 ## Update — 2026-11-01: playback restores a record-capable audio session
 
 Both players set `.playback` and the capture engine never touches

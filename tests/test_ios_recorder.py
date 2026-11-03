@@ -816,5 +816,70 @@ class IOSIgnoredTests(unittest.TestCase):
         self.assertIn("ignored", row)
 
 
+class IOSBugSweepTests(unittest.TestCase):
+    """Nov 2 bug sweep (contract-only here: no Xcode on this host)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.store = read(STORE)
+
+    def test_export_lands_in_clips_only_when_complete(self):
+        # The passthrough export wrote straight into the clips folder:
+        # a list refresh mid-export (another lesson's upload progress)
+        # listed half a lesson and cached its blank duration for good.
+        # It now exports outside and moves in once complete.
+        finish = self.store.split("func finishRecording", 1)[1] \
+                           .split("private func keepMovFallback", 1)[0]
+        self.assertIn("temporaryDirectory", finish)
+        self.assertIn("session.outputURL = exportURL", finish)
+        self.assertIn("moveItem(at: exportURL, to: mp4URL)", finish)
+        reg = self.store.split("private func registerLesson", 1)[1] \
+                        .split("func registerUpload", 1)[0]
+        self.assertLess(reg.index("durationCache.removeValue"),
+                        reg.index("refresh()"))
+
+    def test_mic_that_fails_to_attach_raises_the_banner(self):
+        # Granted but busy/missing: the take is video-only, and a
+        # video-only take must never be silent about being silent
+        # (Android's onMicUnavailable, the web's mic banner). The
+        # warning cleared only when the audio input really attached.
+        engine = read(ENGINE)
+        attach = engine.split("private func attachInputsLocked", 1)[1] \
+                       .split("func switchCamera", 1)[0]
+        added = attach.index("session.addInput(audioInput)")
+        cleared = attach.index("micWarning = false")
+        raised = attach.index("micWarning = true")
+        self.assertLess(added, cleared)
+        self.assertLess(cleared, raised)
+        self.assertEqual(attach.count("micWarning = true"), 1)
+        # Cleared inside the attach-succeeded block, not after it.
+        self.assertNotIn("}", attach[added:cleared])
+
+    def test_level_tap_reads_only_contiguous_bytes(self):
+        # CMBlockBufferGetDataPointer's data pointer covers only the
+        # contiguous run at the offset; reading totalLength bytes from
+        # it walks off a non-contiguous buffer.
+        engine = read(ENGINE)
+        rms = engine.split("static func captureRms", 1)[1]
+        self.assertIn("lengthAtOffsetOut: &length", rms)
+        self.assertIn("totalLengthOut: nil", rms)
+
+    def test_ignored_fetch_respects_cloud_off(self):
+        # "With Cloud off the app makes no network calls at all"
+        # (CloudStore, README): the badge fetch called the signer
+        # anyway — Android's checks Cloud first.
+        load = self.store.split("func loadIgnored()", 1)[1] \
+                         .split("func loadHub()", 1)[0]
+        self.assertIn("cloud.enabled", load.split("else {", 1)[0])
+
+    def test_hub_stays_empty_with_cloud_off(self):
+        # Android and the web clear the hub when Cloud is off, and the
+        # status text here says to turn Cloud on to see it — rows
+        # loaded anyway buried that text.
+        load = self.store.split("func loadHub()", 1)[1] \
+                         .split("func queueFetchUrl", 1)[0]
+        self.assertIn("cloud.enabled", load.split("else {", 1)[0])
+
+
 if __name__ == "__main__":
     unittest.main()

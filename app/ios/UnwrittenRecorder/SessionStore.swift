@@ -242,12 +242,19 @@ final class SessionStore: ObservableObject {
         }
         let stamp = Names.stamp()
         let mp4URL = clipsDir.appendingPathComponent("unwritten_lesson_" + stamp + ".mp4")
+        // The export writes outside the clips folder and moves in only
+        // once complete: a list refresh mid-export (another lesson's
+        // upload progress) must never list half a lesson, or cache
+        // its blank duration for good.
+        let exportURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("export_" + stamp + ".mp4")
+        try? FileManager.default.removeItem(at: exportURL)
         let asset = AVURLAsset(url: tempURL)
         guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
             keepMovFallback(tempURL: tempURL, stamp: stamp)
             return
         }
-        session.outputURL = mp4URL
+        session.outputURL = exportURL
         session.outputFileType = .mp4
         // The export handler is @Sendable and fires on an arbitrary queue;
         // status/error reads after completion are the API's contract, so
@@ -263,16 +270,26 @@ final class SessionStore: ObservableObject {
                 // failure path and register a phantom row.
                 switch status {
                 case .completed:
+                    do {
+                        try FileManager.default.moveItem(at: exportURL, to: mp4URL)
+                    } catch {
+                        // The finished MP4 could not move in: keep the
+                        // original .mov rather than lose the lesson.
+                        try? FileManager.default.removeItem(at: exportURL)
+                        self.keepMovFallback(tempURL: tempURL, stamp: stamp)
+                        return
+                    }
                     try? FileManager.default.removeItem(at: tempURL)
                     self.registerLesson(url: mp4URL)
                 case .cancelled:
+                    try? FileManager.default.removeItem(at: exportURL)
                     try? FileManager.default.removeItem(at: tempURL)
                     self.status = "⚠️ That take was interrupted before it finished. Record the lesson again."
                 default:
                     // Passthrough failed (unexpected codec mix) — keep the
                     // .mov rather than lose the lesson; the pipeline takes
                     // the largest media file whatever its extension.
-                    try? FileManager.default.removeItem(at: mp4URL)
+                    try? FileManager.default.removeItem(at: exportURL)
                     let movURL = self.clipsDir.appendingPathComponent("unwritten_lesson_" + stamp + ".mov")
                     do {
                         try FileManager.default.moveItem(at: tempURL, to: movURL)
@@ -301,6 +318,8 @@ final class SessionStore: ObservableObject {
 
     private func registerLesson(url: URL) {
         status = "✅ Session saved — on this device. Hand the file to whoever runs the pipeline."
+        // A duration read before the file was complete must not stick.
+        durationCache.removeValue(forKey: url.lastPathComponent)
         refresh()
         maybeCloudUpload(url.lastPathComponent)
     }
@@ -675,7 +694,9 @@ final class SessionStore: ObservableObject {
     /// shows. Matching takes get an "ignored" badge in the Record
     /// list instead. A failed fetch just leaves badges off.
     func loadIgnored() {
-        guard hubAvailable(), let req = hubRequest("/hub/ignored") else {
+        // Cloud off means no network calls at all, badges included
+        // (like Android): the marks clear instead.
+        guard cloud.enabled, hubAvailable(), let req = hubRequest("/hub/ignored") else {
             ignoredById = [:]
             ignoredByTitle = [:]
             refresh()
@@ -701,10 +722,11 @@ final class SessionStore: ObservableObject {
         }
     }
 
-    /// Published lessons, newest first. Unconfigured hubs clear the
-    /// rows while the status text explains why nothing new loads.
+    /// Published lessons, newest first. Unconfigured hubs — and Cloud
+    /// off, like Android and the web — clear the rows while the status
+    /// text explains why nothing new loads.
     func loadHub() {
-        guard hubAvailable(), let req = hubRequest("/hub/sessions") else {
+        guard cloud.enabled, hubAvailable(), let req = hubRequest("/hub/sessions") else {
             hubRows = []
             hubDetail = nil
             hubNotice = ""

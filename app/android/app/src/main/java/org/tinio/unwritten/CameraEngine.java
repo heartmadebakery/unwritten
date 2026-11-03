@@ -876,6 +876,7 @@ public final class CameraEngine {
                             releaseRecorder();
                             recorderSurface = null;
                             recording = false;
+                            discardFailedTake();
                             buildSession(false, false);
                             return;
                         } finally {
@@ -902,6 +903,10 @@ public final class CameraEngine {
                     reportError("Capture session configuration failed");
                     failQueuedStart();
                     if (recorderStartPending || recorder != null) {
+                        // Before recording flips: a take that already
+                        // ran keeps its file, one that never started
+                        // loses its empty one.
+                        discardFailedTake();
                         releaseRecorder();
                         recorderSurface = null;
                         recorderStartPending = false;
@@ -1014,22 +1019,38 @@ public final class CameraEngine {
             reportError("MediaRecorder setup failed: " + t.getMessage());
             try { mr.reset(); } catch (Throwable ignored) { }
             try { mr.release(); } catch (Throwable ignored) { }
+            // prepare() may already have created the file: never leave
+            // an empty take behind as a session.
+            try { out.delete(); } catch (Throwable ignored) { }
             return;
         }
         recorder = mr;
+        recordingFile = out;
         try {
             recorderSurface = mr.getSurface();
         } catch (Throwable t) {
             reportError("MediaRecorder surface failed: " + t.getMessage());
             releaseRecorder();
+            discardFailedTake();
             return;
         }
-        recordingFile = out;
         recorderStartPending = true;
         buildSession(true, false);
         if (!sessionConfiguring && session == null) {
             // buildSession failed synchronously and already cleaned up where possible.
             if (recorder != null) { releaseRecorder(); recorderSurface = null; recorderStartPending = false; }
+            discardFailedTake();
+        }
+    }
+
+    // A take that never started: MediaRecorder.prepare() already
+    // created its file, empty. Delete it so it is never listed (or
+    // swept up and uploaded) as a lesson.
+    private void discardFailedTake() {
+        File f = recordingFile;
+        recordingFile = null;
+        if (f != null && !recording) {
+            try { f.delete(); } catch (Throwable ignored) { }
         }
     }
 

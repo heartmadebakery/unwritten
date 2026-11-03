@@ -189,17 +189,17 @@ final class CameraEngine: NSObject, ObservableObject {
         }
         session.addInput(videoInput)
         videoDevice = device
-        if micGranted() {
-            if let mic = AVCaptureDevice.default(for: .audio),
-               let audioInput = try? AVCaptureDeviceInput(device: mic),
-               session.canAddInput(audioInput) {
-                session.addInput(audioInput)
-            }
+        if micGranted(),
+           let mic = AVCaptureDevice.default(for: .audio),
+           let audioInput = try? AVCaptureDeviceInput(device: mic),
+           session.canAddInput(audioInput) {
+            session.addInput(audioInput)
             onMain { [weak self] in self?.micWarning = false }
         } else {
             // A denied/busy microphone must not cost the video too — but
             // a video-only take must never be silent about being silent:
-            // the lesson IS the mentor's words.
+            // the lesson IS the mentor's words. Granted but unattachable
+            // (busy, missing) is video-only too.
             onMain { [weak self] in self?.micWarning = true }
         }
     }
@@ -473,10 +473,12 @@ extension CameraEngine: AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureA
               asbd.mFormatID == kAudioFormatLinearPCM,
               asbd.mChannelsPerFrame > 0,
               (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) == 0 else { return -1 }
+        // The data pointer covers only the contiguous run at the offset:
+        // measure that run, never the buffer's total length.
         var length = 0
         var data: UnsafeMutablePointer<Int8>?
-        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: nil,
-                                          totalLengthOut: &length, dataPointerOut: &data) == noErr,
+        guard CMBlockBufferGetDataPointer(block, atOffset: 0, lengthAtOffsetOut: &length,
+                                          totalLengthOut: nil, dataPointerOut: &data) == noErr,
               let bytes = data, length > 0 else { return -1 }
         let channels = Int(asbd.mChannelsPerFrame)
         let raw = UnsafeRawPointer(bytes)

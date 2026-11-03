@@ -131,8 +131,9 @@ Served over HTTPS, the recorder is an installable PWA:
 `manifest.webmanifest` (standalone display, dark theme matching the
 Android app), home-screen
 icons in `icons/`, and `sw.js`, a service worker that caches the app
-shell for offline use — pages are network-first, so updates still
-arrive when online. On iPhone: open the page in Safari → Share →
+shell for offline use — pages and scripts are network-first, so updates
+still arrive together when online, and calls to other origins (the
+signer, Stream) never touch the cache. On iPhone: open the page in Safari → Share →
 **Add to Home Screen**; it launches full-screen with no Safari chrome,
 using the safe areas around the notch and home indicator. Lessons are
 unaffected: they still live in IndexedDB and downloads, never in the

@@ -10,6 +10,28 @@ history, the evidence, and the open items.
 State at this log: app committed in `0c0ed9d` (19 files). Prior repo
 HEAD was `b4f70b7`.
 
+## Update — 2026-11-02: bug sweep (device install pending)
+
+`MainActivity`: camera errors (raised on the camera thread) reset
+the Record button on the UI thread — before, the view write threw
+inside the engine's catch and a failed start stranded "■ Stop"; the
+take MediaRecorder is writing (`liveTake`) is no longer a session row
+(it cached a blank duration for good, could be tapped or deleted
+mid-take, and a backlog sweep could upload it half written); picked
+uploads copy under a `.part` name and rename in when complete;
+`.mkv` uploads list (they were copied and uploaded but invisible);
+Export and the per-row ↓ copy on the background pool (an hour-long
+lesson on the UI thread is an ANR). `CameraEngine`: a take that fails
+to start (setup, `start()`, or an unconfigurable session) deletes the
+empty file `prepare()` created (`discardFailedTake`), and the stop
+callback reports an empty take like iOS and the web. 7 new
+`AndroidBugSweepTests`.
+`build.sh` exit 0, token-stamped, template restored. **Not yet
+installed:** the Pixel 4's wireless-debugging port had rotated
+(connection refused). Next: `adb connect` the new port, `adb install
+-r`, launch, record a take while another uploads (row appears only
+after Stop, with its duration), Export with Cloud off.
+
 ## Update — 2026-11-01: parity sync + Android-at-home redesign
 
 Owner's order: bring Android to feature parity with the web and iOS
