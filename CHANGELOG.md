@@ -8,6 +8,11 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-03
 
+### Changed
+- **Repo hygiene.** `.gitignore` now ignores `.venv-python/`, the
+  Python 3.12 that `uv` downloads for `.venv` on hosts without one
+  (`rm -rf .venv .venv-python` undoes the whole local setup).
+
 ### Added
 - **Session parts: one session in several videos.** (User-ordered:
   record, upload, or fetch a video as the next part of a previous

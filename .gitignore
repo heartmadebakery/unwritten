@@ -28,3 +28,6 @@ project.xcworkspace/xcuserdata/
 DerivedData/
 # Older nested copy of this repo kept beside the working tree
 /unwritten/
+
+# Python 3.12 that uv downloads for .venv on hosts without one (rm -rf to undo)
+.venv-python/
