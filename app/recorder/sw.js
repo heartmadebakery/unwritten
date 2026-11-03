@@ -35,7 +35,7 @@ self.addEventListener("fetch", function(e){
        shell until the cache is cleared by hand. */
     if(res && res.ok){
       var copy = res.clone();
-      caches.open(CACHE).then(function(c){ c.put(e.request, copy); });
+      e.waitUntil(caches.open(CACHE).then(function(c){ return c.put(e.request, copy); }));
     }
     return res;
   }).catch(function(){

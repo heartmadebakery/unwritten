@@ -270,7 +270,7 @@ function clipHTML(c){
   var b = loadCloudLinks()[c.name] || null, st = b ? b.state : "", right, chip;
   /* Cloud-linking never removes the on-device download: every linked
      row keeps ↓ next to its cloud action. */
-  var dl = "<a class='iconbtn' href='" + c.url + "' download='" + c.name + "' title='Save a copy of " + c.name + "' aria-label='Save a copy'>" + ICON.download + "</a>";
+  var dl = "<a class='iconbtn' href='" + c.url + "' download='" + escHtml(c.name) + "' title='Save a copy of " + escHtml(c.name) + "' aria-label='Save a copy'>" + ICON.download + "</a>";
   if(!b){ right = dl; chip = chipHTML("", "On this device"); }
   else if(st === "uploading"){
     right = dl + "<span class='prog' style='--p:" + (b.progress | 0) + "' role='img' aria-label='Uploading " + (b.progress | 0) + " percent'>" + (b.progress | 0) + "%</span>";
@@ -278,11 +278,11 @@ function clipHTML(c){
   }
   else if(st === "processing" && !b.videoId){ right = dl + "<span class='spin' role='img' aria-label='Preparing'></span>"; chip = chipHTML("honey", "Preparing"); }
   else if(st === "failed"){
-    right = dl + "<a class='iconbtn' href='#' data-cloud-retry='" + c.name + "' title='Retry cloud upload' aria-label='Retry cloud upload'>" + ICON.retry + "</a>";
-    chip = "<a class='chip ember' href='#' data-cloud-retry='" + c.name + "'>Upload failed · Retry</a>";
+    right = dl + "<a class='iconbtn' href='#' data-cloud-retry='" + escHtml(c.name) + "' title='Retry cloud upload' aria-label='Retry cloud upload'>" + ICON.retry + "</a>";
+    chip = "<a class='chip ember' href='#' data-cloud-retry='" + escHtml(c.name) + "'>Upload failed · Retry</a>";
   }
   else {
-    right = dl + "<a class='iconbtn tonal' href='#' data-cloud-watch='" + c.name + "' title='Share session link' aria-label='Share session link'>" + ICON.share + "</a>";
+    right = dl + "<a class='iconbtn tonal' href='#' data-cloud-watch='" + escHtml(c.name) + "' title='Share session link' aria-label='Share session link'>" + ICON.share + "</a>";
     chip = st === "processing" ? chipHTML("honey", "Preparing") : chipHTML("sage", "In the cloud");
   }
   var ign = ignoredFor(c.name);
@@ -291,12 +291,12 @@ function clipHTML(c){
   if(memOnly) chip += " " + chipHTML("honey", "⚠ Not saved yet");
   var dur = durationFor(c.name);
   var rowTitle = "Play — long-press to delete" + (memOnly ? " — in memory only, download before closing" : "");
-  return "<div class='srow' data-row='" + c.name + "' title='" + rowTitle + "' data-state='" + leftIconFor(c.name) + "'>" +
+  return "<div class='srow' data-row='" + escHtml(c.name) + "' title='" + escHtml(rowTitle) + "' data-state='" + escHtml(leftIconFor(c.name)) + "'>" +
     thumbHTML(c, dur) +
-    "<span class='ltext'><span class='ltitle'>" + displayDateFor(c.name) + "</span>" +
+    "<span class='ltext'><span class='ltitle'>" + escHtml(displayDateFor(c.name)) + "</span>" +
     "<span class='chips'>" + chip + "</span></span>" +
     "<span class='sright'>" + right + "</span>" +
-    "<button class='vh' data-cloud-delete='" + c.name + "'>Delete " + c.name + "</button></div>";
+    "<button class='vh' data-cloud-delete='" + escHtml(c.name) + "'>Delete " + escHtml(c.name) + "</button></div>";
 }
 /* Ignored badges: the pipeline operator's set-asides sync to the
    hub (/hub/ignored); matching takes get an "ignored" badge on the
@@ -593,7 +593,7 @@ async function startCloudUpload(name, blob, sess){
     setCloudLink(name, {state: "failed", videoId: (sess && sess.videoId) || undefined,
                         uploadUrl: (sess && sess.uploadUrl) || undefined});
     renderClips();
-    $("status").innerHTML = "☁️ <b>Cloud upload didn't finish</b> (" + e.message + ") The session is safe on this device — tap ! on the session when the connection is better.";
+    $("status").innerHTML = "☁️ <b>Cloud upload didn't finish</b> (" + escHtml(e.message) + ") The session is safe on this device — tap ! on the session when the connection is better.";
   } finally { delete cloudActive[name]; }
 }
 /* Per-session share, like Android: the link is copied, then offered
@@ -750,24 +750,26 @@ function playHubSession(d){
   if(!url){
     var embed = hubEmbedUrl(d);
     if(embed){ window.open(embed, "_blank"); return; }
-    $("status").textContent = "No playable stream on this hub session yet.";
+    var _ps = $("status"); if(_ps) _ps.textContent = "No playable stream on this hub session yet.";
     return;
   }
   var p = $("hubplayer");
+  if(!p) return;
   /* HLS-only sessions can't play in a plain <video> outside Safari:
      a player error opens the Cloud embed page and says so. */
   p.onerror = function(){
     var embed = hubEmbedUrl(d);
+    var _ps2 = $("status");
     stopHubPlayback();
     if(embed){
-      $("status").textContent = "This browser can't play that stream here — opening the Cloud player.";
+      if(_ps2) _ps2.textContent = "This browser can't play that stream here — opening the Cloud player.";
       window.open(embed, "_blank");
     } else {
-      $("status").textContent = "Couldn't play that hub session.";
+      if(_ps2) _ps2.textContent = "Couldn't play that hub session.";
     }
   };
   p.src = url;
-  p.classList.remove("hidden"); $("hubclose").classList.remove("hidden");
+  p.classList.remove("hidden"); var _hc = $("hubclose"); if(_hc) _hc.classList.remove("hidden");
   try{ p.scrollIntoView({behavior: "smooth", block: "center"}); }catch(e){}
   p.play().catch(function(){});
 }
@@ -815,7 +817,7 @@ function stopHubPlayback(){
   p.onerror = null; /* clearing src must not trigger the fallback */
   try{ p.pause(); }catch(e){}
   p.removeAttribute("src"); p.load();
-  p.classList.add("hidden"); $("hubclose").classList.add("hidden");
+  p.classList.add("hidden"); var _hc2 = $("hubclose"); if(_hc2) _hc2.classList.add("hidden");
 }
 async function loadHub(){
   var box = $("hublist"), st = $("hubstatus");
