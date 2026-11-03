@@ -74,14 +74,18 @@ pipeline/run_pipeline.py --fetch work/cloud [--max N] [--retry-failed]
 
 Each job lands in `work/cloud/fetch_<jobid>/` as
 `unwritten_lesson_<stamp>.mp4` plus `source.json` (URL, title, job
-id), then runs into its own `work/cloud/<title>__<jobid>/` dir.
+id, and `join_to` — the hub session the link continues, if any),
+then runs into its own `work/cloud/<title>__<jobid>/` dir.
 When the pipeline succeeds, the lesson is uploaded to the Stream
 library (create the video, PUT the bytes, wait for finished) and
 recorded in `cloud_state.json` — so `--cloud` skips it and the
 publish loop picks it up for the in-app hub like any cloud lesson.
 The video id is stored in the session dir (`upload.json`) before
 the bytes go up, so a retry reuses it instead of minting a
-duplicate. Uploads need the direct library key
+duplicate. The job is closed with that id (`done {session,
+videoId}`): a link queued to continue a session (an app's *Add a
+part → Link*, `joinTo`) is tied on by the signer as that session's
+next part. Uploads need the direct library key
 (`CLOUD_LIBRARY_ID` + `CLOUD_LIBRARY_KEY` in `.env` — the proxy
 cannot stand in); without it `--fetch` fails fast before claiming.
 Failed jobs stay failed until `--retry-failed` reclaims them — after
@@ -93,6 +97,20 @@ left by a killed download: it downloads again. `FETCH_QUEUE_TOKEN` overrides the
 `CLOUD_PROXY_TOKEN`, else line 1 of the pool file);
 `CLOUD_PROXY_URL` (or the baked signer `https://unwritten-cloud-signer.heartmade.workers.dev` by default) stands in for the queue URL. `run_cloud.sh` runs
 `--fetch` ahead of `--cloud` on every run (queue defaults to the baked signer so a fresh clone never stalls).
+
+## Session parts
+
+A lesson filmed in several takes, uploaded in pieces, or fetched from
+more than one link can read as one overall session in the hub. The
+pipeline does not change for it: **each part is processed and
+published on its own** (its own transcript, write-up, corrections and
+clips), and the signer ties them together (`session_parts`, see
+`app/cloud-signer/README.md`). The hub detail then reads as one —
+the parts' write-ups in order under "Part N" headings, corrections
+and chapters tagged with their part, playback running part to part.
+A part not yet published shows as still processing. There is no
+combined transcript or cross-part write-up yet; each part's
+corrections are anchored to its own video.
 
 ## Races and reruns
 

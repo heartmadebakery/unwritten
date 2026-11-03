@@ -167,6 +167,11 @@ async function idbRestore(){
    IndexedDB writes. */
 function saveBlob(blob, name){
   var url = URL.createObjectURL(blob);
+  /* Continuing a session (?after=<videoId>): the take remembers which
+     session it is the next part of, and is tied on as soon as its
+     upload has a video id (tieCloudPart). */
+  var jt = joinTarget();
+  if(jt) setCloudLink(name, {joinTo: jt.videoId, joinTitle: jt.title});
   state.clips.unshift({name:name, url:url, type:blob.type || "", persisted:false});
   renderClips();
   var saved = idbPut(name, blob).then(function(){
@@ -284,6 +289,11 @@ function clipHTML(c){
   else {
     right = dl + "<a class='iconbtn tonal' href='#' data-cloud-watch='" + escHtml(c.name) + "' title='Share session link' aria-label='Share session link'>" + ICON.share + "</a>";
     chip = st === "processing" ? chipHTML("honey", "Preparing") : chipHTML("sage", "In the cloud");
+  }
+  if(b && b.joinTo){
+    var jt = escHtml(b.joinTitle || "a session");
+    chip += " " + (b.joined ? chipHTML("sage", "Part of " + jt)
+                            : chipHTML("honey", "Joins " + jt + " after upload"));
   }
   var ign = ignoredFor(c.name);
   if(ign) chip += " <span class='chip ign' title='Ignored by the operator" + (ign.reason ? ": " + escHtml(ign.reason) : "") + "'>ignored</span>";
@@ -584,6 +594,10 @@ async function startCloudUpload(name, blob, sess){
                         videoId: sess.videoId, uploadUrl: sess.uploadUrl});
     renderClips();
     $("status").innerHTML = "☁️ <b>Uploading to Cloud…</b> The session is already saved on this device.";
+    /* The video id exists now, so a take that continues a session is
+       tied on before its bytes finish (the hub counts it as still
+       processing until the pipeline publishes it). */
+    tieCloudPart(name);
     await tusSendAll(sess, blob, name);
     setCloudLink(name, {state: "processing", progress: 100, videoId: sess.videoId});
     renderClips();
@@ -663,6 +677,89 @@ async function cloudDeleteLesson(name){
 /* The hub lives on the signer, so it needs a signer token. Direct
    (library-key) mode has no hub at all. */
 function hubAvailable(){ return !cloudUseDirect() && !!cloudToken(); }
+
+/* ------------------------------------------------------------------
+   Session parts: a lesson filmed in several takes, uploaded in pieces,
+   or fetched from more than one link reads as one overall session.
+   The signer owns the model (/hub/parts); a capture page opened with
+   ?after=<videoId>&afterTitle=<title> (the hub's "Add a part") makes
+   every take or link it saves the next part of that session.
+------------------------------------------------------------------- */
+var joinCleared = false;
+function joinTarget(){
+  if(joinCleared) return null;
+  try{
+    var q = new URLSearchParams(location.search), v = (q.get("after") || "").trim();
+    return v ? {videoId: v, title: (q.get("afterTitle") || "").trim() || "the previous session"} : null;
+  }catch(e){ return null; }
+}
+function joinQuery(videoId, title){
+  return "after=" + encodeURIComponent(videoId) + "&afterTitle=" + encodeURIComponent(title || "");
+}
+/* The capture screens say which session they add to, with the way
+   out on the note itself. */
+function paintJoinBanner(){
+  var box = $("joinbanner"), jt = joinTarget(), gl = $("golink");
+  if(gl) gl.setAttribute("href", jt ? "link.html?" + joinQuery(jt.videoId, jt.title) : "link.html");
+  if(!box) return;
+  if(!jt){ box.innerHTML = ""; box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  box.innerHTML = "<span class='chip sage'>Part</span> <span>Adds a part to <b>" + escHtml(jt.title) +
+    "</b> — it joins that session in the hub once uploaded.</span> " +
+    "<button class='pill' data-join-clear='1'>Make it its own session</button>";
+  var b = box.querySelector("[data-join-clear]");
+  if(b) b.onclick = function(){
+    joinCleared = true;
+    try{ history.replaceState(null, "", location.pathname); }catch(e){}
+    paintJoinBanner();
+  };
+}
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", paintJoinBanner);
+else paintJoinBanner();
+async function postParts(videoIds){
+  var rs = await fetch(cloudSignerUrl() + "/hub/parts", {
+    method: "POST",
+    headers: {"Content-Type": "application/json", "X-Signer-Token": cloudToken()},
+    body: JSON.stringify({videoIds: videoIds})
+  });
+  if(rs.status === 401) throw new Error("the signer refused the token — check it in Cloud settings");
+  if(!rs.ok){
+    var msg = "";
+    try{ msg = (await rs.json()).error || ""; }catch(e){}
+    throw new Error("HTTP " + rs.status + (msg ? ": " + msg : ""));
+  }
+  return rs.json();
+}
+var tieActive = {};
+async function tieCloudPart(name){
+  var link = loadCloudLinks()[name];
+  if(!link || !link.joinTo || !link.videoId || link.joined || tieActive[name]) return;
+  if(!hubAvailable()){
+    var s0 = $("status");
+    if(s0) s0.innerHTML = "☁️ <b>Couldn't tie this take to " + escHtml(link.joinTitle || "its session") +
+      "</b> — parts need the signer token (Cloud settings). It will retry once the token is set.";
+    return;
+  }
+  tieActive[name] = true;
+  try{
+    for(var attempt = 1; attempt <= 3; attempt++){
+      try{
+        await postParts([link.joinTo, link.videoId]);
+        setCloudLink(name, {joined: true});
+        renderClips();
+        return;
+      }catch(e){
+        if(attempt === 3){
+          var st = $("status");
+          if(st) st.innerHTML = "☁️ <b>Couldn't tie this take to " + escHtml(link.joinTitle || "its session") +
+            "</b> (" + escHtml(e.message) + ") — it will retry when you next open Record. The take itself is safe.";
+          return;
+        }
+        await sleep(2000 * attempt);
+      }
+    }
+  } finally { delete tieActive[name]; }
+}
 function escHtml(s){
   return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){
     return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
@@ -672,11 +769,13 @@ function escHtml(s){
    playback URLs — a row opens the session's detail, like Android and
    iOS, and the detail holds Play / Share / Delete. */
 function hubRowHTML(r){
-  var sub = "";
-  if(r.lessonDate || r.durationSeconds){
-    var dur = r.durationSeconds ? fmtDur(r.durationSeconds) : "";
-    sub = "<span class='lsub'>" + escHtml(r.lessonDate || "") + (dur ? (r.lessonDate ? " \u2022 " : "") + dur : "") + "</span>";
-  }
+  var sub = "", bits = [];
+  if(r.lessonDate) bits.push(escHtml(r.lessonDate));
+  if(r.durationSeconds) bits.push(fmtDur(r.durationSeconds));
+  /* A tied session lists once: its parts and any still processing. */
+  if((r.partCount | 0) > 1) bits.push((r.partCount | 0) + " parts");
+  if((r.pendingParts | 0) > 0) bits.push((r.pendingParts | 0) + " processing");
+  if(bits.length) sub = "<span class='lsub'>" + bits.join(" \u2022 ") + "</span>";
   return "<button class='lesson' data-hub-open='" + escHtml(r.videoId || "") + "'>" +
     coverHTML(r.title || r.videoId) +
     "<span class='ltext'><span class='ltitle'>" + escHtml(r.title || r.videoId || "Untitled") + "</span>" +
@@ -708,16 +807,40 @@ function hubDetailHTML(d){
     "<div class='dacts'><button class='pill primary' data-hub-act='play'>" + ICON.play + "Play</button>" +
     "<button class='iconbtn tonal' data-hub-act='share' title='Share session link' aria-label='Share session link'>" + ICON.share + "</button>" +
     "<button class='iconbtn tonal danger' data-hub-act='delete' title='Delete from the hub and the cloud' aria-label='Delete from the hub and the cloud'>" + ICON.trash + "</button></div>";
+  /* Parts: each plays on its own or unties; Play above runs them all
+     in order. */
+  var parts = hubParts(d), multi = parts.length > 1;
+  if(multi || (d.pendingParts | 0) > 0){
+    h += "<h4 class='dsec'>Parts</h4><ol class='chapters parts'>";
+    parts.forEach(function(p, i){
+      var pd = p.durationSeconds ? " \u2022 " + fmtDur(p.durationSeconds) : "";
+      h += "<li><button class='tchip' data-hub-part-play='" + i + "' title='Play part " + (i + 1) + "' aria-label='Play part " + (i + 1) + "'>" + ICON.play + "Part " + (i + 1) + "</button>" +
+        "<span class='ptitle'>" + escHtml(p.title || p.videoId) + pd + "</span>" +
+        (multi ? "<button class='pill' data-hub-untie='" + escHtml(p.videoId) + "' title='Make this part its own session'>Untie</button>" : "") + "</li>";
+    });
+    h += "</ol>";
+    if((d.pendingParts | 0) > 0)
+      h += "<p class='note'>" + (d.pendingParts | 0) + " more part" + ((d.pendingParts | 0) > 1 ? "s" : "") + " still processing — they appear here once the pipeline has written them up.</p>";
+  }
+  /* Continue this session: whatever is recorded, uploaded or fetched
+     from here becomes its next part. */
+  var q = joinQuery(d.videoId, d.title || d.videoId);
+  h += "<h4 class='dsec'>Add a part</h4><div class='dacts addpart'>" +
+    "<a class='pill' href='record.html?" + q + "'>Record</a>" +
+    "<a class='pill' href='upload.html?" + q + "'>Upload</a>" +
+    "<a class='pill' href='link.html?" + q + "'>Link</a></div>" +
+    "<button class='pill block' data-hub-act='tie'>Tie a session to this one</button>" +
+    "<div id='tiepicker'></div>";
   if(d.writeupMd) h += "<div class='writeup'>" + inlineMd(d.writeupMd) + "</div>";
   if((d.corrections || []).length) h += "<h4 class='dsec'>Corrections</h4>";
   (d.corrections || []).forEach(function(c){
-    h += "<figure class='quote'><span class='tchip'>" + escHtml(c.start || "") + "</span>" +
+    h += "<figure class='quote'><span class='tchip'>" + (multi && c.part ? "Part " + (c.part | 0) + " \u00b7 " : "") + escHtml(c.start || "") + "</span>" +
       "<blockquote>“" + escHtml(c.quote || "") + "”</blockquote>" +
       (c.correcting ? "<figcaption>Correcting: " + escHtml(c.correcting) + "</figcaption>" : "") + "</figure>";
   });
   if((d.chapters || []).length) h += "<h4 class='dsec'>Chapters</h4><ol class='chapters'>";
   (d.chapters || []).forEach(function(c){
-    h += "<li><span class='tchip'>" + escHtml(c.start || "") + "</span>" + escHtml(c.label || "") + "</li>";
+    h += "<li><span class='tchip'>" + (multi && c.part ? "Part " + (c.part | 0) + " \u00b7 " : "") + escHtml(c.start || "") + "</span>" + escHtml(c.label || "") + "</li>";
   });
   if((d.chapters || []).length) h += "</ol>";
   return h + "</div></article>";
@@ -745,7 +868,21 @@ function closeHubSession(){ stopHubPlayback(); hubDetail = null; renderHubDetail
    published lesson never opens the camera. MP4 when the library has
    the fallback on, else HLS (Safari plays it natively), else the
    embed page in a new tab. */
-function playHubSession(d){
+/* The parts of a session (just itself for an untied one, or an older
+   signer that sends no parts). */
+function hubParts(d){
+  return (d && d.parts && d.parts.length) ? d.parts : (d ? [d] : []);
+}
+/* Play runs every part in order: each one's end starts the next. An
+   untied session is one part, so it plays exactly as before. */
+function playHubSession(whole, from){
+  var parts = hubParts(whole), i = from | 0;
+  if(i >= parts.length) return;
+  var d = parts[i];
+  if(d.libraryId === undefined && whole) d.libraryId = whole.libraryId;
+  var next = i + 1 < parts.length ? function(){ playHubSession(whole, i + 1); } : null;
+  var st = $("hubstatus");
+  if(st) st.textContent = parts.length > 1 ? "Playing part " + (i + 1) + " of " + parts.length + "." : "";
   var url = (d && (d.mp4Url || d.hlsUrl)) || "";
   if(!url){
     var embed = hubEmbedUrl(d);
@@ -768,12 +905,27 @@ function playHubSession(d){
       if(_ps2) _ps2.textContent = "Couldn't play that hub session.";
     }
   };
+  p.onended = next || null;
   p.src = url;
   p.classList.remove("hidden"); var _hc = $("hubclose"); if(_hc) _hc.classList.remove("hidden");
   try{ p.scrollIntoView({behavior: "smooth", block: "center"}); }catch(e){}
   p.play().catch(function(){});
 }
 async function shareHubSession(d){
+  var parts = hubParts(d);
+  if(parts.length > 1){
+    /* One link per part, in order, under the session's title. */
+    var text = parts.map(function(p, i){
+      return "Part " + (i + 1) + ": " + hubEmbedUrl({videoId: p.videoId, libraryId: p.libraryId || d.libraryId});
+    }).join("\n");
+    try{ if(navigator.clipboard) await navigator.clipboard.writeText(text); }catch(e){}
+    if(navigator.share){
+      try{ await navigator.share({title: d.title || "hub session", text: text}); }catch(e){}
+      return;
+    }
+    $("status").innerHTML = "☁️ Part links copied:<br>" + escHtml(text).replace(/\n/g, "<br>");
+    return;
+  }
   var url = hubEmbedUrl(d);
   if(!url){ $("status").innerHTML = "☁️ <b>No Cloud link yet</b> for this session."; return; }
   try{ if(navigator.clipboard) await navigator.clipboard.writeText(url); }catch(e){}
@@ -785,8 +937,67 @@ async function shareHubSession(d){
 }
 function confirmDeleteHub(d){
   if(!d || !d.videoId) return;
+  var parts = hubParts(d);
+  if(parts.length > 1){
+    /* One overall session: deleting it deletes every part, named. */
+    var names = parts.map(function(p, i){ return "  " + (i + 1) + ". " + (p.title || p.videoId); }).join("\n");
+    if(!confirm("Delete all " + parts.length + " parts?\n\n" + names + "\n\nEach is deleted from the cloud and the hub. To keep one, untie it first.")) return;
+    deleteHubParts(parts.map(function(p){ return p.videoId; }));
+    return;
+  }
   if(!confirm("Delete hub session?\n\nDelete '" + (d.title || d.videoId) + "' from the cloud and the hub?")) return;
   deleteHubSession(d.videoId);
+}
+async function deleteHubParts(ids){
+  for(var i = 0; i < ids.length; i++){
+    var ok = await deleteHubSession(ids[i]);
+    if(!ok){
+      $("status").innerHTML += " Stopped at part " + (i + 1) + " of " + ids.length + "; the rest are untouched.";
+      return;
+    }
+  }
+  $("status").innerHTML = "🗑 All " + ids.length + " parts deleted from the hub and the cloud.";
+}
+async function untieHubPart(d, videoId){
+  try{
+    var rs = await fetch(cloudSignerUrl() + "/hub/parts/" + encodeURIComponent(videoId),
+                         {method: "DELETE", headers: {"X-Signer-Token": cloudToken()}});
+    if(!rs.ok) throw new Error("HTTP " + rs.status);
+  }catch(e){
+    $("status").innerHTML = "☁️ <b>Couldn't untie that part</b> (" + escHtml(e.message) + ") Nothing changed.";
+    return;
+  }
+  $("status").innerHTML = "Part untied — it's its own session again.";
+  var stay = hubParts(d).filter(function(p){ return p.videoId !== videoId; })[0];
+  await openHubSession(stay ? stay.videoId : videoId);
+  loadHub();
+}
+/* Tie: pick another hub session; it (with any parts of its own)
+   joins the end of this one. */
+var hubRowsCache = [];
+function showTiePicker(d){
+  var box = $("tiepicker");
+  if(!box) return;
+  var mine = hubParts(d).map(function(p){ return p.videoId; });
+  var others = hubRowsCache.filter(function(r){ return mine.indexOf(r.videoId) < 0; });
+  if(!others.length){ box.innerHTML = "<p class='note'>No other hub sessions to tie on.</p>"; return; }
+  box.innerHTML = "<p class='note'>Pick the session that comes next — it joins the end of this one.</p>" +
+    others.map(function(r){
+      return "<button class='lesson' data-hub-tie='" + escHtml(r.videoId) + "'>" + coverHTML(r.title || r.videoId) +
+        "<span class='ltext'><span class='ltitle'>" + escHtml(r.title || r.videoId) + "</span>" +
+        ((r.partCount | 0) > 1 ? "<span class='lsub'>" + (r.partCount | 0) + " parts</span>" : "") + "</span></button>";
+    }).join("");
+}
+async function tieHubSessions(d, otherId){
+  try{
+    await postParts([d.videoId, otherId]);
+  }catch(e){
+    $("status").innerHTML = "☁️ <b>Couldn't tie those sessions</b> (" + escHtml(e.message) + ") Nothing changed.";
+    return;
+  }
+  $("status").innerHTML = "Tied — they're one session now.";
+  await openHubSession(d.videoId);
+  loadHub();
 }
 /* Hub record first, then the Stream video: a failure between the two
    leaves the bytes orphaned in Stream (still playable, still
@@ -799,22 +1010,24 @@ async function deleteHubSession(videoId){
     if(!rs.ok) throw new Error("hub delete failed (" + rs.status + ")");
   }catch(e){
     $("status").innerHTML = "☁️ <b>Couldn't delete the hub entry</b> (" + escHtml(e.message) + ") Keeping everything so nothing is lost.";
-    return;
+    return false;
   }
-  if(hubDetail && hubDetail.videoId === videoId) closeHubSession();
+  if(hubDetail && hubParts(hubDetail).some(function(p){ return p.videoId === videoId; })) closeHubSession();
   try{ await cloudDeleteVideo(videoId); }
   catch(e){
     loadHub();
     $("status").innerHTML = "☁️ <b>Hub entry removed, but the cloud copy remains</b> (" + escHtml(e.message) + ") Delete it from the Stream dashboard.";
-    return;
+    return true;
   }
   loadHub();
   $("status").innerHTML = "🗑 Session deleted from the hub and the cloud.";
+  return true;
 }
 function stopHubPlayback(){
   var p = $("hubplayer");
   if(!p) return;
   p.onerror = null; /* clearing src must not trigger the fallback */
+  p.onended = null;
   try{ p.pause(); }catch(e){}
   p.removeAttribute("src"); p.load();
   p.classList.add("hidden"); var _hc2 = $("hubclose"); if(_hc2) _hc2.classList.add("hidden");
@@ -842,10 +1055,13 @@ async function loadHub(){
     if(rs.status === 503){ st.innerHTML = "Hub isn't switched on at the server yet."; box.innerHTML = ""; return; }
     if(!rs.ok) throw new Error("HTTP " + rs.status);
     var rows = await rs.json();
+    hubRowsCache = rows || [];
     if(!rows || !rows.length){ st.innerHTML = ""; box.innerHTML = emptyHTML(ICON.book, "Nothing published yet.", "Finished lessons show up here once the pipeline has written them up."); return; }
     st.innerHTML = "";
     box.innerHTML = rows.map(hubRowHTML).join("");
-    if(hubDetail && !rows.some(function(r){ return r.videoId === hubDetail.videoId; })) closeHubSession();
+    /* A tied session lists under its first part: keep the detail open
+       while any of its parts is still listed. */
+    if(hubDetail && !rows.some(function(r){ return hubParts(hubDetail).some(function(p){ return p.videoId === r.videoId; }); })) closeHubSession();
   }catch(e){
     st.innerHTML = "Hub couldn't load — check the connection and Cloud settings. (" + escHtml(e.message) + ")";
     box.innerHTML = "";
@@ -856,6 +1072,8 @@ function cloudResumePending(){
   var m = loadCloudLinks();
   state.clips.forEach(function(c){
     var name = c.name, l = m[name];
+    /* A tie that failed earlier (offline, signer down) retries here. */
+    if(l && l.joinTo && l.videoId && !l.joined) tieCloudPart(name);
     if(l && l.state === "uploading" && l.uploadUrl && l.videoId){
       idbGetBlob(name).then(function(blob){
         if(blob) startCloudUpload(name, blob, {videoId: l.videoId, uploadUrl: l.uploadUrl});

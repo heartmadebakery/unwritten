@@ -8,6 +8,44 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-03
 
+### Added
+- **Session parts: one session in several videos.** (User-ordered:
+  record, upload, or fetch a video as the next part of a previous
+  session, or tie several together so they read as one overall
+  session.) *Signer:* `migrations/0005_parts.sql` (`session_parts`,
+  `fetch_jobs.join_to`); `POST /hub/parts {videoIds}` ties videos onto
+  the first one's session (merging whole sessions, order kept),
+  `DELETE /hub/parts/<id>` unties (a lone part dissolves its session;
+  hub delete unties too); `GET /hub/sessions` lists a tied session
+  once with `partCount`, `pendingParts`, `groupId` and the summed
+  length; `GET /hub/sessions/<any part>` answers the whole session
+  (one write-up under "Part N" headings, corrections/chapters tagged
+  with `part`, `parts` in order); `POST /fetch/jobs {url, joinTo}` and
+  `done {videoId}` tie a fetched link on. *Pipeline:* `--fetch` closes
+  jobs with the new Stream id; `source.json` records `join_to`.
+  Each part is still processed on its own. *Apps (web, Android, iOS):*
+  **Add a part** (Record / Upload / Link) on a hub session, an "Adds
+  a part to …" note on the capture screens (*Make it its own
+  session* backs out), takes tied as soon as their upload has an id
+  (three tries, retried on resume, never silent), "Part of …" chips
+  on device takes, **Tie a session to this one**, a Parts list (play
+  one / Untie), Play running part to part, "Part N ·" chips, share of
+  every part link, and a delete that names every part. Tests first:
+  32 new hub checks (101 total), `tests/test_session_parts.py` (18),
+  2 fetch-job tests; `test_one_job_runs_the_pipeline_and_finishes`
+  now expects the `video_id` (commented as user-ordered). Verified:
+  `node hub-check.mjs` 101/101; unittest 515/515 (with yt-dlp
+  installed, as `setup.sh` does); web driven in
+  Chromium (Playwright) against a mocked signer — hub detail, tie,
+  link queue with `joinTo`, upload tie with a retried failure; Android
+  `javac` clean against platform-34. **Not done here:** `dist/` and
+  the APK not rebuilt (no token pool / SDK on this host), no iOS
+  compile (no Xcode), no device runs, and `0005_parts.sql` is not yet
+  applied to the live D1 — apply it before deploying this worker.
+  Merged with `main`'s Swift-escape fix: the new `hubSubtitle` joins
+  with `"\u{2022}"`, and `test_unicode_escapes_are_swift_style`
+  passes over every new Swift line (516 tests).
+
 ### Fixed
 - **iOS build broken on `main` (Xcode Cloud archive failed).** The hub
   subtitle's bullet was written Java-style (`"•"`), a Swift

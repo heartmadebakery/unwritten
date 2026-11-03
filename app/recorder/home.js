@@ -18,7 +18,24 @@ $("hubdetail").onclick = function(e){
   else if(act === "play") playHubSession(hubDetail);
   else if(act === "share") shareHubSession(hubDetail);
   else if(act === "delete") confirmDeleteHub(hubDetail);
+  else if(act === "tie") showTiePicker(hubDetail);
 };
+/* Parts of a tied session: play one, untie one, or tie another
+   session onto the end (the picker under "Tie a session"). */
+$("hubdetail").addEventListener("click", function(e){
+  if(!hubDetail || !e.target.closest) return;
+  var pp = e.target.closest("[data-hub-part-play]");
+  if(pp){ playHubSession(hubDetail, +pp.getAttribute("data-hub-part-play")); return; }
+  var un = e.target.closest("[data-hub-untie]");
+  if(un){
+    var vid = un.getAttribute("data-hub-untie");
+    var p = hubParts(hubDetail).filter(function(x){ return x.videoId === vid; })[0];
+    if(confirm("Untie '" + ((p && p.title) || vid) + "'?\n\nIt becomes its own session again. Nothing is deleted.")) untieHubPart(hubDetail, vid);
+    return;
+  }
+  var tie = e.target.closest("[data-hub-tie]");
+  if(tie) tieHubSessions(hubDetail, tie.getAttribute("data-hub-tie"));
+});
 /* A personal hello over the title, by the device's own clock. */
 function greetingFor(hour){
   return hour < 5 ? "Good evening" : hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";

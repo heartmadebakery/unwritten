@@ -38,12 +38,15 @@ $("urlfetchbtn").onclick = async function(){
     var res = await fetch(cloudSignerUrl() + "/fetch/jobs", {
       method: "POST",
       headers: {"Content-Type": "application/json", "X-Signer-Token": cloudToken()},
-      body: JSON.stringify({url: u})
+      /* Continuing a session: the pipeline's fetched video becomes
+         its next part (the signer ties it when the job is done). */
+      body: JSON.stringify(joinTarget() ? {url: u, joinTo: joinTarget().videoId} : {url: u})
     });
     if(res.status === 401){ st.innerHTML = "Signer refused the token — check it in Cloud settings."; return; }
     if(!res.ok) throw new Error("HTTP " + res.status);
     $("urlinput").value = "";
-    st.innerHTML = "✅ <b>Queued.</b> The pipeline will fetch the video and process it like a recording.";
+    st.innerHTML = "✅ <b>Queued.</b> The pipeline will fetch the video and process it like a recording." +
+      (joinTarget() ? " It joins <b>" + escHtml(joinTarget().title) + "</b> as its next part." : "");
   }catch(e){
     st.innerHTML = "⬇ <b>Couldn't queue that link</b> (" + escHtml(e.message) + ") Check the connection and Cloud settings.";
   }

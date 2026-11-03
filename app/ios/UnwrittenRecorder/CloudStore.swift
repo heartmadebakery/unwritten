@@ -141,6 +141,18 @@ final class CloudStore: @unchecked Sendable {
         saveLinks(all)
     }
 
+    /// Patch arbitrary fields of one lesson's link record (session
+    /// parts: joinTo, joinTitle, joined) — never replaces the record.
+    func setLinkFields(_ name: String, _ fields: [String: Any]) {
+        linksLock.lock()
+        defer { linksLock.unlock() }
+        var all = links()
+        var cur = all[name] ?? [:]
+        for (k, v) in fields { cur[k] = v }
+        all[name] = cur
+        saveLinks(all)
+    }
+
     func delCloudLink(_ name: String) {
         linksLock.lock()
         defer { linksLock.unlock() }

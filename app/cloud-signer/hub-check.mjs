@@ -1,8 +1,8 @@
 // Unwritten Craft — hub store check. Zero dependencies:
 //   node app/cloud-signer/hub-check.mjs
 // Drives the real worker.js against a real SQLite database (node:sqlite)
-// seeded with migrations/0001_sessions.sql, 0002_fetch_jobs.sql, and
-// 0003_ignored.sql, through the real HTTP routes. Fails non-zero on
+// seeded with every migration (0001_sessions.sql through
+// 0005_parts.sql), through the real HTTP routes. Fails non-zero on
 // the first mismatch.
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -17,6 +17,7 @@ db.exec(readFileSync(join(dir, "migrations", "0001_sessions.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0002_fetch_jobs.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0003_ignored.sql"), "utf8"));
 db.exec(readFileSync(join(dir, "migrations", "0004_duration.sql"), "utf8"));
+db.exec(readFileSync(join(dir, "migrations", "0005_parts.sql"), "utf8"));
 
 // D1-compatible stub over the real database: prepare/bind/first/all/run
 // (bind is optional on real D1 when the query takes no parameters).
@@ -399,5 +400,169 @@ const VID = "vid-123";
   const r = await call(authed, "POST", "/hub/publish", { videoId: 42, title: "Num" }, TOKEN);
   check(r.status === 200 && r.data.published === "42", "a numeric videoId publishes as a string");
   await call(authed, "DELETE", "/hub/sessions/42", undefined, TOKEN);
+}
+// Parts: several videos tied together read as one overall session.
+// A part is any Stream video id — published or not yet — so a take
+// can be tied the moment its upload has an id; the hub shows only
+// published parts and counts the rest as still processing.
+{
+  const pub = (videoId, title, extra) => call(authed, "POST", "/hub/publish",
+    Object.assign({ videoId, title, lessonDate: "Nov 3, 2026" }, extra || {}), TOKEN);
+  await pub("pa", "Croissants", {
+    durationSeconds: 60, writeupMd: "Laminate.", mp4Url: "https://cdn/pa.mp4",
+    corrections: [{ start: "0:10", quote: "colder", correcting: "butter" }],
+    chapters: [{ start: "0:00", label: "Dough" }],
+  });
+  await pub("pb", "Croissants shaping", {
+    durationSeconds: 90, writeupMd: "Roll tight.", mp4Url: "https://cdn/pb.mp4",
+    corrections: [{ start: "0:20", quote: "tighter", correcting: "roll" }],
+    chapters: [{ start: "0:00", label: "Shaping" }],
+  });
+  await pub("pc", "Croissants bake", { durationSeconds: 30, writeupMd: "Bake." });
+
+  const bad = await call(authed, "POST", "/hub/parts", { videoIds: ["pa"] }, TOKEN);
+  check(bad.status === 400, "tying needs at least two videos");
+  const bad2 = await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "pa"] }, TOKEN);
+  check(bad2.status === 400, "tying a video to itself is refused");
+
+  const t = await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "pb"] }, TOKEN);
+  check(t.status === 200 && typeof t.data.groupId === "string" && t.data.groupId &&
+    JSON.stringify(t.data.parts) === JSON.stringify(["pa", "pb"]), "tie returns the group in order");
+
+  let list = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  let rows = list.data.filter((r) => ["pa", "pb", "pc"].includes(r.videoId));
+  const grp = rows.find((r) => r.videoId === "pa");
+  check(rows.length === 2 && grp && !rows.some((r) => r.videoId === "pb"),
+    "a tied session lists once, under its first part");
+  check(grp.partCount === 2 && grp.durationSeconds === 150 && grp.title === "Croissants" &&
+    grp.groupId === t.data.groupId && grp.pendingParts === 0,
+    "the listed session carries part count, total length, and group");
+  const solo = rows.find((r) => r.videoId === "pc");
+  check(solo.partCount === 1 && solo.groupId === "" && solo.pendingParts === 0,
+    "an untied session lists as one part");
+
+  const dB = await call(authed, "GET", "/hub/sessions/pb", undefined, TOKEN);
+  check(dB.status === 200 && dB.data.videoId === "pa" && dB.data.parts.length === 2 &&
+    dB.data.parts[0].videoId === "pa" && dB.data.parts[1].videoId === "pb" &&
+    dB.data.parts[1].mp4Url === "https://cdn/pb.mp4" && dB.data.parts[1].durationSeconds === 90,
+    "any part opens the whole session, parts in order with their streams");
+  check(dB.data.durationSeconds === 150 && dB.data.title === "Croissants",
+    "the whole session's length is the sum of its parts");
+  check(/\*\*Part 1 — Croissants\*\*/.test(dB.data.writeupMd) &&
+    /\*\*Part 2 — Croissants shaping\*\*/.test(dB.data.writeupMd) &&
+    dB.data.writeupMd.indexOf("Laminate.") < dB.data.writeupMd.indexOf("Roll tight."),
+    "the write-up reads as one, each part under its heading");
+  check(dB.data.corrections.length === 2 && dB.data.corrections[0].part === 1 &&
+    dB.data.corrections[1].part === 2 && dB.data.corrections[1].start === "0:20" &&
+    dB.data.chapters[1].part === 2 && dB.data.chapters[1].label === "Shaping",
+    "corrections and chapters carry the part they come from");
+
+  // Tie another (published) and a not-yet-published take onto the end.
+  const t2 = await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "pc", "pending-1"] }, TOKEN);
+  check(t2.status === 200 && JSON.stringify(t2.data.parts) === JSON.stringify(["pa", "pb", "pc", "pending-1"]),
+    "tying more onto a session appends them in order");
+  list = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  const g3 = list.data.find((r) => r.videoId === "pa");
+  check(g3.partCount === 3 && g3.pendingParts === 1 && !list.data.some((r) => r.videoId === "pc"),
+    "an unpublished part counts as still processing, not as a row");
+  await pub("pending-1", "Croissants tasting", { durationSeconds: 5 });
+  list = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  const g4 = list.data.find((r) => r.videoId === "pa");
+  check(g4.partCount === 4 && g4.pendingParts === 0 && !list.data.some((r) => r.videoId === "pending-1"),
+    "a pending part joins the session once the pipeline publishes it");
+
+  // Two groups tie into one, the second group's order kept.
+  await pub("qa", "Sourdough", {}); await pub("qb", "Sourdough 2", {});
+  await call(authed, "POST", "/hub/parts", { videoIds: ["qa", "qb"] }, TOKEN);
+  const m = await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "qa"] }, TOKEN);
+  check(JSON.stringify(m.data.parts) === JSON.stringify(["pa", "pb", "pc", "pending-1", "qa", "qb"]),
+    "tying two sessions merges them, each keeping its order");
+
+  // Untie: the part stands alone again; a group left with one member dissolves.
+  const u = await call(authed, "DELETE", "/hub/parts/qb", undefined, TOKEN);
+  check(u.status === 200 && u.data.untied === true, "untie answers untied");
+  list = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  check(list.data.some((r) => r.videoId === "qb" && r.partCount === 1),
+    "an untied part lists as its own session again");
+  const u0 = await call(authed, "DELETE", "/hub/parts/never-tied", undefined, TOKEN);
+  check(u0.status === 200 && u0.data.untied === false, "untying an untied video is a no-op");
+  for (const v of ["pb", "pc", "pending-1", "qa"]) await call(authed, "DELETE", `/hub/parts/${v}`, undefined, TOKEN);
+  const solo2 = await call(authed, "GET", "/hub/sessions/pa", undefined, TOKEN);
+  check(solo2.data.parts.length === 1 && solo2.data.groupId === "" && solo2.data.writeupMd === "Laminate." &&
+    solo2.data.corrections[0].part === 1,
+    "the last part left alone dissolves its group and reads as before");
+
+  // Deleting a hub session unties it too.
+  await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "pb"] }, TOKEN);
+  await call(authed, "DELETE", "/hub/sessions/pb", undefined, TOKEN);
+  const afterDel = await call(authed, "GET", "/hub/sessions/pa", undefined, TOKEN);
+  check(afterDel.data.parts.length === 1 && afterDel.data.groupId === "",
+    "deleting a part from the hub unties it");
+
+  // An ignored part never shows, in the list or the detail.
+  await pub("pb", "Croissants shaping", { durationSeconds: 90 });
+  await call(authed, "POST", "/hub/parts", { videoIds: ["pa", "pb"] }, TOKEN);
+  await call(authed, "POST", "/hub/ignored", { videoId: "pb" }, TOKEN);
+  const ig = await call(authed, "GET", "/hub/sessions/pa", undefined, TOKEN);
+  list = await call(authed, "GET", "/hub/sessions", undefined, TOKEN);
+  const gi = list.data.find((r) => r.videoId === "pa");
+  check(ig.data.parts.length === 1 && gi.partCount === 1 && gi.pendingParts === 0,
+    "an ignored part is left out, not counted as processing");
+  await call(authed, "DELETE", "/hub/ignored/pb", undefined, TOKEN);
+
+  const m405 = await call(authed, "GET", "/hub/parts", undefined, TOKEN);
+  check(m405.status === 405, "unknown parts method rejected");
+  const nodb = await call(noDb, "POST", "/hub/parts", { videoIds: ["a", "b"] }, TOKEN);
+  check(nodb.status === 503, "parts answer 503 with no store");
+  for (const v of ["pa", "pb", "pc", "pending-1", "qa", "qb"]) {
+    await call(authed, "DELETE", `/hub/parts/${v}`, undefined, TOKEN);
+    await call(authed, "DELETE", `/hub/sessions/${v}`, undefined, TOKEN);
+  }
+}
+// A fetched link can continue a session: the job carries joinTo, and
+// when the pipeline reports the job done with its new Stream video
+// id, the worker ties it onto that session.
+{
+  await call(authed, "POST", "/hub/publish", { videoId: "fa", title: "Pasta" }, TOKEN);
+  const s = await call(authed, "POST", "/fetch/jobs",
+    { url: "https://www.youtube.com/watch?v=part2", joinTo: "fa" }, TOKEN);
+  check(s.status === 200, "a fetch job can name the session it continues");
+  const c = await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  check(c.data.job && c.data.job.id === s.data.id && c.data.job.joinTo === "fa",
+    "the claim hands the pipeline the session to continue");
+  const d = await call(authed, "POST", `/fetch/jobs/${s.data.id}/done`, { session: "w/2", videoId: "fb" }, TOKEN);
+  check(d.status === 200 && d.data.ok === true && d.data.tied === true, "done with a video id ties it on");
+  await call(authed, "POST", "/hub/publish", { videoId: "fb", title: "Pasta 2" }, TOKEN);
+  const g = await call(authed, "GET", "/hub/sessions/fb", undefined, TOKEN);
+  check(g.data.parts.length === 2 && g.data.parts[0].videoId === "fa" && g.data.parts[1].videoId === "fb",
+    "the fetched video is the next part of the session");
+  const list = await call(authed, "GET", "/fetch/jobs", undefined, TOKEN);
+  check(list.data.find((j) => j.id === s.data.id).joinTo === "fa", "the job list shows what it continues");
+  const plain = await call(authed, "POST", "/fetch/jobs", { url: "https://x/plain.mp4" }, TOKEN);
+  await call(authed, "GET", "/fetch/jobs?claim=1&by=pipe1", undefined, TOKEN);
+  const pd = await call(authed, "POST", `/fetch/jobs/${plain.data.id}/done`, { session: "w/3", videoId: "fc" }, TOKEN);
+  check(pd.data.ok === true && pd.data.tied === false, "a job without joinTo ties nothing");
+  const re = await call(authed, "POST", "/fetch/jobs", { url: "https://x/again.mp4" }, TOKEN);
+  const re2 = await call(authed, "POST", "/fetch/jobs", { url: "https://x/again.mp4", joinTo: "fa" }, TOKEN);
+  const rl = await call(authed, "GET", "/fetch/jobs", undefined, TOKEN);
+  check(re2.data.id === re.data.id && rl.data.find((j) => j.id === re.data.id).joinTo === "fa",
+    "resubmitting a queued link with joinTo updates what it continues");
+  for (const v of ["fa", "fb"]) {
+    await call(authed, "DELETE", `/hub/parts/${v}`, undefined, TOKEN);
+    await call(authed, "DELETE", `/hub/sessions/${v}`, undefined, TOKEN);
+  }
+}
+// A store without 0005 names it, on the parts route and on the list.
+{
+  const old = new DatabaseSync(":memory:");
+  for (const f of ["0001_sessions.sql", "0002_fetch_jobs.sql", "0003_ignored.sql", "0004_duration.sql"])
+    old.exec(readFileSync(join(dir, "migrations", f), "utf8"));
+  const env = { ...authed, DB: d1(old) };
+  const p = await call(env, "POST", "/hub/parts", { videoIds: ["a", "b"] }, TOKEN);
+  check(p.status === 503 && /0005_parts\.sql/.test(p.data.error), "parts name the missing migration");
+  const s = await call(env, "GET", "/hub/sessions", undefined, TOKEN);
+  check(s.status === 503 && /0005_parts\.sql/.test(s.data.error), "hub list names 0005 when it is missing");
+  const f = await call(env, "POST", "/fetch/jobs", { url: "https://x/y.mp4", joinTo: "a" }, TOKEN);
+  check(f.status === 503 && /0005_parts\.sql/.test(f.data.error), "fetch joinTo names 0005 when it is missing");
 }
 console.log(`ALL HUB CHECKS PASSED (${n})`);

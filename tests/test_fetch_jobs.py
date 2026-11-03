@@ -120,6 +120,23 @@ class TestQueueClient(unittest.TestCase):
         self.assertEqual(seen[1][0], "https://w.example/fetch/jobs/job_2/failed")
         self.assertEqual(seen[1][1], {"error": "boom"})
 
+    def test_finish_reports_the_video_id_for_parts(self):
+        # A link that continues a session: done carries the new Stream
+        # video id, and the signer ties it onto the job's joinTo.
+        seen = []
+
+        def fake_open(req, timeout=30):
+            seen.append(json.loads(req.data))
+            return resp_json({"ok": True, "tied": True})
+
+        with mock.patch.object(fj.urllib.request, "urlopen", fake_open):
+            fj.finish_job(self.cfg, "job_1", True, session="w/1",
+                          video_id="vid-9")
+            fj.finish_job(self.cfg, "job_2", False, error="boom",
+                          video_id="vid-9")
+        self.assertEqual(seen[0], {"session": "w/1", "videoId": "vid-9"})
+        self.assertEqual(seen[1], {"error": "boom"})
+
     def test_401_names_the_token_fix(self):
         def fake_open(req, timeout=30):
             raise http_error(req.full_url, 401, "unauthorized")
@@ -223,6 +240,13 @@ class TestNaming(unittest.TestCase):
             self.assertTrue(os.path.exists(dest))
             self.assertEqual(
                 [n for n in os.listdir(td) if n.endswith(".part")], [])
+
+    def test_source_records_the_session_it_continues(self):
+        with tempfile.TemporaryDirectory() as td:
+            fj.write_source(td, {"url": "u", "id": "job_1", "joinTo": "vid-1"},
+                            "Pasta", os.path.join(td, "m.mp4"))
+            with open(os.path.join(td, "source.json")) as fh:
+                self.assertEqual(json.load(fh)["join_to"], "vid-1")
 
     def test_source_round_trip(self):
         with tempfile.TemporaryDirectory() as td:
@@ -400,8 +424,11 @@ class TestFetchMode(unittest.TestCase):
         self.assertEqual(code, 0)
         dl.assert_called_once()
         one.assert_called_once()
+        # User-ordered change (session parts): done now reports the
+        # Stream video id, so a job that continues a session is tied
+        # onto it by the signer.
         fin.assert_called_with({"queue": "q", "token": ""}, "job_1", True,
-                               session=mock.ANY, error="")
+                               session=mock.ANY, error="", video_id="vid-9")
         # The finished lesson is uploaded to Stream and recorded in
         # the cloud state, so --cloud skips it and the publish loop
         # picks it up for the hub.

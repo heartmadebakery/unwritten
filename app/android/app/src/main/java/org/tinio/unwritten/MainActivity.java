@@ -116,6 +116,11 @@ public class MainActivity extends Activity {
     private JSONArray hubRows = new JSONArray();
     private JSONObject hubDetail;
     private String hubNotice = "";
+    // Session parts: the hub session that takes, uploads and links made
+    // now continue ("Add a part" on a hub session sets it; Home or
+    // "Make it its own session" clears it). Null = each is its own.
+    private String joinToVideoId = null, joinToTitle = null;
+    private final List<LinearLayout> joinBanners = new ArrayList<LinearLayout>();
     private JSONObject ignoredById = new JSONObject();
     private JSONObject ignoredByTitle = new JSONObject();
     private SeekBar zoomSeek;
@@ -556,6 +561,7 @@ public class MainActivity extends Activity {
      *  (its own screen). Toasts report each pick, here and nowhere else. */
     private void buildUploadScreen() {
         uploadScreen.setClipChildren(false);
+        uploadScreen.addView(joinBannerView());
         TextView note = label("Add a lesson video. It is saved as a session and uploaded to Cloud, and the pipeline picks it up like a recording.", 15, DIM);
         note.setPadding(dp(2), dp(8), dp(2), dp(14));
         uploadScreen.addView(note);
@@ -595,6 +601,7 @@ public class MainActivity extends Activity {
     /** Fetch from link: a screen of its own, reached from Upload. */
     private void buildLinkScreen() {
         linkScreen.setClipChildren(false);
+        linkScreen.addView(joinBannerView());
         TextView note = label("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.", 15, DIM);
         note.setPadding(dp(2), dp(8), dp(2), dp(4));
         linkScreen.addView(note);
@@ -659,6 +666,7 @@ public class MainActivity extends Activity {
         // Back button are the ways off this screen (see the action-bar
         // section below).
         recordScreen.setClipChildren(false);
+        recordScreen.addView(joinBannerView());
         // Viewfinder with in-player overlay (playback appears inside viewfinder)
         viewfinderBox = new android.widget.FrameLayout(this);
         viewfinderBox.setBackground(rounded(Color.BLACK, 24));
@@ -892,6 +900,8 @@ public class MainActivity extends Activity {
         currentScreen = name;
         boolean home = "home".equals(name);
         boolean record = "record".equals(name);
+        if (home) clearJoinTarget();
+        paintJoinBanners();
         android.app.ActionBar bar = getActionBar();
         if (bar != null) {
             bar.setTitle(home ? "Unwritten Craft" : record ? "Record"
@@ -945,9 +955,11 @@ public class MainActivity extends Activity {
         }
         Toast.makeText(this, "⬇ Queuing…", Toast.LENGTH_SHORT).show();
         final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+        // Continuing a session: the fetched video becomes its next part.
+        final String join = joinToVideoId, joinTitle = joinToTitle;
         cloudExec.execute(new Runnable() { @Override public void run() {
             try {
-                new HubClient(surl, stok).queueFetchJob(url);
+                new HubClient(surl, stok).queueFetchJob(url, join);
             } catch (final Exception e) {
                 runOnUiThread(new Runnable() { @Override public void run() {
                     Toast.makeText(MainActivity.this, "Couldn't queue that link (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
@@ -955,7 +967,8 @@ public class MainActivity extends Activity {
                 return;
             }
             runOnUiThread(new Runnable() { @Override public void run() {
-                Toast.makeText(MainActivity.this, "✅ Queued — the pipeline will fetch the video.", Toast.LENGTH_LONG).show();
+                Toast.makeText(MainActivity.this, "✅ Queued — the pipeline will fetch the video."
+                        + (join == null ? "" : " It joins " + joinTitle + " as its next part."), Toast.LENGTH_LONG).show();
             } });
         } });
     }
@@ -1006,6 +1019,7 @@ public class MainActivity extends Activity {
                 } });
                 return;
             }
+            markJoin(dest.getName());
             runOnUiThread(new Runnable() { @Override public void run() {
                 refreshClipList();
                 maybeCloudUpload(dest);
@@ -1209,6 +1223,7 @@ public class MainActivity extends Activity {
                     showError("⚠️ That take was empty — nothing was captured. Record the lesson again.");
                 }
                 if (lastLessonFile != null) durationCache.remove(lastLessonFile.getName());
+                if (lastLessonFile != null) markJoin(lastLessonFile.getName());
                 refreshClipList();
                 if (lastLessonFile != null) maybeCloudUpload(lastLessonFile);
                 // A stop that finishes off the record screen (the up arrow
@@ -1484,6 +1499,12 @@ public class MainActivity extends Activity {
             // right: save a copy always; then share when ready, progress
             // while uploading, a spinner while preparing, retry on failure
             JSONObject link = cloudLink(name);
+            if (link != null && !link.optString("joinTo", "").isEmpty()) {
+                String jt = link.optString("joinTitle", "a session");
+                chips.addView(link.optBoolean("joined", false)
+                        ? chip("Part of " + jt, SAGE_SOFT, SAGE)
+                        : chip("Joins " + jt + " after upload", HONEY_SOFT, HONEY));
+            }
             String st = link == null ? "" : link.optString("state", "");
             boolean isReady = "ready".equals(st);
             if (link == null) {
@@ -1949,9 +1970,12 @@ public class MainActivity extends Activity {
                 hubNotice = "";
                 if (hubDetail != null) {
                     boolean stillThere = false;
-                    String cur = hubDetail.optString("videoId", "");
+                    // A tied session lists under its first part: keep the
+                    // detail while any of its parts is listed.
+                    Set<String> cur = new HashSet<String>();
+                    for (JSONObject p : hubParts(hubDetail)) cur.add(p.optString("videoId", ""));
                     for (int i = 0; i < hubRows.length(); i++) {
-                        if (cur.equals(hubRows.optJSONObject(i).optString("videoId", ""))) { stillThere = true; break; }
+                        if (cur.contains(hubRows.optJSONObject(i).optString("videoId", ""))) { stillThere = true; break; }
                     }
                     if (!stillThere) hubDetail = null;
                 }
@@ -2061,6 +2085,10 @@ public class MainActivity extends Activity {
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             mid.addView(t);
             String hubSub = !date.isEmpty() && !dur.isEmpty() ? date + " \u2022 " + dur : (!date.isEmpty() ? date : dur);
+            // A tied session lists once: its parts and any still processing.
+            int partCount = row.optInt("partCount", 1), pendingParts = row.optInt("pendingParts", 0);
+            if (partCount > 1) hubSub += (hubSub.isEmpty() ? "" : " \u2022 ") + partCount + " parts";
+            if (pendingParts > 0) hubSub += (hubSub.isEmpty() ? "" : " \u2022 ") + pendingParts + " processing";
             if (!hubSub.isEmpty()) {
                 TextView d = new TextView(this);
                 d.setText(hubSub); d.setTextSize(14); d.setTextColor(DIM);
@@ -2170,7 +2198,7 @@ public class MainActivity extends Activity {
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.setPadding(0, dp(14), 0, dp(4));
         Button play = primaryButton("▶  Play", BRIGHT);
-        play.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { playHubRemote(obj); } });
+        play.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { playHubRemote(obj, 0); } });
         actions.addView(play, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         android.widget.ImageButton share = iconButton(Glyphs.SHARE, TEXT, PRESSED, "Share session link",
                 new View.OnClickListener() { @Override public void onClick(View v) { shareHubSession(obj); } });
@@ -2178,11 +2206,69 @@ public class MainActivity extends Activity {
         actions.addView(share);
         android.widget.ImageButton del = iconButton(Glyphs.TRASH, RED, PRESSED, "Delete from the hub and the cloud",
                 new View.OnClickListener() { @Override public void onClick(View v) {
+            if (hubParts(obj).size() > 1) { confirmDeleteHubParts(obj); return; }
             confirmDeleteHub(obj.optString("title", obj.optString("videoId", "")), obj.optString("videoId", ""));
         } });
         ((LinearLayout.LayoutParams) del.getLayoutParams()).setMargins(dp(8), 0, 0, 0);
         actions.addView(del);
         body.addView(actions);
+        // Parts: each plays on its own or unties; Play above runs them
+        // all in order.
+        final List<JSONObject> parts = hubParts(obj);
+        final boolean multi = parts.size() > 1;
+        int pending = obj.optInt("pendingParts", 0);
+        if (multi || pending > 0) {
+            body.addView(detailHeader("Parts"));
+            for (int i = 0; i < parts.size(); i++) {
+                final JSONObject p = parts.get(i);
+                final int idx = i;
+                LinearLayout pr = new LinearLayout(this);
+                pr.setOrientation(LinearLayout.HORIZONTAL);
+                pr.setGravity(Gravity.CENTER_VERTICAL);
+                pr.setMinimumHeight(dp(48));
+                TextView pc = chip("▶ Part " + (i + 1), EMBER_SOFT, EMBER_INK);
+                pc.setClickable(true);
+                pc.setContentDescription("Play part " + (i + 1));
+                pc.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { playHubRemote(obj, idx); } });
+                ((LinearLayout.LayoutParams) pc.getLayoutParams()).setMargins(0, 0, dp(10), 0);
+                pr.addView(pc);
+                String pd = formatDuration(p.optInt("durationSeconds", 0));
+                final String ptitle = p.optString("title", p.optString("videoId", ""));
+                pr.addView(label(ptitle + (pd.isEmpty() ? "" : " \u2022 " + pd), 15, TEXT),
+                        new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+                if (multi) {
+                    Button un = smallHubButton("Untie");
+                    un.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+                    un.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+                        untieHubPart(obj, p.optString("videoId", ""), ptitle);
+                    } });
+                    pr.addView(un);
+                }
+                body.addView(pr);
+            }
+            if (pending > 0) {
+                TextView pn = label(pending + " more part" + (pending > 1 ? "s" : "")
+                        + " still processing — they appear here once the pipeline has written them up.", 14, DIM);
+                pn.setPadding(0, dp(6), 0, 0);
+                body.addView(pn);
+            }
+        }
+        // Continue this session: whatever is recorded, uploaded or
+        // fetched next becomes its next part.
+        body.addView(detailHeader("Add a part"));
+        LinearLayout add = new LinearLayout(this);
+        add.setOrientation(LinearLayout.HORIZONTAL);
+        String[][] ways = { {"Record", "record"}, {"Upload", "upload"}, {"Link", "link"} };
+        for (final String[] way : ways) {
+            Button b = smallHubButton(way[0]);
+            b.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { startJoin(obj, way[1]); } });
+            add.addView(b);
+        }
+        body.addView(add);
+        Button tie = smallHubButton("Tie a session to this one");
+        tie.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)));
+        tie.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { showTiePicker(obj); } });
+        body.addView(tie);
         String writeup = obj.optString("writeupMd", "");
         if (!writeup.isEmpty()) {
             View rule = new View(this);
@@ -2210,7 +2296,8 @@ public class MainActivity extends Activity {
                 q.setPadding(dp(14), dp(12), dp(14), dp(12));
                 LinearLayout.LayoutParams ql = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
                 ql.setMargins(0, 0, 0, dp(10));
-                TextView tc = chip(c.optString("start", ""), EMBER_SOFT, EMBER_INK);
+                TextView tc = chip((multi && c.optInt("part", 0) > 0 ? "Part " + c.optInt("part", 0) + " \u00b7 " : "")
+                        + c.optString("start", ""), EMBER_SOFT, EMBER_INK);
                 q.addView(tc);
                 TextView quote = label("\u201C" + c.optString("quote", "") + "\u201D", 16, TEXT);
                 quote.setPadding(0, dp(8), 0, 0);
@@ -2233,7 +2320,8 @@ public class MainActivity extends Activity {
                 ch.setOrientation(LinearLayout.HORIZONTAL);
                 ch.setGravity(Gravity.CENTER_VERTICAL);
                 ch.setMinimumHeight(dp(44));
-                TextView tc = chip(c.optString("start", ""), EMBER_SOFT, EMBER_INK);
+                TextView tc = chip((multi && c.optInt("part", 0) > 0 ? "Part " + c.optInt("part", 0) + " \u00b7 " : "")
+                        + c.optString("start", ""), EMBER_SOFT, EMBER_INK);
                 ((LinearLayout.LayoutParams) tc.getLayoutParams()).setMargins(0, 0, dp(12), 0);
                 ch.addView(tc);
                 ch.addView(label(c.optString("label", ""), 15, TEXT));
@@ -2261,6 +2349,24 @@ public class MainActivity extends Activity {
     }
 
     private void shareHubSession(JSONObject obj) {
+        List<JSONObject> parts = hubParts(obj);
+        if (parts.size() > 1) {
+            // One link per part, in order.
+            StringBuilder text = new StringBuilder();
+            for (int i = 0; i < parts.size(); i++) {
+                JSONObject p = parts.get(i);
+                try { if (p.optString("libraryId", "").isEmpty()) p.put("libraryId", obj.optString("libraryId", "")); } catch (Throwable ignored) {}
+                String u = hubEmbedUrl(p);
+                if (u != null) text.append("Part ").append(i + 1).append(": ").append(u).append("\n");
+            }
+            Intent share = new Intent(Intent.ACTION_SEND);
+            share.setType("text/plain");
+            share.putExtra(Intent.EXTRA_SUBJECT, obj.optString("title", "hub session"));
+            share.putExtra(Intent.EXTRA_TEXT, text.toString().trim());
+            try { startActivity(Intent.createChooser(share, "Share session links")); }
+            catch (Throwable e) { Toast.makeText(this, "No app can share links.", Toast.LENGTH_LONG).show(); }
+            return;
+        }
         String url = hubEmbedUrl(obj);
         if (url == null) {
             Toast.makeText(this, "No Cloud link yet for this session.", Toast.LENGTH_LONG).show();
@@ -2273,7 +2379,16 @@ public class MainActivity extends Activity {
         startActivity(Intent.createChooser(share, "Share session link"));
     }
 
-    private void playHubRemote(final JSONObject obj) {
+    /** Play runs every part in order: each one's end starts the next
+     *  (an untied session is one part and plays as before). */
+    private void playHubRemote(final JSONObject whole, final int from) {
+        final List<JSONObject> parts = hubParts(whole);
+        if (from < 0 || from >= parts.size()) return;
+        final JSONObject obj = parts.get(from);
+        if (obj.optString("libraryId", "").isEmpty()) {
+            try { obj.put("libraryId", whole.optString("libraryId", "")); } catch (Throwable ignored) {}
+        }
+        final boolean hasNext = from + 1 < parts.size();
         final String mp4 = obj.optString("mp4Url", "");
         final String hls = obj.optString("hlsUrl", "");
         final String src = (mp4 != null && !mp4.isEmpty()) ? mp4
@@ -2292,12 +2407,21 @@ public class MainActivity extends Activity {
                 hubPlayer.setMinimumHeight(dp(220));
                 hubPlayer.setMinimumWidth(dp(300));
                 final AlertDialog dlg = new AlertDialog.Builder(this)
-                        .setTitle(obj.optString("title", "Hub session"))
+                        .setTitle(parts.size() > 1
+                                ? "Part " + (from + 1) + " of " + parts.size() + " · " + obj.optString("title", "Hub session")
+                                : obj.optString("title", "Hub session"))
                         .setView(hubPlayer)
                         .setPositiveButton("Close", null)
                         .create();
                 hubPlayer.setOnPreparedListener(new android.media.MediaPlayer.OnPreparedListener() {
                     @Override public void onPrepared(android.media.MediaPlayer mp) { hubPlayer.start(); }
+                });
+                hubPlayer.setOnCompletionListener(new android.media.MediaPlayer.OnCompletionListener() {
+                    @Override public void onCompletion(android.media.MediaPlayer mp) {
+                        if (!hasNext) return;
+                        try { dlg.dismiss(); } catch (Throwable ignored) {}
+                        playHubRemote(whole, from + 1);
+                    }
                 });
                 hubPlayer.setOnErrorListener(new android.media.MediaPlayer.OnErrorListener() {
                     @Override public boolean onError(android.media.MediaPlayer mp, int what, int extra) {
@@ -2385,6 +2509,254 @@ public class MainActivity extends Activity {
                 Toast.makeText(MainActivity.this, "Session deleted from the hub and the cloud", Toast.LENGTH_SHORT).show();
             } });
         } });
+    }
+
+    // ---------- session parts: continue a session, tie sessions ----------
+
+    /** The capture screens' note: which session these takes join, with
+     *  the way out on the note itself. One per screen, painted together. */
+    private LinearLayout joinBannerView() {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setBackground(rounded(SAGE_SOFT, 18));
+        b.setPadding(dp(14), dp(12), dp(14), dp(12));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, dp(8), 0, dp(12));
+        b.setLayoutParams(lp);
+        TextView t = label("", 15, TEXT);
+        t.setTag("joinText");
+        b.addView(t);
+        Button own = smallHubButton("Make it its own session");
+        own.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(44)));
+        own.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) {
+            clearJoinTarget();
+            paintJoinBanners();
+        } });
+        b.addView(own);
+        b.setVisibility(View.GONE);
+        joinBanners.add(b);
+        return b;
+    }
+
+    private void paintJoinBanners() {
+        for (LinearLayout b : joinBanners) {
+            if (joinToVideoId == null) { b.setVisibility(View.GONE); continue; }
+            TextView t = (TextView) b.findViewWithTag("joinText");
+            if (t != null) t.setText("Adds a part to " + joinToTitle
+                    + " — it joins that session in the hub once uploaded.");
+            b.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void clearJoinTarget() { joinToVideoId = null; joinToTitle = null; }
+
+    /** "Add a part" on a hub session: Record / Upload / Link continue it. */
+    private void startJoin(JSONObject session, String screen) {
+        joinToVideoId = session.optString("videoId", "");
+        joinToTitle = session.optString("title", joinToVideoId);
+        if (joinToVideoId.isEmpty()) clearJoinTarget();
+        showScreen(screen);
+    }
+
+    /** A saved take or upload remembers the session it continues. */
+    private void markJoin(String name) {
+        if (joinToVideoId == null || name == null) return;
+        synchronized (cloudLinkLock) {
+            try {
+                JSONObject links = cloudLinks();
+                JSONObject cur = links.optJSONObject(name);
+                if (cur == null) cur = new JSONObject();
+                cur.put("joinTo", joinToVideoId);
+                cur.put("joinTitle", joinToTitle);
+                links.put(name, cur);
+                cloudPrefs().edit().putString("links", links.toString()).apply();
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    private final Set<String> tieInFlight = new HashSet<String>();
+
+    /** Ties a take onto its session once its upload has a video id;
+     *  three tries, then a status line — Record retries on its next
+     *  resume, so a tie is never silently dropped. */
+    private void tieCloudPart(final String name) {
+        JSONObject link = cloudLink(name);
+        if (link == null) return;
+        final String join = link.optString("joinTo", ""), vid = link.optString("videoId", "");
+        final String jt = link.optString("joinTitle", "its session");
+        if (join.isEmpty() || vid.isEmpty() || link.optBoolean("joined", false)) return;
+        if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) {
+            if (status != null) status.setText("☁ Couldn't tie this take to " + jt
+                    + " — parts need the signer token (Cloud settings). It will retry once the token is set.");
+            return;
+        }
+        synchronized (tieInFlight) { if (!tieInFlight.add(name)) return; }
+        final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+        new Thread(new Runnable() { @Override public void run() {
+            try {
+                Exception last = null;
+                for (int attempt = 1; attempt <= 3; attempt++) {
+                    try {
+                        new HubClient(surl, stok).tie(java.util.Arrays.asList(join, vid));
+                        synchronized (cloudLinkLock) {
+                            JSONObject links = cloudLinks();
+                            JSONObject cur = links.optJSONObject(name);
+                            if (cur != null) {
+                                cur.put("joined", true);
+                                cloudPrefs().edit().putString("links", links.toString()).apply();
+                            }
+                        }
+                        runOnUiThread(new Runnable() { @Override public void run() { refreshClipList(); } });
+                        return;
+                    } catch (Exception e) {
+                        last = e;
+                        try { Thread.sleep(2000L * attempt); } catch (InterruptedException ie) { return; }
+                    }
+                }
+                final String why = last == null ? "" : last.getMessage();
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    if (status != null) status.setText("☁ Couldn't tie this take to " + jt + " (" + why
+                            + ") — it will retry when you next open the app. The take itself is safe.");
+                } });
+            } finally {
+                synchronized (tieInFlight) { tieInFlight.remove(name); }
+            }
+        } }).start();
+    }
+
+    /** The parts of a hub session in order (itself when untied, or
+     *  when an older signer sends no parts). */
+    private List<JSONObject> hubParts(JSONObject obj) {
+        List<JSONObject> out = new ArrayList<JSONObject>();
+        JSONArray ps = obj == null ? null : obj.optJSONArray("parts");
+        if (ps != null) for (int i = 0; i < ps.length(); i++) {
+            JSONObject p = ps.optJSONObject(i);
+            if (p != null) out.add(p);
+        }
+        if (out.isEmpty() && obj != null) out.add(obj);
+        return out;
+    }
+
+    /** Tie: pick another hub session; it (with its own parts) joins the
+     *  end of this one. */
+    private void showTiePicker(final JSONObject obj) {
+        final List<JSONObject> others = new ArrayList<JSONObject>();
+        Set<String> mine = new HashSet<String>();
+        for (JSONObject p : hubParts(obj)) mine.add(p.optString("videoId", ""));
+        for (int i = 0; hubRows != null && i < hubRows.length(); i++) {
+            JSONObject r = hubRows.optJSONObject(i);
+            if (r != null && !mine.contains(r.optString("videoId", ""))) others.add(r);
+        }
+        if (others.isEmpty()) { Toast.makeText(this, "No other hub sessions to tie on.", Toast.LENGTH_LONG).show(); return; }
+        String[] names = new String[others.size()];
+        for (int i = 0; i < names.length; i++) {
+            JSONObject r = others.get(i);
+            int n = r.optInt("partCount", 1);
+            names[i] = r.optString("title", r.optString("videoId", "")) + (n > 1 ? "  (" + n + " parts)" : "");
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("Which session comes next?")
+                .setItems(names, new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        tieHubSessions(obj, others.get(which).optString("videoId", ""));
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void tieHubSessions(final JSONObject obj, final String otherId) {
+        final String first = obj.optString("videoId", "");
+        final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+        cloudExec.execute(new Runnable() { @Override public void run() {
+            try {
+                new HubClient(surl, stok).tie(java.util.Arrays.asList(first, otherId));
+            } catch (final Exception e) {
+                runOnUiThread(new Runnable() { @Override public void run() {
+                    Toast.makeText(MainActivity.this, "Couldn't tie those sessions (" + e.getMessage() + ") — nothing changed.", Toast.LENGTH_LONG).show();
+                } });
+                return;
+            }
+            runOnUiThread(new Runnable() { @Override public void run() {
+                Toast.makeText(MainActivity.this, "Tied — they're one session now.", Toast.LENGTH_SHORT).show();
+                openHubSession(first);
+                loadHub();
+            } });
+        } });
+    }
+
+    private void untieHubPart(final JSONObject obj, final String videoId, String title) {
+        new AlertDialog.Builder(this)
+                .setTitle("Untie this part?")
+                .setMessage("'" + title + "' becomes its own session again. Nothing is deleted.")
+                .setPositiveButton("Untie", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        String stay = videoId;
+                        for (JSONObject p : hubParts(obj)) {
+                            if (!videoId.equals(p.optString("videoId", ""))) { stay = p.optString("videoId", ""); break; }
+                        }
+                        final String reopen = stay;
+                        final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+                        cloudExec.execute(new Runnable() { @Override public void run() {
+                            try {
+                                new HubClient(surl, stok).untie(videoId);
+                            } catch (final Exception e) {
+                                runOnUiThread(new Runnable() { @Override public void run() {
+                                    Toast.makeText(MainActivity.this, "Couldn't untie that part (" + e.getMessage() + ") — nothing changed.", Toast.LENGTH_LONG).show();
+                                } });
+                                return;
+                            }
+                            runOnUiThread(new Runnable() { @Override public void run() {
+                                Toast.makeText(MainActivity.this, "Part untied — it's its own session again.", Toast.LENGTH_SHORT).show();
+                                openHubSession(reopen);
+                                loadHub();
+                            } });
+                        } });
+                    }
+                })
+                .setNegativeButton("Keep", null)
+                .show();
+    }
+
+    /** One overall session: deleting it deletes every part, each named
+     *  first. A failure stops the run and says how far it got. */
+    private void confirmDeleteHubParts(final JSONObject obj) {
+        final List<JSONObject> parts = hubParts(obj);
+        StringBuilder names = new StringBuilder();
+        for (int i = 0; i < parts.size(); i++)
+            names.append(i + 1).append(". ").append(parts.get(i).optString("title", parts.get(i).optString("videoId", ""))).append("\n");
+        new AlertDialog.Builder(this)
+                .setTitle("Delete all " + parts.size() + " parts?")
+                .setMessage(names + "\nEach is deleted from the cloud and the hub. To keep one, untie it first.")
+                .setPositiveButton("Delete all", new android.content.DialogInterface.OnClickListener() {
+                    @Override public void onClick(android.content.DialogInterface d, int which) {
+                        final String surl = cloudEffSignerUrl(), stok = cloudEffSignerToken();
+                        hubDetail = null;
+                        cloudExec.execute(new Runnable() { @Override public void run() {
+                            int done = 0;
+                            String err = null;
+                            for (JSONObject p : parts) {
+                                String vid = p.optString("videoId", "");
+                                try {
+                                    new HubClient(surl, stok).delete(vid);
+                                } catch (Exception e) { err = e.getMessage(); break; }
+                                try { CloudUploader up = cloudUploader(); if (up != null) up.deleteVideo(vid); }
+                                catch (Exception e) { err = "hub entry removed, but the cloud copy remains: " + e.getMessage(); done++; break; }
+                                done++;
+                            }
+                            final String msg = err == null ? "All " + done + " parts deleted from the hub and the cloud."
+                                    : "Stopped at part " + (done + 1) + " of " + parts.size() + " (" + err + "); the rest are untouched.";
+                            runOnUiThread(new Runnable() { @Override public void run() {
+                                if (status != null) status.setText("🗑 " + msg);
+                                Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show();
+                                loadHub();
+                            } });
+                        } });
+                    }
+                })
+                .setNegativeButton("Keep", null)
+                .show();
     }
 
     private JSONObject cloudLinks() {
@@ -2558,6 +2930,8 @@ public class MainActivity extends Activity {
                     up.upload(f, savedUrl, savedVid, new CloudUploader.Listener() {
                         @Override public void onSession(String videoId, String uploadUrl) {
                             setCloudLink(name, "uploading", videoId, null, uploadUrl, -1);
+                            // The id exists now: a take that continues a session is tied on before its bytes finish.
+                            tieCloudPart(name);
                         }
                         @Override public void onProgress(final long sent, final long total) {
                             final int pct = total > 0 ? (int) (sent * 100 / total) : 0;
@@ -2663,6 +3037,9 @@ public class MainActivity extends Activity {
             JSONObject link = links.optJSONObject(name);
             if (link == null) continue;
             String st = link.optString("state", "");
+            // A tie that failed earlier (offline, signer down) retries here.
+            if (!link.optString("joinTo", "").isEmpty() && !link.optString("videoId", "").isEmpty()
+                    && !link.optBoolean("joined", false)) tieCloudPart(name);
             if ("processing".equals(st)) pollCloud(name, link.optString("videoId", ""));
             else if ("uploading".equals(st)) {
                 File f = new File(clipsDir, name);

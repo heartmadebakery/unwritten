@@ -128,6 +128,12 @@ struct ContentView: View {
     @State private var endObserver: NSObjectProtocol?
     @State private var hubPlayer: AVPlayer?
     @State private var hubItemObserver: NSKeyValueObservation?
+    /// Session parts: the end of one part starts the next; the tie
+    /// picker and the untie confirm for the open hub session.
+    @State private var hubEndObserver: NSObjectProtocol?
+    @State private var hubPlayingPart: Int = 0
+    @State private var pendingTie: HubSession?
+    @State private var pendingUntie: HubPart?
 
     @State private var showCloudPanel = false
     @State private var pendingDelete: String?
@@ -213,6 +219,8 @@ struct ContentView: View {
             // A status line reports on the screen it was raised on, so
             // it never follows you to another one.
             store.status = ""
+            // Home is the end of a continue: the choice never lingers.
+            if new.isEmpty { store.joinTo = nil }
             let was = old.last == .record
             let now = new.last == .record
             if now && !was { showScreen("record") }
@@ -290,7 +298,44 @@ struct ContentView: View {
             }
             Button("Keep", role: .cancel) { pendingHubDelete = nil }
         } message: {
-            Text("Delete '\(pendingHubDelete?.title ?? "")' from the cloud and the hub?")
+            if let d = pendingHubDelete, store.hubParts(d).count > 1 {
+                // One overall session: every part is named before it goes.
+                let parts = store.hubParts(d)
+                Text("Delete all \(parts.count) parts?\n\n"
+                     + parts.enumerated().map { "\($0.offset + 1). \($0.element.title ?? $0.element.videoId)" }.joined(separator: "\n")
+                     + "\n\nEach is deleted from the cloud and the hub. To keep one, untie it first.")
+            } else {
+                Text("Delete '\(pendingHubDelete?.title ?? "")' from the cloud and the hub?")
+            }
+        }
+        .confirmationDialog("Which session comes next?", isPresented: Binding(
+            get: { pendingTie != nil },
+            set: { if !$0 { pendingTie = nil } }
+        ), titleVisibility: .visible) {
+            if let d = pendingTie {
+                let mine = Set(store.hubParts(d).map { $0.videoId })
+                ForEach(store.hubRows.filter { !mine.contains($0.videoId) }) { r in
+                    Button(r.title ?? r.videoId) { store.tieHubSessions(d, r.videoId) }
+                }
+            }
+            Button("Cancel", role: .cancel) { pendingTie = nil }
+        } message: {
+            Text("It joins the end of this one, with any parts of its own.")
+        }
+        .alert("Untie this part?", isPresented: Binding(
+            get: { pendingUntie != nil },
+            set: { if !$0 { pendingUntie = nil } }
+        )) {
+            Button("Untie") {
+                if let p = pendingUntie, let d = store.hubDetail {
+                    stopHubPlayer()
+                    store.untieHubPart(d, p.videoId)
+                }
+                pendingUntie = nil
+            }
+            Button("Keep", role: .cancel) { pendingUntie = nil }
+        } message: {
+            Text("'\(pendingUntie?.title ?? "")' becomes its own session again. Nothing is deleted.")
         }
         .sheet(isPresented: $showCloudPanel) {
             cloudSettingsSheet
@@ -487,6 +532,7 @@ struct ContentView: View {
     /// fetch from a link. Its status line reports only on the pick.
     private var uploadView: some View {
         List {
+            joinBanner
             Section {
                 Menu {
                     Button {
@@ -532,6 +578,25 @@ struct ContentView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    /// The capture screens' note: which session these takes join, with
+    /// the way out on the note itself. Absent when nothing is joined.
+    @ViewBuilder private var joinBanner: some View {
+        if let join = store.joinTo {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Adds a part to **\(join.title ?? join.videoId)** — it joins that session in the hub once uploaded.")
+                        .font(.system(size: 15))
+                        .foregroundStyle(INK)
+                    Button("Make it its own session") { store.joinTo = nil }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                }
+                .padding(.vertical, 4)
+            }
+            .listRowBackground(SAGE_SOFT)
+        }
+    }
+
     /// One row of the Upload screen: ember glyph, title, a line of help.
     private func uploadOption(_ title: String, _ sub: String, symbol: String) -> some View {
         HStack(spacing: 14) {
@@ -562,6 +627,7 @@ struct ContentView: View {
     /// reports only on the fetch.
     private var fetchLinkView: some View {
         List {
+            joinBanner
             Section {
                 HStack(spacing: 12) {
                     Image(systemName: "link")
@@ -609,6 +675,7 @@ struct ContentView: View {
 
     private var recordView: some View {
         List {
+            joinBanner
             // The viewfinder card: the live preview, the red/quiet
             // banners, and zoom — all in one group.
             Section {
@@ -962,7 +1029,18 @@ struct ContentView: View {
     /// pipeline fetcher works around it the same way). A stream that
     /// still fails, or no stream URL at all, opens the Cloud embed page
     /// instead (Android's openInBrowser): Play is never a dead button.
-    private func playHubSession(_ session: HubSession) {
+    ///
+    /// Play runs every part in order: each one's end starts the next
+    /// (an untied session is one part and plays as before).
+    private func playHubSession(_ whole: HubSession, from: Int = 0) {
+        let parts = store.hubParts(whole)
+        guard from >= 0 && from < parts.count else { return }
+        let p = parts[from]
+        var session = HubSession(videoId: p.videoId)
+        session.libraryId = p.libraryId ?? whole.libraryId
+        session.title = p.title
+        session.mp4Url = p.mp4Url
+        session.hlsUrl = p.hlsUrl
         let str = (session.mp4Url?.isEmpty == false) ? session.mp4Url : session.hlsUrl
         guard let str, !str.isEmpty, let url = URL(string: str) else {
             openHubEmbed(session, note: "No stream on this hub session yet — opening the Cloud player.")
@@ -984,9 +1062,17 @@ struct ContentView: View {
         // the camera engine's record-capable session would use the earpiece.
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
-        let p = AVPlayer(playerItem: item)
-        hubPlayer = p
-        p.play()
+        if from + 1 < parts.count {
+            hubEndObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime, object: item, queue: .main) { [self] _ in
+                playHubSession(whole, from: from + 1)
+            }
+        }
+        hubPlayingPart = from
+        if parts.count > 1 { store.status = "Playing part \(from + 1) of \(parts.count)." }
+        let player = AVPlayer(playerItem: item)
+        hubPlayer = player
+        player.play()
     }
 
     private func openHubEmbed(_ session: HubSession, note: String) {
@@ -1012,6 +1098,8 @@ struct ContentView: View {
     private func stopHubPlayer() {
         hubItemObserver?.invalidate()
         hubItemObserver = nil
+        if let o = hubEndObserver { NotificationCenter.default.removeObserver(o) }
+        hubEndObserver = nil
         hubPlayer?.pause()
         hubPlayer = nil
         restoreRecordAudioSession()
@@ -1077,6 +1165,10 @@ struct ContentView: View {
                     .lineLimit(1)
                 HStack(spacing: 6) {
                     statusChip(row)
+                    if let partOf = row.partOf {
+                        if row.joined { chip("Part of " + partOf, SAGE_SOFT, SAGE) }
+                        else { chip("Joins " + partOf + " after upload", HONEY_SOFT, HONEY) }
+                    }
                     // Ignored badge: takes the pipeline operator set
                     // aside never reach the hub.
                     if let reason = row.ignoredReason {
@@ -1377,6 +1469,76 @@ struct ContentView: View {
                     .foregroundColor(DIM)
                     .padding(.top, 10)
             }
+            // Parts: each plays on its own or unties; Play above runs
+            // them all in order.
+            let parts = store.hubParts(detail)
+            let multi = parts.count > 1
+            let pending = detail.pendingParts ?? 0
+            if multi || pending > 0 {
+                sectionTitle(Text("Parts")).padding(.top, 18).padding(.bottom, 6)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(parts.enumerated()), id: \.offset) { i, p in
+                        HStack(spacing: 10) {
+                            Button {
+                                playHubSession(detail, from: i)
+                            } label: {
+                                Label("Part \(i + 1)", systemImage: "play.fill")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(EMBER_INK)
+                                    .padding(.horizontal, 10).padding(.vertical, 4)
+                                    .background(EMBER_SOFT, in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Play part \(i + 1)")
+                            let pd = (p.durationSeconds ?? 0) > 0 ? " \u{2022} " + store.hubDurationText(p.durationSeconds ?? 0) : ""
+                            Text((p.title ?? p.videoId) + pd)
+                                .font(.system(size: 15))
+                                .foregroundColor(INK)
+                            Spacer(minLength: 0)
+                            if multi {
+                                Button("Untie") { pendingUntie = p }
+                                    .buttonStyle(.bordered)
+                                    .buttonBorderShape(.capsule)
+                                    .controlSize(.small)
+                            }
+                        }
+                        .frame(minHeight: 48)
+                        if i < parts.count - 1 { Divider().overlay(LINE) }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .background(PANEL, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                if pending > 0 {
+                    Text("\(pending) more part\(pending > 1 ? "s" : "") still processing — they appear here once the pipeline has written them up.")
+                        .font(.system(size: 14))
+                        .foregroundColor(DIM)
+                        .padding(.top, 8)
+                }
+            }
+            // Continue this session: whatever is recorded, uploaded or
+            // fetched next becomes its next part.
+            sectionTitle(Text("Add a part")).padding(.top, 18).padding(.bottom, 6)
+            HStack(spacing: 8) {
+                ForEach([("Record", Route.record), ("Upload", Route.upload), ("Link", Route.fetchLink)], id: \.0) { name, route in
+                    Button {
+                        store.joinTo = detail
+                        stopHubPlayer()
+                        path.append(route)
+                    } label: {
+                        Text(name).frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.capsule)
+                }
+            }
+            Button {
+                pendingTie = detail
+            } label: {
+                Text("Tie a session to this one").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.capsule)
+            .padding(.top, 8)
             if let writeup = detail.writeupMd, !writeup.isEmpty {
                 Divider().overlay(LINE).padding(.top, 18)
                 Text(ContentView.markdown(writeup))
@@ -1392,7 +1554,7 @@ struct ContentView: View {
                     // A quote card: time chip, the mentor's words, and
                     // what they were correcting.
                     VStack(alignment: .leading, spacing: 8) {
-                        chip(c.start ?? "", EMBER_SOFT, EMBER_INK)
+                        chip((multi && (c.part ?? 0) > 0 ? "Part \(c.part ?? 0) \u{00B7} " : "") + (c.start ?? ""), EMBER_SOFT, EMBER_INK)
                         Text("“\(c.quote ?? "")”")
                             .font(.system(size: 16))
                             .foregroundColor(INK)
@@ -1413,7 +1575,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(chapters.enumerated()), id: \.offset) { i, ch in
                         HStack(spacing: 12) {
-                            chip(ch.start ?? "", EMBER_SOFT, EMBER_INK)
+                            chip((multi && (ch.part ?? 0) > 0 ? "Part \(ch.part ?? 0) \u{00B7} " : "") + (ch.start ?? ""), EMBER_SOFT, EMBER_INK)
                             Text(ch.label ?? "")
                                 .font(.system(size: 15))
                                 .foregroundColor(INK)
