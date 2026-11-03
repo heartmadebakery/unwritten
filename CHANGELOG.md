@@ -9,6 +9,12 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Changed
+- **iOS: Xcode Cloud setup + Xcode's recommended project updates.**
+  Adds `xcshareddata/xcodecloud/manifest.json` (Xcode Cloud product
+  link), accepts Xcode 27.2's recommended build-setting updates
+  (compiler warning flags, dead-code stripping, user-script
+  sandboxing, whole-module Release) and bumps the scheme's
+  `LastUpgradeVersion`. The personal `xcuserstate` stays untracked.
 - **iOS: signing team set in the Xcode project.** Both build
   configurations now carry `DEVELOPMENT_TEAM`, so Xcode and
   `build.sh` produce a signed device build without passing the team
