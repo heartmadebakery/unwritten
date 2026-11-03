@@ -42,6 +42,19 @@ history (30 commits) and is maintained in the open from then on.
   the APK not rebuilt (no token pool / SDK on this host), no iOS
   compile (no Xcode), no device runs, and `0005_parts.sql` is not yet
   applied to the live D1 — apply it before deploying this worker.
+  Merged with `main`'s Swift-escape fix: the new `hubSubtitle` joins
+  with `"\u{2022}"`, and `test_unicode_escapes_are_swift_style`
+  passes over every new Swift line (516 tests).
+
+### Fixed
+- **iOS build broken on `main` (Xcode Cloud archive failed).** The hub
+  subtitle's bullet was written Java-style (`"•"`), a Swift
+  compile error the source-contract tests could not see; now
+  `"\u{2022}"` in `SessionStore.swift`. New guard
+  `test_unicode_escapes_are_swift_style` scans every Swift file.
+  Verified with a Release `xcodebuild archive` for generic iOS from a
+  clean clone (no token stamped, as Xcode Cloud builds it): archive
+  succeeded, no compile warnings.
 
 ### Fixed
 - **New-machine YouTube stall.** `fetch_jobs.load_config()` and `run_cloud.sh` now default the fetch queue to the baked signer `https://unwritten-cloud-signer.heartmade.workers.dev` so a fresh clone with no `.env` still processes queued YouTube links instead of silently skipping `--fetch`; `setup.sh` now scaffolds `.env` with `CLOUD_PROXY_URL`/`FETCH_QUEUE_URL` defaults and appends them non-destructively on re-run; `docs/SETUP.md` and `docs/PIPELINE.md` updated; contract tests added (`test_default_queue_is_baked_signer`, `test_fetch_runs_without_env_override`, `test_scaffolds_env_with_fetch_defaults`), kept green (495 tests, 69 hub checks).

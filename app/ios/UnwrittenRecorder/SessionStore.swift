@@ -203,7 +203,7 @@ final class SessionStore: ObservableObject {
         // A tied session lists once: its parts and any still processing.
         if let n = row.partCount, n > 1 { bits.append("\(n) parts") }
         if let p = row.pendingParts, p > 0 { bits.append("\(p) processing") }
-        return bits.joined(separator: " \u2022 ")
+        return bits.joined(separator: " \u{2022} ")
     }
     private func durationText(_ ms: Int64) -> String {
         let s = ms / 1000
