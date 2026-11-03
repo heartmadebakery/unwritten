@@ -42,6 +42,7 @@ def find(transcript):
     prompt = rules + "\n\n=== LESSON TRANSCRIPT ===\n" + transcript.strip()
     fd, prompt_path = tempfile.mkstemp(prefix="unwritten_finder_",
                                        suffix=".txt")
+    proc = None
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(prompt)
@@ -55,6 +56,8 @@ def find(transcript):
             os.unlink(prompt_path)
         except OSError:
             pass
+    if proc is None:
+        sys.exit("correction finder failed: muse runner timed out or crashed")
     if proc.returncode != 0:
         sys.exit(f"correction finder failed: {proc.stderr[-300:]}")
     return parse_hits(proc.stdout)

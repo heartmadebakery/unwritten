@@ -45,7 +45,12 @@ def pick_lesson(media):
         return None, ""
     if len(media) == 1:
         return media[0], ""
-    biggest = max(media, key=lambda p: os.path.getsize(p))
+    def _size(p):
+        try:
+            return os.path.getsize(p)
+        except OSError:
+            return -1
+    biggest = max(media, key=_size)
     return biggest, (f"{len(media)} media files found — using the largest "
                      f"as the lesson: {os.path.basename(biggest)}")
 

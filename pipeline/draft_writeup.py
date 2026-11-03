@@ -212,6 +212,7 @@ def draft_frames(transcript, media, rules, tmpdir):
         images = []
     fd, prompt_path = tempfile.mkstemp(prefix="unwritten_drafter_",
                                        suffix=".txt")
+    proc = None
     try:
         with os.fdopen(fd, "w") as fh:
             fh.write(prompt)
@@ -227,6 +228,8 @@ def draft_frames(transcript, media, rules, tmpdir):
             os.unlink(prompt_path)
         except OSError:
             pass
+    if proc is None:
+        sys.exit("Spark drafting failed: muse runner timed out or crashed")
     if proc.returncode != 0:
         sys.exit(f"Spark drafting failed: {proc.stderr[-300:]}")
     return proc.stdout.strip()

@@ -86,8 +86,7 @@ def hold_root_lock(root):
 
 def run(cmd, stage, fatal=True):
     print(f"[{stage}] {' '.join(os.path.basename(c) if i == 0 else c for i, c in enumerate(cmd))}")
-    proc = subprocess.run(cmd, capture_output=True, text=True,
-                          env={**os.environ, "PATH": os.environ.get("PATH", "")})
+    proc = subprocess.run(cmd, capture_output=True, text=True)
     out = (proc.stdout or "").strip()
     if out:
         print("  " + out.replace("\n", "\n  "))

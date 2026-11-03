@@ -33,6 +33,11 @@ def validate(obj, schema, path="$"):
         for key in schema.get("required", []):
             if not isinstance(obj, dict) or key not in obj:
                 raise SchemaError(f"{path}: missing required {key!r}")
+        if schema.get("additionalProperties") is False and isinstance(obj, dict):
+            allowed = set(schema.get("properties", {}))
+            for key in obj:
+                if key not in allowed:
+                    raise SchemaError(f"{path}: unexpected {key!r}")
         for key, subschema in schema.get("properties", {}).items():
             if isinstance(obj, dict) and key in obj:
                 validate(obj[key], subschema, f"{path}.{key}")

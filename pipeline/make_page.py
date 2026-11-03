@@ -98,7 +98,8 @@ def main():
     chapters_block = ""
     if os.path.exists(chapters_path):
         try:
-            chapters = json.load(open(chapters_path))
+            with open(chapters_path) as _cfh:
+                chapters = json.load(_cfh)
             rows = "".join(
                 f"<li><b>{esc(c.get('start', ''))}</b> "
                 f"{esc(c.get('label', ''))}</li>" for c in chapters)

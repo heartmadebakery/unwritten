@@ -156,12 +156,20 @@ def build_session(src, dest, title):
         sys.argv = ["make_page", "--work", dest, "--title", title]
         try:
             make_page.main()
+        except SystemExit as exc:
+            print(f"  [site] session {os.path.basename(src)}: exit {exc.code} — skipped")
+            return False
         finally:
             sys.argv = argv
         return os.path.exists(os.path.join(dest, "page.html"))
-    except Exception as exc:
-        print(f"  [site] session {os.path.basename(src)}: {exc} — skipped")
-        return False
+    except BaseException as exc:
+        # SystemExit already handled above; remaining BaseExceptions
+        # (KeyboardInterrupt etc.) still surface, but plain Exceptions
+        # are treated as per-session skips.
+        if isinstance(exc, Exception):
+            print(f"  [site] session {os.path.basename(src)}: {exc} — skipped")
+            return False
+        raise
 
 
 def default_recorder():

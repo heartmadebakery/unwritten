@@ -251,11 +251,12 @@ def remux_hls(url, dest, referer=""):
         raise RuntimeError("ffmpeg remux timed out for %s: %s" % (url, exc))
     if proc.returncode != 0 or not os.path.exists(dest):
         tail = (proc.stderr or "").strip().splitlines()
-        raise RuntimeError("ffmpeg remux failed for %s: %s "
-                           "(token-authenticated libraries block direct "
-                           "downloads — check Stream -> Security in the "
-                           "library dashboard)"
-                           % (url, tail[-1] if tail else proc.returncode))
+        detail = tail[-1] if tail else str(proc.returncode)
+        # Only hint at token-auth when stderr suggests a 403/forbidden;
+        # a segfault (-11), timeout, or missing ffmpeg must not misdirect.
+        if "403" in detail or "Forbidden" in detail or "401" in detail:
+            detail += " (token-authenticated libraries block direct downloads — check Stream -> Security in the library dashboard)"
+        raise RuntimeError("ffmpeg remux failed for %s: %s" % (url, detail))
     return dest
 
 

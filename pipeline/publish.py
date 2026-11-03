@@ -323,8 +323,7 @@ def main(argv=None):
     # duration from lesson media (cloud_state lesson path or local probe)
     dur = 0
     try:
-        st = load_state(args.state) if os.path.exists(args.state) else {}
-        ent = st.get(guid, {}) if isinstance(st, dict) else {}
+        ent = state.get(guid, {}) if isinstance(state, dict) else {}
         lesson_path = ent.get("lesson", "") if isinstance(ent, dict) else ""
         dur = media_duration(lesson_path)
         if not dur:

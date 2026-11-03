@@ -9,6 +9,24 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Fixed
+- **Bug sweep: pipeline, hub, web, and docs.** Kept green (493 tests,
+  69 hub checks): `draft_writeup.py`/`find_corrections.py` no longer
+  crash with `UnboundLocalError` on muse timeout; `make_page.py` leak
+  closed, `make_site.py` handles `SystemExit` per session, `ingest.py`
+  tolerates unreadable files, `schemas.py` enforces
+  `additionalProperties: false`; `cloud_fetch.py` remux no longer
+  mislabels every ffmpeg failure as token-auth (now only on 403);
+  `publish.py` reuses loaded state for duration; `worker.js`
+  `MIGRATIONS` now covers `0004_duration.sql` and `failed()` handles
+  `no such column` → 503, URL validation allows localhost/IP;
+  `app/recorder/common.js` escapes `c.name` (XSS), `e.message` at 596,
+  null-guards `hubplayer`/`hubclose`/`status`; `sw.js` wraps cache
+  put in `waitUntil`; `run_cloud.sh` nullglob, `run_pipeline.py` no
+  longer clobbers `PATH`; `docs/SETUP.md` lists all four migrations.
+  `dist/` rebuilt (token #9/10). HLS remux test skips when local ffmpeg
+  cannot handle HLS (static 7.0.2 segfault on this host).
+
+### Fixed
 - **Merge: Nov 2 bug sweep with the Hearth / link-screen / duration
   work.** Conflict fallout, kept green (493 unittest, 69 hub
   checks): the service worker is the same-origin network-first shell
