@@ -8,6 +8,20 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-03
 
+### Added
+- **iOS: a real iPad app, portrait and landscape.** The target is now
+  iPhone + iPad (`TARGETED_DEVICE_FAMILY = "1,2"`) with all four
+  orientations on the iPad (`UISupportedInterfaceOrientations~ipad`);
+  the iPhone stays portrait. On the iPad the viewfinder and the take
+  follow the screen rotation (`PreviewUIView` -> `setInterfaceRotation`
+  -> `captureAngle`, default 90 so the iPhone is unchanged). On wide
+  screens every screen is a centered 760 pt column, the home title
+  moves into it, and the viewfinder is taller. Contract tests first
+  (`tests/test_ios_ipad.py`). Verified: Release simulator build and
+  both orientations of home on the iPad Pro 13-inch simulator; the
+  camera rotation itself is untested (the simulator has no camera) —
+  film a landscape take on the iPad before relying on it.
+
 ### Changed
 - **Upload video is a screen with two options; Fetch from link is its
   own screen; status lines stay on their screen.** Home is now just
@@ -28,6 +42,10 @@ history (30 commits) and is maintained in the open from then on.
   only); build it on a machine with the SDK before shipping.
 
 ### Changed
+- **Repo hygiene: `.gitignore` covers Finder metadata and Xcode
+  per-user state** (`.DS_Store`, `xcuserdata/`, `*.xcuserstate`,
+  `DerivedData/`), and the stray nested clone beside the tree is
+  ignored, so `git status` shows only real changes.
 - **iOS: Xcode Cloud setup + Xcode's recommended project updates.**
   Adds `xcshareddata/xcodecloud/manifest.json` (Xcode Cloud product
   link), accepts Xcode 27.2's recommended build-setting updates

@@ -354,7 +354,9 @@ class IOSBaselineTests(unittest.TestCase):
 
     def test_ios17_iphone_baseline(self):
         self.assertIn("IPHONEOS_DEPLOYMENT_TARGET = 17.0", self.pbxproj)
-        self.assertIn("TARGETED_DEVICE_FAMILY = 1", self.pbxproj)
+        # User-ordered Nov 3: iPhone + iPad (was iPhone-only);
+        # see test_ios_ipad.py.
+        self.assertIn('TARGETED_DEVICE_FAMILY = "1,2"', self.pbxproj)
         self.assertIn("SDKROOT = iphoneos", self.pbxproj)
 
     def test_app_icon_matches_web_pwa_icon(self):

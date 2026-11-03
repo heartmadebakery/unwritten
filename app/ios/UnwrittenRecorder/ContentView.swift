@@ -69,6 +69,17 @@ private func initialOf(_ title: String) -> String {
 }
 
 /// Tiles and the shutter dip a little while pressed, Path-style.
+extension View {
+    /// A centered column on wide screens (the iPad, either way up):
+    /// tiles and rows stay readable instead of stretching edge to edge.
+    /// On the iPhone it is the screen itself.
+    func readableColumn(_ maxWidth: CGFloat = 760) -> some View {
+        frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
+            .background(BG.ignoresSafeArea())
+    }
+}
+
 private struct SquishStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -101,6 +112,10 @@ struct ContentView: View {
     @StateObject private var store = SessionStore()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Regular width: the iPad, full screen in either orientation.
+    private var wide: Bool { horizontalSizeClass == .regular }
 
     @State private var path: [Route] = []
 
@@ -154,17 +169,25 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             homeView
-                .navigationTitle("Unwritten Craft")
+                .readableColumn()
+                // The iPad (regular width) carries the large title
+                // inside its column, so the bar stays quiet.
+                .navigationTitle(wide ? "" : "Unwritten Craft")
+                .navigationBarTitleDisplayMode(wide ? .inline : .large)
                 .navigationDestination(for: Route.self) { route in
                     switch route {
                     case .record:
                         recordView
+                            .readableColumn()
                     case .upload:
                         uploadView
+                            .readableColumn()
                     case .fetchLink:
                         fetchLinkView
+                            .readableColumn()
                     case let .hub(videoId):
                         hubScreen(videoId)
+                            .readableColumn()
                     }
                 }
         }
@@ -329,6 +352,11 @@ struct ContentView: View {
                 .listRowBackground(Color.clear)
             } header: {
                 VStack(alignment: .leading, spacing: 2) {
+                    if wide {
+                        Text("Unwritten Craft")
+                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .foregroundStyle(INK)
+                    }
                     Text(greeting)
                         .font(.system(size: 15, weight: .semibold, design: .rounded))
                         .foregroundStyle(DIM)
@@ -585,7 +613,7 @@ struct ContentView: View {
             Section {
                 ZStack(alignment: .bottom) {
                     CameraPreview(engine: engine)
-                        .frame(height: 300)
+                        .frame(height: wide ? 428 : 300)
                         .background(Color.black)
                     if engine.isRecording {
                         HStack {
@@ -1485,6 +1513,38 @@ struct PickedMovie: Transferable {
 final class PreviewUIView: UIView {
     override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
     var previewLayer: AVCaptureVideoPreviewLayer { layer as! AVCaptureVideoPreviewLayer }
+    weak var engine: CameraEngine?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyInterfaceRotation()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyInterfaceRotation()
+    }
+
+    /// The iPhone is portrait-only (90, the default). The iPad turns
+    /// every way: the viewfinder and the take follow the screen, so
+    /// what you see upright is what is filmed upright.
+    private func applyInterfaceRotation() {
+        guard UIDevice.current.userInterfaceIdiom == .pad,
+              let orientation = window?.windowScene?.effectiveGeometry.interfaceOrientation
+        else { return }
+        let angle: CGFloat
+        switch orientation {
+        case .portraitUpsideDown: angle = 270
+        case .landscapeLeft: angle = 180
+        case .landscapeRight: angle = 0
+        default: angle = 90
+        }
+        if let connection = previewLayer.connection,
+           connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
+        engine?.setInterfaceRotation(angle)
+    }
 }
 
 struct CameraPreview: UIViewRepresentable {
@@ -1493,6 +1553,7 @@ struct CameraPreview: UIViewRepresentable {
     func makeUIView(context: Context) -> PreviewUIView {
         let view = PreviewUIView()
         view.backgroundColor = .black
+        view.engine = engine
         engine.attachPreview(view.previewLayer)
         return view
     }

@@ -61,7 +61,7 @@ parks. Upload offers the Photos picker and Files.
 UnwrittenRecorder.xcodeproj/         (project + shared scheme)
 build.sh                             (stamp + simulator build — see below)
 UnwrittenRecorder/
-    Info.plist             camera/mic usage, Files sharing, portrait
+    Info.plist             camera/mic usage, Files sharing, orientations (iPhone portrait; iPad all four)
     Assets.xcassets        AppIcon (same ember record glyph as the web PWA icon)
     UnwrittenRecorderApp.swift   app entry
     ContentView.swift      home + record screens, upload picker + link queue, playback
@@ -120,7 +120,7 @@ third-party libraries.
 
 - Permissions: camera + microphone, plus network — used *only* for
   the Cloud upload. With Cloud toggled off the app makes no network
-  calls. Recording stays portrait; the screen stays awake while
+  calls. The iPhone records portrait; the iPad rotates all four ways and films what you see upright, in a centered readable column; the screen stays awake while
   recording, and leaving the app mid-recording stops and keeps the
   take.
 - Lessons live in the app's clips folder (`Documents/clips`) —

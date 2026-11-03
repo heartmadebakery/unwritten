@@ -39,6 +39,11 @@ final class CameraEngine: NSObject, ObservableObject {
     private var videoDevice: AVCaptureDevice?
     private var lumaListener: ((Double, [Double]) -> Void)?
     private var lastLumaMs: Int64 = 0
+    /// Rotation applied to the next take (degrees, AVFoundation's
+    /// videoRotationAngle). 90 is portrait — the iPhone's only
+    /// orientation; the iPad's viewfinder updates it as the screen
+    /// rotates, so a landscape lesson is filmed landscape, upright.
+    private var captureAngle: CGFloat = 90
 
     private func onMain(_ work: @escaping () -> Void) {
         if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
@@ -64,6 +69,11 @@ final class CameraEngine: NSObject, ObservableObject {
         let layer = AVCaptureVideoPreviewLayer(session: session)
         layer.videoGravity = .resizeAspectFill
         return layer
+    }
+
+    /// The iPad's interface rotation, as the angle recordings use.
+    func setInterfaceRotation(_ angle: CGFloat) {
+        sessionQueue.async { [weak self] in self?.captureAngle = angle }
     }
 
     /// Binds a SwiftUI-hosted preview layer to this engine's session.
@@ -327,9 +337,10 @@ final class CameraEngine: NSObject, ObservableObject {
             }
             try? FileManager.default.removeItem(at: tempURL)
             if let connection = self.movieOutput.connection(with: .video) {
-                // Portrait recording (90° rotation, like .portrait).
-                if connection.isVideoRotationAngleSupported(90) {
-                    connection.videoRotationAngle = 90
+                // Portrait on the iPhone (90°); the iPad follows its
+                // screen (see setInterfaceRotation).
+                if connection.isVideoRotationAngleSupported(self.captureAngle) {
+                    connection.videoRotationAngle = self.captureAngle
                 }
             }
             self.movieOutput.startRecording(to: tempURL, recordingDelegate: self)

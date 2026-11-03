@@ -18,3 +18,13 @@ app/recorder/dist/
 app/ios/build/
 .wrangler/
 work/
+# macOS Finder metadata
+.DS_Store
+# Xcode per-user state (window layout, breakpoints, Xcode Cloud user data)
+xcuserdata/
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+# DerivedData, if Xcode ever builds outside app/ios/build
+DerivedData/
+# Older nested copy of this repo kept beside the working tree
+/unwritten/
