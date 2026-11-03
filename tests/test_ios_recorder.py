@@ -890,5 +890,20 @@ class IOSBugSweepTests(unittest.TestCase):
         self.assertIn("cloud.enabled", load.split("else {", 1)[0])
 
 
+class IOSSwiftSyntaxTests(unittest.TestCase):
+    """Nov 3: Xcode Cloud archive failed on a Java-style escape the
+    contract tests could not see ("\\u2022" is not Swift)."""
+
+    def test_unicode_escapes_are_swift_style(self):
+        # Swift spells a unicode escape \u{2022}; the bare four-digit
+        # form ported from Java/JS is a compile error.
+        for path in glob.glob(os.path.join(SRC, "*.swift")):
+            for n, line in enumerate(read(path).splitlines(), 1):
+                self.assertNotRegex(
+                    line, r"\\u[0-9A-Fa-f]{4}",
+                    "%s:%d uses \\uXXXX — write \\u{XXXX}"
+                    % (os.path.basename(path), n))
+
+
 if __name__ == "__main__":
     unittest.main()

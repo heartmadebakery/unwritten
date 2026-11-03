@@ -170,7 +170,7 @@ final class SessionStore: ObservableObject {
         let dur = row.durationSeconds ?? 0
         let durStr = dur > 0 ? hubDurationText(dur) : ""
         let date = row.lessonDate ?? ""
-        if !date.isEmpty && !durStr.isEmpty { return date + " \u2022 " + durStr }
+        if !date.isEmpty && !durStr.isEmpty { return date + " \u{2022} " + durStr }
         if !date.isEmpty { return date }
         return durStr
     }
