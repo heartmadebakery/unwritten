@@ -73,7 +73,7 @@ struct SessionRow: Identifiable {
 @MainActor
 final class SessionStore: ObservableObject {
     @Published var rows: [SessionRow] = []
-    @Published var status: String = "Point the camera at the mentor's hands and the work. Press Record, let the lesson happen, press Stop at the end."
+    @Published var status: String = ""
     @Published var cloudOn: Bool = true
 
     let clipsDir: URL

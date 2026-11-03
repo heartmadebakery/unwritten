@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
     private TextView status;
     private Button recordButton;
     private LinearLayout lessonContainer;
-    private LinearLayout homeScreen, recordScreen;
+    private LinearLayout homeScreen, recordScreen, uploadScreen, linkScreen;
     private android.widget.ScrollView rootScroll;
     private String currentScreen = "home";
     private final List<String> clipNames = new ArrayList<String>();
@@ -447,12 +447,13 @@ public class MainActivity extends Activity {
         // in showScreen); the tagline lives on the home screen itself.
         l.setPadding(dp(18), dp(8), dp(18), dp(32));
 
-        // One app, two screens. Home (record/upload actions with the
+        // One app, four screens. Home (record/upload actions with the
         // hub last) is the landing; record owns the viewfinder and
         // opens it only on entry, so landing never prompts for the
-        // camera, with cloud and device sessions below. Upload is the
-        // system picker — the picked video rides the exact session
-        // path of a take.
+        // camera, with cloud and device sessions below. Upload offers
+        // the system picker or Fetch from link, which is a screen of
+        // its own — a picked video rides the exact session path of a
+        // take.
         homeScreen = new LinearLayout(this);
         homeScreen.setOrientation(LinearLayout.VERTICAL);
         l.addView(homeScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -460,7 +461,17 @@ public class MainActivity extends Activity {
         recordScreen.setOrientation(LinearLayout.VERTICAL);
         recordScreen.setVisibility(View.GONE);
         l.addView(recordScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        uploadScreen = new LinearLayout(this);
+        uploadScreen.setOrientation(LinearLayout.VERTICAL);
+        uploadScreen.setVisibility(View.GONE);
+        l.addView(uploadScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        linkScreen = new LinearLayout(this);
+        linkScreen.setOrientation(LinearLayout.VERTICAL);
+        linkScreen.setVisibility(View.GONE);
+        l.addView(linkScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         buildHomeScreen();
+        buildUploadScreen();
+        buildLinkScreen();
         buildRecordScreen();
 
         status = label("", 16, TEXT); // hidden - status conveyed via list icons + toasts
@@ -489,8 +500,8 @@ public class MainActivity extends Activity {
         homeScreen.addView(tagline);
 
         // Two action tiles: Record (filled ember, the primary action)
-        // and Upload video (the system picker — the picked video rides
-        // the exact session path of a take).
+        // and Upload video (its own screen: choose a file or fetch
+        // from a link).
         LinearLayout tiles = new LinearLayout(this);
         tiles.setOrientation(LinearLayout.HORIZONTAL);
         tiles.setClipChildren(false);
@@ -499,7 +510,7 @@ public class MainActivity extends Activity {
                 new View.OnClickListener() { @Override public void onClick(View v) { showScreen("record"); } });
         LinearLayout upload = actionTile("Upload video", "From your phone or a link",
                 Glyphs.UPLOAD, false,
-                new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
+                new View.OnClickListener() { @Override public void onClick(View v) { showScreen("upload"); } });
         // Both MATCH_PARENT: LinearLayout gives the pair one uniform height.
         LinearLayout.LayoutParams tl = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         tl.setMargins(0, 0, dp(6), 0);
@@ -509,7 +520,82 @@ public class MainActivity extends Activity {
         tiles.addView(upload, tr);
         homeScreen.addView(tiles);
 
-        // Or paste a link: YouTube/watch pages queue to the pipeline
+        // Hub: published lessons, same stories as the web hub. The hub
+        // lives on the signer, so this section only fills when a signer
+        // URL and token are configured and Cloud is on. The refresh
+        // action is the pull-to-refresh analogue (no SwipeRefreshLayout
+        // without AndroidX): the hub also reloads on return to home.
+        LinearLayout hubHead = new LinearLayout(this);
+        hubHead.setOrientation(LinearLayout.HORIZONTAL);
+        hubHead.setGravity(Gravity.BOTTOM);
+        LinearLayout hubTitles = new LinearLayout(this);
+        hubTitles.setOrientation(LinearLayout.VERTICAL);
+        hubTitles.addView(sectionHeader("Hub sessions"));
+        TextView hubSub = label("Lessons the pipeline has written up", 14, DIM);
+        hubSub.setPadding(dp(4), 0, dp(4), dp(10));
+        hubTitles.addView(hubSub);
+        hubHead.addView(hubTitles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        android.widget.ImageButton hubRefresh = iconButton(Glyphs.REFRESH, TEXT, null, "Refresh the hub",
+                new View.OnClickListener() { @Override public void onClick(View v) { loadHub(); } });
+        LinearLayout.LayoutParams rl = (LinearLayout.LayoutParams) hubRefresh.getLayoutParams();
+        rl.setMargins(0, 0, 0, dp(8));
+        hubHead.addView(hubRefresh);
+        homeScreen.addView(hubHead);
+        hubContainer = new LinearLayout(MainActivity.this);
+        hubContainer.setOrientation(LinearLayout.VERTICAL);
+        hubContainer.setBackground(rounded(PANEL, 20));
+        hubContainer.setClipToOutline(true);
+        hubContainer.setElevation(night ? 0 : dp(2));
+        homeScreen.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+    }
+
+    /** Upload video: two ways in — choose a file, or Fetch from link
+     *  (its own screen). Toasts report each pick, here and nowhere else. */
+    private void buildUploadScreen() {
+        uploadScreen.setClipChildren(false);
+        TextView note = label("Add a lesson video. It is saved as a session and uploaded to Cloud, and the pipeline picks it up like a recording.", 15, DIM);
+        note.setPadding(dp(2), dp(8), dp(2), dp(14));
+        uploadScreen.addView(note);
+        LinearLayout choose = optionRow("Choose a video", "From your library or Files", Glyphs.UPLOAD,
+                new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
+        LinearLayout fetch = optionRow("Fetch from link", "A YouTube or video link, instead of a file", Glyphs.LINK,
+                new View.OnClickListener() { @Override public void onClick(View v) { showScreen("link"); } });
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins(0, 0, 0, dp(12));
+        uploadScreen.addView(choose, lp);
+        uploadScreen.addView(fetch, lp);
+    }
+
+    /** One tappable card of the Upload screen: glyph, title, a line of help. */
+    private LinearLayout optionRow(String title, String sub, int glyph, View.OnClickListener onClick) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(16), dp(14), dp(16), dp(14));
+        cardStyle(row);
+        row.setClickable(true);
+        row.setContentDescription(title);
+        row.setOnClickListener(onClick);
+        row.addView(glyphBadge(glyph, EMBER_INK, EMBER_SOFT, 44, 14));
+        LinearLayout texts = new LinearLayout(this);
+        texts.setOrientation(LinearLayout.VERTICAL);
+        texts.setPadding(dp(14), 0, 0, 0);
+        TextView t = label(title, 17, TEXT);
+        t.setTypeface(MEDIUM);
+        texts.addView(t);
+        texts.addView(label(sub, 14, DIM));
+        row.addView(texts, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        return row;
+    }
+
+    /** Fetch from link: a screen of its own, reached from Upload. */
+    private void buildLinkScreen() {
+        linkScreen.setClipChildren(false);
+        TextView note = label("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.", 15, DIM);
+        note.setPadding(dp(2), dp(8), dp(2), dp(4));
+        linkScreen.addView(note);
+        // Paste a link: YouTube/watch pages queue to the pipeline
         // fetcher, which downloads and processes them like a take.
         LinearLayout linkCard = new LinearLayout(this);
         linkCard.setOrientation(LinearLayout.VERTICAL);
@@ -556,35 +642,7 @@ public class MainActivity extends Activity {
         LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         linkLp.setMargins(0, dp(12), 0, 0);
-        homeScreen.addView(linkCard, linkLp);
-
-        // Hub: published lessons, same stories as the web hub. The hub
-        // lives on the signer, so this section only fills when a signer
-        // URL and token are configured and Cloud is on. The refresh
-        // action is the pull-to-refresh analogue (no SwipeRefreshLayout
-        // without AndroidX): the hub also reloads on return to home.
-        LinearLayout hubHead = new LinearLayout(this);
-        hubHead.setOrientation(LinearLayout.HORIZONTAL);
-        hubHead.setGravity(Gravity.BOTTOM);
-        LinearLayout hubTitles = new LinearLayout(this);
-        hubTitles.setOrientation(LinearLayout.VERTICAL);
-        hubTitles.addView(sectionHeader("Hub sessions"));
-        TextView hubSub = label("Lessons the pipeline has written up", 14, DIM);
-        hubSub.setPadding(dp(4), 0, dp(4), dp(10));
-        hubTitles.addView(hubSub);
-        hubHead.addView(hubTitles, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
-        android.widget.ImageButton hubRefresh = iconButton(Glyphs.REFRESH, TEXT, null, "Refresh the hub",
-                new View.OnClickListener() { @Override public void onClick(View v) { loadHub(); } });
-        LinearLayout.LayoutParams rl = (LinearLayout.LayoutParams) hubRefresh.getLayoutParams();
-        rl.setMargins(0, 0, 0, dp(8));
-        hubHead.addView(hubRefresh);
-        homeScreen.addView(hubHead);
-        hubContainer = new LinearLayout(MainActivity.this);
-        hubContainer.setOrientation(LinearLayout.VERTICAL);
-        hubContainer.setBackground(rounded(PANEL, 20));
-        hubContainer.setClipToOutline(true);
-        hubContainer.setElevation(night ? 0 : dp(2));
-        homeScreen.addView(hubContainer, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        linkScreen.addView(linkCard, linkLp);
     }
 
     /** A personal hello over the title, by the phone's own clock. */
@@ -830,19 +888,23 @@ public class MainActivity extends Activity {
     private void showScreen(String name) {
         currentScreen = name;
         boolean home = "home".equals(name);
+        boolean record = "record".equals(name);
         android.app.ActionBar bar = getActionBar();
         if (bar != null) {
-            bar.setTitle(home ? "Unwritten Craft" : "Record");
+            bar.setTitle(home ? "Unwritten Craft" : record ? "Record"
+                    : "upload".equals(name) ? "Upload video" : "Fetch from link");
             bar.setDisplayHomeAsUpEnabled(!home);
             // Home carries its own greeting and large title; the bar
-            // returns with the Up arrow on Record.
+            // returns with the Up arrow on every other screen.
             if (home) bar.hide(); else bar.show();
         }
         if (rootScroll != null) rootScroll.scrollTo(0, 0);
         invalidateOptionsMenu();
         if (homeScreen != null) homeScreen.setVisibility(home ? View.VISIBLE : View.GONE);
-        if (recordScreen != null) recordScreen.setVisibility(home ? View.GONE : View.VISIBLE);
-        if (!home) {
+        if (recordScreen != null) recordScreen.setVisibility(record ? View.VISIBLE : View.GONE);
+        if (uploadScreen != null) uploadScreen.setVisibility("upload".equals(name) ? View.VISIBLE : View.GONE);
+        if (linkScreen != null) linkScreen.setVisibility("link".equals(name) ? View.VISIBLE : View.GONE);
+        if (record) {
             if (hasPermissions()) openPreview();
             // Device sessions live on the record screen now: refresh
             // them on entry so a just-finished take shows immediately.
@@ -854,7 +916,7 @@ public class MainActivity extends Activity {
             try { if (engine != null && engine.isRecording()) stopRecording(); } catch (Throwable ignored) {}
             stopLocalPlayback();
             try { if (engine != null && !engine.isRecording()) { engine.close(); engine = null; } } catch (Throwable ignored) {}
-            loadHub();
+            if (home) loadHub();
         }
     }
 
@@ -1757,6 +1819,8 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (isViewfinderPlaying) { stopLocalPlayback(); return; }
+        // Fetch from link steps back to Upload; every other screen to home.
+        if ("link".equals(currentScreen)) { showScreen("upload"); return; }
         if (!"home".equals(currentScreen)) { showScreen("home"); return; }
         super.onBackPressed();
     }

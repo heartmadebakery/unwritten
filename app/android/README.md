@@ -35,9 +35,9 @@ does, including iPhones). Native Android wins where the web cannot:
   mode and are no longer driven by the UI.
 
 Managed Java handles what it is good at: the Camera2 state machine and
-the two-screen UI (built programmatically — no layout XML): home
-(greeting, Record and Upload video action tiles, a paste-a-link card,
-the hub last) and record (preview with REC badge, an auto-hiding zoom
+the four-screen UI (built programmatically — no layout XML): home
+(greeting, Record and Upload video action tiles, the hub last), upload
+(Choose a video or Fetch from link), link (the paste-a-link field) and record (preview with REC badge, an auto-hiding zoom
 pill, the shutter in a dock, in-viewfinder playback with ▶/⏸/✕, a
 `Switch` for Cloud, device sessions, advanced link). It draws the
 Hearth design language ([docs/DESIGN.md](../../docs/DESIGN.md)) in

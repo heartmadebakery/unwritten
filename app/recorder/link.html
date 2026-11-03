@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Unwritten">
+<meta name="theme-color" content="#FAF6F1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#171310" media="(prefers-color-scheme: dark)">
+<meta name="description" content="Record one lesson, in the mentor's own words.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icons/icon-512.png">
+<link rel="stylesheet" href="app.css">
+<title>Fetch from link · Unwritten Craft</title>
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <a class="backbtn" id="backbtn-link" href="upload.html" aria-label="Back to Upload"><span class="bl">Upload</span></a>
+    <h1>Fetch from link</h1>
+    <div class="baraction"></div>
+  </header>
+  <div id="status"></div>
+  <section class="card upcard" aria-labelledby="linkhead">
+    <h2 id="linkhead">Paste a link</h2>
+    <p class="note">A direct video file downloads right here; a YouTube or watch-page link queues to the pipeline, which fetches and processes it like a recording.</p>
+    <label for="urlinput" class="vh">Video link</label>
+    <input type="url" id="urlinput" inputmode="url" autocomplete="off" placeholder="https://…">
+    <button class="pill block" id="urlfetchbtn">Fetch from link</button>
+    <div id="urlstatus"></div>
+  </section>
+</div>
+<script src="common.js"></script>
+<script src="link.js"></script>
+<script>
+/* PWA: register the offline shell where supported (secure contexts
+   only; old Safari without service workers simply skips this). */
+if("serviceWorker" in navigator && window.isSecureContext){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
+</script>
+</body>
+</html>

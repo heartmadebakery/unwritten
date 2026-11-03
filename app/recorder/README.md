@@ -3,11 +3,12 @@
 One page per screen sharing a common core: home (`index.html`) holds
 Record and Upload actions with the published hub last, `record.html`
 is the viewfinder screen with cloud, device sessions, and a debug
-Advanced settings link below, and `upload.html` takes a video file.
+Advanced settings link below, `upload.html` takes a video file or points to `link.html`, the
+Fetch from link page.
 `common.js` holds the vault, cloud, hub (rows open a session's detail
 — write-up, corrections, chapters — with Play, Share, and Delete, as
 on Android and iOS), and session rows;
-`home.js` / `record.js` / `upload.js` wire each page; `app.css` holds
+`home.js` / `record.js` / `upload.js` / `link.js` wire each page; `app.css` holds
 the Hearth design language ([docs/DESIGN.md](../../docs/DESIGN.md)). Plain HTML/CSS/JS — no dependencies, no modules
 (`file://` keeps working); one tiny build step stamps a signer token
 into a servable copy. Every take is saved to the on-device vault

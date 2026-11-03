@@ -177,15 +177,22 @@ class WebRecorderTests(unittest.TestCase):
     def test_url_upload_field_queues_watch_links(self):
         # User-ordered Oct 31: paste a link — direct files download
         # in the page, watch pages queue to the pipeline fetcher.
+        # User-ordered Nov 3: the link field moved off the upload page
+        # to its own page (link.html / link.js); see
+        # test_upload_link_screens.py for the split.
+        link = read(os.path.join(ROOT, "app", "recorder", "link.html"))
+        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
         for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"']:
-            self.assertIn(token, self.upload, token)
-        self.assertIn("/fetch/jobs", self.uploadjs)
-        self.assertIn("Queued.", self.uploadjs)
-        self.assertIn("Signer refused the token", self.uploadjs)
+            self.assertIn(token, link, token)
+        self.assertIn("/fetch/jobs", linkjs)
+        self.assertIn("Queued.", linkjs)
+        self.assertIn("Signer refused the token", linkjs)
 
     def test_direct_links_download_in_browser(self):
-        self.assertIn("function isDirectMediaUrl", self.uploadjs)
-        up = self.uploadjs.split("isDirectMediaUrl(u)", 1)[1] \
+        # User-ordered Nov 3: lives in link.js now.
+        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
+        self.assertIn("function isDirectMediaUrl", linkjs)
+        up = linkjs.split("isDirectMediaUrl(u)", 1)[1] \
                           .split("cloudToken()", 1)[0]
         self.assertIn("saveBlob(", up)
         self.assertIn("unwritten_lesson_upload_", up)
@@ -1257,7 +1264,9 @@ class WebNativeFeelTests(unittest.TestCase):
     def test_service_worker_cache_bumped_for_the_restyle(self):
         # User-ordered Nov 2 (Hearth redesign): bumped again so
         # installed copies drop the old dark shell.
-        self.assertIn("unwritten-recorder-v10", self.sw)
+        # User-ordered Nov 3: v11 — the shell gained the link page
+        # (Fetch from link is its own screen now).
+        self.assertIn("unwritten-recorder-v11", self.sw)
 
 
 class CameraEngineTests(unittest.TestCase):

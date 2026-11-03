@@ -77,10 +77,13 @@ private struct SquishStyle: ButtonStyle {
     }
 }
 
-/// Screens pushed over home. Record owns the camera; a hub session
-/// opens its own detail screen with its own player.
+/// Screens pushed over home. Record owns the camera; Upload offers a
+/// file or a link, and Fetch from link is a screen of its own; a hub
+/// session opens its own detail screen with its own player.
 enum Route: Hashable {
     case record
+    case upload
+    case fetchLink
     case hub(String)
 }
 
@@ -156,6 +159,10 @@ struct ContentView: View {
                     switch route {
                     case .record:
                         recordView
+                    case .upload:
+                        uploadView
+                    case .fetchLink:
+                        fetchLinkView
                     case let .hub(videoId):
                         hubScreen(videoId)
                     }
@@ -179,6 +186,10 @@ struct ContentView: View {
             // Every way on or off the record screen (button, row tap,
             // back button, edge swipe) changes the path; the camera
             // follows it.
+            //
+            // A status line reports on the screen it was raised on, so
+            // it never follows you to another one.
+            store.status = ""
             let was = old.last == .record
             let now = new.last == .record
             if now && !was { showScreen("record") }
@@ -305,22 +316,12 @@ struct ContentView: View {
                     }
                     .buttonStyle(SquishStyle())
                     .accessibilityLabel("Record")
-                    Menu {
-                        Button {
-                            showPhotosPicker = true
-                        } label: {
-                            Label("Photo Library", systemImage: "photo.on.rectangle")
-                        }
-                        Button {
-                            showUploadPicker = true
-                        } label: {
-                            Label("Files", systemImage: "folder")
-                        }
+                    Button {
+                        path.append(.upload)
                     } label: {
                         actionTile(Text("Upload video"), Text("From your phone or a link"),
                                    symbol: "square.and.arrow.up", primary: false)
                     }
-                    .menuStyle(.button)
                     .buttonStyle(SquishStyle())
                     .accessibilityLabel("Upload video")
                 }
@@ -338,38 +339,6 @@ struct ContentView: View {
                 .textCase(nil)
                 .padding(.bottom, 8)
             }
-
-            // Or paste a link: watch pages queue to the pipeline
-            // fetcher, which downloads and processes them.
-            Section {
-                HStack(spacing: 12) {
-                    Image(systemName: "link")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(EMBER_INK)
-                        .frame(width: 36, height: 36)
-                        .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    TextField("Paste a video link…", text: $fetchUrl)
-                        .font(.system(size: 16))
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.go)
-                        .onSubmit { fetchLink() }
-                }
-                Button {
-                    fetchLink()
-                } label: {
-                    Label("Fetch from link", systemImage: "arrow.down.circle")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(canFetchLink ? EMBER_INK : DIM)
-                }
-                .disabled(!canFetchLink)
-            } footer: {
-                Text(store.status)
-                    .font(.system(size: 14))
-                    .foregroundStyle(DIM)
-            }
-            .listRowBackground(PANEL)
 
             Section {
                 if store.hubRows.isEmpty {
@@ -485,6 +454,130 @@ struct ContentView: View {
         .padding(.vertical, 18)
     }
 
+    /// Upload video: two ways in — choose a file (Photos or Files) or
+    /// fetch from a link. Its status line reports only on the pick.
+    private var uploadView: some View {
+        List {
+            Section {
+                Menu {
+                    Button {
+                        showPhotosPicker = true
+                    } label: {
+                        Label("Photo Library", systemImage: "photo.on.rectangle")
+                    }
+                    Button {
+                        showUploadPicker = true
+                    } label: {
+                        Label("Files", systemImage: "folder")
+                    }
+                } label: {
+                    uploadOption("Choose a video", "From your Photos or Files",
+                                 symbol: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Choose a video")
+                Button {
+                    path.append(.fetchLink)
+                } label: {
+                    uploadOption("Fetch from link", "A YouTube or video link, instead of a file",
+                                 symbol: "link")
+                }
+            } header: {
+                Text("Add a lesson video. It is saved as a session and uploaded to Cloud, and the pipeline picks it up like a recording.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DIM)
+                    .textCase(nil)
+                    .padding(.bottom, 6)
+            } footer: {
+                if !store.status.isEmpty {
+                    Text(store.status)
+                        .font(.system(size: 14))
+                        .foregroundStyle(DIM)
+                }
+            }
+            .listRowBackground(PANEL)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(BG)
+        .navigationTitle("Upload video")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// One row of the Upload screen: ember glyph, title, a line of help.
+    private func uploadOption(_ title: String, _ sub: String, symbol: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(EMBER_INK)
+                .frame(width: 44, height: 44)
+                .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(INK)
+                Text(sub)
+                    .font(.system(size: 14))
+                    .foregroundStyle(DIM)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(DIM)
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+
+    /// Fetch from link: paste a link, watch pages queue to the pipeline
+    /// fetcher, which downloads and processes them. Its status line
+    /// reports only on the fetch.
+    private var fetchLinkView: some View {
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "link")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(EMBER_INK)
+                        .frame(width: 36, height: 36)
+                        .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    TextField("Paste a video link…", text: $fetchUrl)
+                        .font(.system(size: 16))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.go)
+                        .onSubmit { fetchLink() }
+                }
+                Button {
+                    fetchLink()
+                } label: {
+                    Label("Fetch from link", systemImage: "arrow.down.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(canFetchLink ? EMBER_INK : DIM)
+                }
+                .disabled(!canFetchLink)
+            } header: {
+                Text("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DIM)
+                    .textCase(nil)
+                    .padding(.bottom, 6)
+            } footer: {
+                if !store.status.isEmpty {
+                    Text(store.status)
+                        .font(.system(size: 14))
+                        .foregroundStyle(DIM)
+                }
+            }
+            .listRowBackground(PANEL)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(BG)
+        .navigationTitle("Fetch from link")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
     private var recordView: some View {
         List {
             // The viewfinder card: the live preview, the red/quiet
@@ -572,7 +665,7 @@ struct ContentView: View {
                     shutterButton
                     Text(store.status.isEmpty
                          ? (engine.isRecording ? "Recording — teach the way you'd teach anyway. Tap to stop."
-                                               : "Tap to record a lesson — teach the way you'd teach anyway.")
+                                               : "Point the camera at the mentor's hands and the work. Press Record, let the lesson happen, press Stop at the end.")
                          : store.status)
                         .font(.system(size: 15))
                         .foregroundStyle(DIM)

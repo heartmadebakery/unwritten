@@ -105,9 +105,14 @@ all-caps grey labels of the previous palette.
 - **Action tiles** — two side-by-side tiles on home. *Record* is
   filled ember with a white record glyph ("Film a lesson, the way
   you'd teach anyway"); *Upload video* is a surface tile with an
-  ember-wash glyph ("From your phone or a link"). On Android and iOS
-  the paste-a-link field sits under them in its own card; the web
-  keeps its Upload page.
+  ember-wash glyph ("From your phone or a link"). Home carries nothing
+  else above the hub — no link field, no status line. *Upload video*
+  opens its own screen with two options, *Choose a video* and *Fetch
+  from link*; Fetch from link is a screen of its own (web: `link.html`).
+- **Status lines belong to their screen** — a status or help line
+  (e.g. "Point the camera at the mentor's hands…") shows only on the
+  screen it describes and is cleared when you leave it; the camera
+  help is the Record screen's alone.
 - **Lesson card (hub)** — cover tile (initial) + title (headline) +
   date (callout) + chevron. Tapping opens the lesson.
 - **Session card (this device)** — 56 px video frame with the

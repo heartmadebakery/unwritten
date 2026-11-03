@@ -9,6 +9,25 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Changed
+- **Upload video is a screen with two options; Fetch from link is its
+  own screen; status lines stay on their screen.** Home is now just
+  Record and Upload video above the hub — no paste-a-link card, no
+  status footer. Upload video opens *Choose a video* (iOS: Photos or
+  Files; Android: system picker; web: the file drop zone) and *Fetch
+  from link*, which opens its own screen (web: new `link.html` /
+  `link.js`, precached and shipped by `build.sh`, cache bumped to v11).
+  The camera help ("Point the camera at the mentor's hands…") no longer
+  boots into the iOS store's shared status: it is the Record screen's
+  own line, and iOS clears the status on every navigation so one
+  screen's message never follows you to another. Contract tests added
+  first (`tests/test_upload_link_screens.py`); the old web link tests
+  now read the link page. Verified: iOS Release simulator build and a
+  walk through home → Upload → Fetch from link → Record on the iPhone
+  17 Pro Max simulator; web JS `node --check`, `dist/` rebuilt. Android
+  not compiled — no JDK 17 / Android SDK on this host (braces balance
+  only); build it on a machine with the SDK before shipping.
+
+### Changed
 - **iOS: Xcode Cloud setup + Xcode's recommended project updates.**
   Adds `xcshareddata/xcodecloud/manifest.json` (Xcode Cloud product
   link), accepts Xcode 27.2's recommended build-setting updates
