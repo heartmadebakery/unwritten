@@ -112,7 +112,7 @@ def parse_draft(raw):
 def render_writeup(obj):
     """Deterministic markdown from a validated draft object. Same shape
     the page parser has always read."""
-    lines = ["# %s — the write-up" % obj["title"].strip(), ""]
+    lines = ["# %s" % obj["title"].strip(), ""]
     if obj.get("intro", "").strip():
         lines += [obj["intro"].strip(), ""]
     if obj.get("needs"):

@@ -667,10 +667,15 @@ function escHtml(s){
    playback URLs — a row opens the session's detail, like Android and
    iOS, and the detail holds Play / Share / Delete. */
 function hubRowHTML(r){
+  var sub = "";
+  if(r.lessonDate || r.durationSeconds){
+    var dur = r.durationSeconds ? fmtDur(r.durationSeconds) : "";
+    sub = "<span class='lsub'>" + escHtml(r.lessonDate || "") + (dur ? (r.lessonDate ? " \u2022 " : "") + dur : "") + "</span>";
+  }
   return "<button class='lesson' data-hub-open='" + escHtml(r.videoId || "") + "'>" +
     coverHTML(r.title || r.videoId) +
     "<span class='ltext'><span class='ltitle'>" + escHtml(r.title || r.videoId || "Untitled") + "</span>" +
-    (r.lessonDate ? "<span class='lsub'>" + escHtml(r.lessonDate) + "</span>" : "") + "</span>" +
+    sub + "</span>" +
     "<span class='chev' aria-hidden='true'></span></button>";
 }
 var hubDetail = null;
@@ -694,7 +699,7 @@ function hubDetailHTML(d){
     "<div class='banner-cover cw" + washIndex(title) + "'><span aria-hidden='true'>" + escHtml(initialOf(title)) + "</span>" +
     "<button class='iconbtn' data-hub-act='close' title='Close' aria-label='Close'>" + ICON.close + "</button></div>" +
     "<div class='dbody'><h3 class='dtitle'>" + escHtml(title) + "</h3>" +
-    (d.lessonDate ? "<div class='ddate'>" + escHtml(d.lessonDate) + "</div>" : "") +
+    (function(){ var dur=d.durationSeconds?fmtDur(d.durationSeconds):""; return (d.lessonDate||dur)?"<div class='ddate'>"+escHtml(d.lessonDate||"")+(dur?(d.lessonDate?" \u2022 ":"")+dur:"")+"</div>":""; })() +
     "<div class='dacts'><button class='pill primary' data-hub-act='play'>" + ICON.play + "Play</button>" +
     "<button class='iconbtn tonal' data-hub-act='share' title='Share session link' aria-label='Share session link'>" + ICON.share + "</button>" +
     "<button class='iconbtn tonal danger' data-hub-act='delete' title='Delete from the hub and the cloud' aria-label='Delete from the hub and the cloud'>" + ICON.trash + "</button></div>";

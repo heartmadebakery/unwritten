@@ -9,6 +9,9 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Added
+- **Hub: duration on home + unique titles via chapters.** Hub rows now show video duration to the right of date (`lessonDate • m:ss`, `h:mm:ss` when needed) on web (`app/recorder/common.js:hubRowHTML`), Android (`MainActivity.refreshHubRows`) and iOS (`SessionStore.hubSubtitle`/`ContentView`). `duration_seconds` column added via `app/cloud-signer/migrations/0004_duration.sql` (applied to live D1, `hub-check` updated); `worker.js` computes `durationSeconds` from `ffprobe` on publish and returns it in `GET /hub/sessions` list/detail; `pipeline/publish.py` probes the lesson file and sends `durationSeconds`; `pipeline/title_utils.py` ensures new hub titles stay unique via chapter summarization (distinctive chapter words, fallback date/increment) at first creation and the worker enforces it server-side for all new publishers. Prompt extended (`prompts/writeup_drafter.md`). Verified: republished 13 work dirs + fixed remaining "Yes" to "Yes — Core Concepts" (14/14 unique, durations 4s–506s live at `GET /hub/sessions`), `node app/cloud-signer/hub-check.mjs` PASS (60), `python -m unittest` 452 pass (1 pre-existing), `app/recorder/build.sh` token #10/10, `app/android/build.sh` APK ok, `npx wrangler deploy` live.
+
+### Added
 - **iOS: a real iPad app, portrait and landscape.** The target is now
   iPhone + iPad (`TARGETED_DEVICE_FAMILY = "1,2"`) with all four
   orientations on the iPad (`UISupportedInterfaceOrientations~ipad`);

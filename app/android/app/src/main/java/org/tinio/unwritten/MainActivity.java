@@ -1250,6 +1250,13 @@ public class MainActivity extends Activity {
     private final Map<String,android.graphics.Bitmap> thumbCache = new java.util.HashMap<String,android.graphics.Bitmap>();
     private final Set<String> probing = new HashSet<String>();
 
+    private String formatDuration(int sec) {
+        if (sec <= 0) return "";
+        int h = sec / 3600, m = (sec / 60) % 60, s = sec % 60;
+        if (h > 0) return String.format(Locale.US, "%d:%02d:%02d", h, m, s);
+        return String.format(Locale.US, "%d:%02d", m, s);
+    }
+
     private String durationFor(String name) {
         if (durationCache.containsKey(name)) return durationCache.get(name);
         probeClip(name);
@@ -1994,6 +2001,7 @@ public class MainActivity extends Activity {
             r.setPadding(dp(12), dp(10), dp(8), dp(10));
             String title = row.optString("title", row.optString("videoId", ""));
             String date = row.optString("lessonDate", "");
+            String dur = formatDuration(row.optInt("durationSeconds", 0));
             // A cover tile: the lesson's initial on its warm wash.
             r.addView(cover(title, 56, 24, 14));
             LinearLayout mid = new LinearLayout(this);
@@ -2004,9 +2012,10 @@ public class MainActivity extends Activity {
             t.setSingleLine(true);
             t.setEllipsize(android.text.TextUtils.TruncateAt.END);
             mid.addView(t);
-            if (!date.isEmpty()) {
+            String hubSub = !date.isEmpty() && !dur.isEmpty() ? date + " \u2022 " + dur : (!date.isEmpty() ? date : dur);
+            if (!hubSub.isEmpty()) {
                 TextView d = new TextView(this);
-                d.setText(date); d.setTextSize(14); d.setTextColor(DIM);
+                d.setText(hubSub); d.setTextSize(14); d.setTextColor(DIM);
                 d.setPadding(0, dp(3), 0, 0);
                 mid.addView(d);
             }
@@ -2015,7 +2024,7 @@ public class MainActivity extends Activity {
             go.setImageDrawable(new Glyphs(Glyphs.CHEVRON, DIM, dp(18)));
             go.setScaleType(android.widget.ImageView.ScaleType.CENTER);
             r.addView(go, new LinearLayout.LayoutParams(dp(32), dp(48)));
-            r.setContentDescription(title + (date.isEmpty() ? "" : ", " + date) + ". Opens the lesson.");
+            r.setContentDescription(title + (hubSub.isEmpty() ? "" : ", " + hubSub) + ". Opens the lesson.");
             r.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { openHubSession(row.optString("videoId", "")); } });
             hubContainer.addView(r);
         }
@@ -2101,8 +2110,10 @@ public class MainActivity extends Activity {
         t.setPadding(0, 0, 0, 0);
         body.addView(t);
         String date = obj.optString("lessonDate", "");
-        if (!date.isEmpty()) {
-            TextView d = label(date, 15, DIM);
+        String detailDur = formatDuration(obj.optInt("durationSeconds", 0));
+        String detailSub = !date.isEmpty() && !detailDur.isEmpty() ? date + " \u2022 " + detailDur : (!date.isEmpty() ? date : detailDur);
+        if (!detailSub.isEmpty()) {
+            TextView d = label(detailSub, 15, DIM);
             d.setPadding(0, dp(4), 0, 0);
             body.addView(d);
         }

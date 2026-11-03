@@ -234,8 +234,10 @@ class TestTranscriptGate(unittest.TestCase):
 
 
 class TestDraftWriteup(unittest.TestCase):
+    # User-ordered 2026-11-02: titles are simple summaries, no "Mentor's" prefix
+    # and no " — the write-up" suffix. Updated from "Mentor's Sinigang — the write-up".
     NEW_FORMAT = (
-        "# Mentor's Sinigang — the write-up\n\n"
+        "# Sinigang\n\n"
         "A sour pork soup, built in one pot in under an hour.\n\n"
         "## What you need\n\n"
         "- pork belly\n- tomatoes\n\n"

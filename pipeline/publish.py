@@ -65,6 +65,39 @@ def read_json(path, default):
     return obj
 
 
+def media_duration(path):
+    if not path or not os.path.isfile(path):
+        return 0
+    try:
+        import subprocess
+        proc = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", path],
+            capture_output=True, text=True, timeout=30)
+        return int(round(float((proc.stdout or "").strip())))
+    except Exception:
+        return 0
+
+
+def unique_title_sync(proposed, chapters, lesson_date, signer, token, video_id):
+    """Ensure new title at first creation stays unique via chapter summary."""
+    try:
+        from title_utils import unique_title
+    except ImportError:
+        return proposed
+    # fetch existing titles unless this is an update of same videoId
+    try:
+        status, body = get_json(signer.rstrip("/") + "/hub/sessions", token)
+        if status >= 200 and status < 300:
+            import json as _json
+            rows = _json.loads(body)
+            existing = [r.get("title","") for r in rows if isinstance(r, dict) and r.get("videoId") != video_id]
+            return unique_title(proposed, chapters, lesson_date, existing)
+    except Exception:
+        pass
+    return proposed
+
+
 def playback_urls(guid):
     """(hls, mp4) for the video, vendor-confirmed when possible."""
     try:
@@ -224,10 +257,28 @@ def main(argv=None):
     corrections = read_json(os.path.join(work, "corrections.json"), [])
     chapters = read_json(os.path.join(work, "chapters.json"), [])
     hls, mp4 = playback_urls(guid)
+    # unique at first creation via chapter summarization
+    title = unique_title_sync(title, chapters if isinstance(chapters, list) else [], date, args.signer, args.token, guid)
+    # duration from lesson media (cloud_state lesson path or local probe)
+    dur = 0
+    try:
+        st = load_state(args.state) if os.path.exists(args.state) else {}
+        ent = st.get(guid, {}) if isinstance(st, dict) else {}
+        lesson_path = ent.get("lesson", "") if isinstance(ent, dict) else ""
+        dur = media_duration(lesson_path)
+        if not dur:
+            # fallback: probe any download in sibling cloud_downloads
+            dl = os.path.join(os.path.dirname(os.path.abspath(args.state)), "cloud_downloads")
+            cand = os.path.join(dl, os.path.basename(lesson_path)) if lesson_path else ""
+            if cand and os.path.isfile(cand):
+                dur = media_duration(cand)
+    except Exception:
+        pass
     payload = {
         "videoId": guid,
         "title": title,
         "lessonDate": date,
+        "durationSeconds": dur,
         "hlsUrl": hls,
         "mp4Url": mp4,
         "writeupMd": writeup,

@@ -13,10 +13,11 @@ import make_site
 
 
 def fixture_work(parent, name="work"):
+    # User-ordered 2026-11-02: simple title without possessive/suffix.
     path = os.path.join(parent, name)
     os.makedirs(os.path.join(path, "clips"))
     with open(os.path.join(path, "writeup.md"), "w") as fh:
-        fh.write("# Mentor's Soup — the write-up\n\nA short blurb here.\n\n"
+        fh.write("# Soup\n\nA short blurb here.\n\n"
                  "## Steps\n\n1. Boil.\n")
     with open(os.path.join(path, "corrections.json"), "w") as fh:
         json.dump([], fh)
@@ -39,7 +40,7 @@ class TestDiscovery(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             path = fixture_work(td)
             title, date, blurb = make_site.session_meta(path)
-        self.assertEqual(title, "Mentor's Soup — the write-up")
+        self.assertEqual(title, "Soup")
         self.assertEqual(date, "Oct 29, 2026")
         self.assertEqual(blurb, "A short blurb here.")
 

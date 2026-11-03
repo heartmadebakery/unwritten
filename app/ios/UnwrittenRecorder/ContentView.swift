@@ -382,8 +382,9 @@ struct ContentView: View {
                                         .font(.system(size: 17, weight: .semibold))
                                         .foregroundStyle(INK)
                                         .lineLimit(1)
-                                    if let date = row.lessonDate, !date.isEmpty {
-                                        Text(date)
+                                    let hubSub = store.hubSubtitle(for: row)
+                                    if !hubSub.isEmpty {
+                                        Text(hubSub)
                                             .font(.system(size: 14))
                                             .foregroundStyle(DIM)
                                     }
@@ -1347,8 +1348,9 @@ struct ContentView: View {
             Text(title)
                 .font(.system(size: 26, weight: .heavy, design: .rounded))
                 .foregroundColor(INK)
-            if let date = detail.lessonDate, !date.isEmpty {
-                Text(date)
+            let detailSub = store.hubSubtitle(for: detail)
+            if !detailSub.isEmpty {
+                Text(detailSub)
                     .font(.system(size: 15))
                     .foregroundColor(DIM)
                     .padding(.top, 2)
