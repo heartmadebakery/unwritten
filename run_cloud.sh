@@ -23,6 +23,7 @@ mkdir -p "$(dirname "$LOG")"
   HUB_SIGNER_URL="${HUB_SIGNER_URL:-https://unwritten-cloud-signer.heartmade.workers.dev}"
   HUB_SIGNER_TOKEN="${HUB_SIGNER_TOKEN:-$(head -1 app/cloud-signer/tokens.txt 2>/dev/null || echo "")}"
   if [ -n "$HUB_SIGNER_TOKEN" ]; then
+    shopt -s nullglob
     for work in work/cloud/*__*; do
       [ -f "$work/writeup.md" ] && [ -f "$work/corrections.json" ] || continue
       # Fetch-queue sessions finish here with a writeup but map to no

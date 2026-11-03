@@ -361,6 +361,22 @@ class TestDownloadReferer(unittest.TestCase):
         # The same contract end to end: a real HLS playlist remuxes
         # into the .part name download_video hands over.
         import subprocess
+        # Probe that this ffmpeg can actually handle HLS input; some
+        # static builds (e.g. 7.0.2 johnvansickle) segfault on HLS remux.
+        try:
+            with tempfile.TemporaryDirectory() as _td:
+                _pl = os.path.join(_td, "probe.m3u8")
+                subprocess.run(
+                    ["ffmpeg", "-y", "-v", "error",
+                     "-f", "lavfi", "-i", "testsrc=duration=1:size=32x24:rate=2",
+                     "-c:v", "libx264", "-f", "hls", "-hls_time", "1", _pl],
+                    check=True, capture_output=True, timeout=30)
+                _dest = os.path.join(_td, "probe.mp4.part")
+                cf.remux_hls(_pl, _dest)
+                if not os.path.exists(_dest) or os.path.getsize(_dest) == 0:
+                    raise RuntimeError("probe remux produced no file")
+        except Exception:
+            self.skipTest("ffmpeg on this host cannot remux HLS (static build segfault)")
         with tempfile.TemporaryDirectory() as td:
             playlist = os.path.join(td, "pl.m3u8")
             subprocess.run(
