@@ -92,6 +92,7 @@ const MIGRATIONS = {
   sessions: "0001_sessions.sql",
   fetch_jobs: "0002_fetch_jobs.sql",
   ignored_videos: "0003_ignored.sql",
+  duration_seconds: "0004_duration.sql",
 };
 
 export default {
@@ -129,10 +130,15 @@ export default {
     // worker whose D1 never got 0002/0003 — names the file to apply.
     const failed = (e) => {
       const msg = String((e && e.message) || e);
-      const m = msg.match(/no such table: (\w+)/);
-      const file = m && MIGRATIONS[m[1]];
+      let m = msg.match(/no such table: (\w+)/);
+      let file = m && MIGRATIONS[m[1]];
+      if (!file) {
+        m = msg.match(/no such column: (\w+)/);
+        file = m && MIGRATIONS[m[1]];
+      }
       if (file) {
-        return json({ error: `hub store is missing table ${m[1]} — apply migrations/${file}: ` +
+        const what = m ? (msg.includes("no such column") ? `column ${m[1]}` : `table ${m[1]}`) : "store";
+        return json({ error: `hub store is missing ${what} — apply migrations/${file}: ` +
           `npx wrangler d1 execute unwritten-hub --remote --file migrations/${file}` }, 503);
       }
       return json({ error: msg }, 500);
@@ -160,7 +166,7 @@ export default {
           const body = await request.json().catch(() => ({}));
           const url = String(body.url || "").trim();
           if (!url) return json({ error: "url required" }, 400);
-          if (url.length > 2000 || !/^https?:\/\/.+\..+/.test(url))
+          if (url.length > 2000 || !/^https?:\/\/.+/.test(url))
             return json({ error: "url must be an http(s) URL" }, 400);
           const now = Math.floor(Date.now() / 1000);
           const dup = await store
