@@ -116,7 +116,10 @@ mentor data — samples are fictional.
   and Upload above them; recording is one screen of the app, and an
   upload rides the take path into the pipeline. An ordinary phone
   camera with no app produces exactly the same lesson file and works
-  just as well. See [the Android work log](docs/android-app-worklog.md)
+  just as well. A lesson in several videos — takes, uploads, links —
+  reads as one session: **Add a part** on a hub session continues it,
+  and **Tie a session** joins two (each part is still processed on
+  its own; the hub ties them, see `app/cloud-signer/README.md`). See [the Android work log](docs/android-app-worklog.md)
   and [the iOS work log](docs/ios-app-worklog.md).
 - `samples/` — fictional sample write-ups and transcripts for testing.
   **Not** real mentor data.

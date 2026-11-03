@@ -131,6 +131,8 @@ def write_source(session_dir, job, title, lesson):
     with open(os.path.join(session_dir, "source.json"), "w") as fh:
         json.dump({"url": job.get("url", ""), "title": title,
                    "job_id": job.get("id", ""),
+                   # the hub session this link continues ("" = its own)
+                   "join_to": job.get("joinTo", "") or "",
                    "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
                    "lesson": os.path.basename(lesson)}, fh, indent=1)
 
@@ -204,9 +206,14 @@ def claim_job(cfg, by=WORKER_NAME, include_failed=False):
     return _request(cfg, "GET", path).get("job")
 
 
-def finish_job(cfg, job_id, ok, session="", error=""):
+def finish_job(cfg, job_id, ok, session="", error="", video_id=""):
+    """Closes a claimed job. video_id (done only) is the fetched
+    lesson's Stream id: for a job queued to continue a session
+    (joinTo), the signer ties that video on as its next part."""
     verb = "done" if ok else "failed"
     body = {"session": session} if ok else {"error": error}
+    if ok and video_id:
+        body["videoId"] = video_id
     _request(cfg, "POST",
              "/fetch/jobs/%s/%s" % (urllib.parse.quote(job_id), verb),
              body)

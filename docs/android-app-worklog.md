@@ -302,6 +302,25 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
   on the .so shows all 8 `Java_org_tinio_unwritten_NativeCore_*`
   exports.
 
+## Update — 2026-11-03: session parts (javac only)
+
+A lesson in several videos reads as one hub session. `HubClient`:
+`tie(List)`, `untie(id)`, `queueFetchJob(url, joinTo)`.
+`MainActivity`: `joinToVideoId`/`joinToTitle` (set by the hub
+detail's **Add a part**, cleared on Home or *Make it its own
+session*), a `joinBannerView()` atop Record/Upload/Fetch from link,
+`markJoin` on each saved take/upload, `tieCloudPart` from the
+uploader's `onSession` (three tries, retried by `cloudResumePending`),
+hub rows with "N parts • M processing", and a detail with a Parts
+list (play one / Untie), Add a part, a tie picker, Play running part
+to part (`setOnCompletionListener`), "Part N ·" chips, share of every
+part link, and a delete that names every part. Verified: `javac
+-source 8 -target 8` against platform-34 `android.jar` compiles the
+sources clean. **Not built into an APK or run on a device** — no
+build-tools/NDK/token pool on that host; the committed APK predates
+this. Build with `app/android/build.sh` and walk a two-part session
+on the Pixel 4 before shipping.
+
 ## NOT done yet — the honest gaps
 
 - **No on-device run.** There is no emulator in the sandbox (no KVM),

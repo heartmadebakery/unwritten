@@ -55,6 +55,13 @@ public class HubClient {
     /** Queues a video URL for the pipeline fetcher (YouTube/watch
      *  links the app cannot download itself). Returns the job id. */
     public String queueFetchJob(String url) throws Exception {
+        return queueFetchJob(url, null);
+    }
+
+    /** Queues a link that continues a session: joinTo is that
+     *  session's video id, and the signer ties the fetched video on as
+     *  its next part once the pipeline is done. */
+    public String queueFetchJob(String url, String joinTo) throws Exception {
         if (url == null || url.trim().isEmpty()) throw new IOException("url required");
         HttpURLConnection c = null;
         try {
@@ -67,7 +74,9 @@ public class HubClient {
             c.setDoOutput(true);
             c.setConnectTimeout(30000);
             c.setReadTimeout(30000);
-            byte[] payload = new JSONObject().put("url", url.trim()).toString().getBytes("UTF-8");
+            JSONObject req = new JSONObject().put("url", url.trim());
+            if (joinTo != null && !joinTo.trim().isEmpty()) req.put("joinTo", joinTo.trim());
+            byte[] payload = req.toString().getBytes("UTF-8");
             OutputStream out = c.getOutputStream();
             try { out.write(payload); } finally { try { out.close(); } catch (Throwable ignored) { } }
             int status = c.getResponseCode();
@@ -77,6 +86,50 @@ public class HubClient {
             String id = new JSONObject(body).optString("id", "");
             if (id.isEmpty()) throw new IOException("Queue returned no job id.");
             return id;
+        } finally {
+            if (c != null) try { c.disconnect(); } catch (Throwable ignored) { }
+        }
+    }
+
+    /** Ties videos into one overall session: videoIds[1..] join the
+     *  end of videoIds[0]'s session, in order. Returns {groupId, parts}. */
+    public JSONObject tie(java.util.List<String> videoIds) throws Exception {
+        if (videoIds == null || videoIds.size() < 2) throw new IOException("tie needs two videos");
+        org.json.JSONArray ids = new org.json.JSONArray();
+        for (String v : videoIds) ids.put(v);
+        Object[] r = send("POST", "/hub/parts", new JSONObject().put("videoIds", ids).toString());
+        int status = (Integer) r[0];
+        if (status == 401) throw new IOException("Signer refused the token — check it in Cloud settings.");
+        if (status < 200 || status >= 300) throw new IOException("Tie failed (" + status + "): " + r[1]);
+        return new JSONObject((String) r[1]);
+    }
+
+    /** Unties one part: it stands alone again. Returns whether it was tied. */
+    public boolean untie(String videoId) throws Exception {
+        if (videoId == null || videoId.isEmpty()) throw new IOException("videoId required");
+        Object[] r = send("DELETE", "/hub/parts/" + URLEncoder.encode(videoId, "UTF-8"), null);
+        int status = (Integer) r[0];
+        if (status < 200 || status >= 300) throw new IOException("Untie failed (" + status + "): " + r[1]);
+        return new JSONObject((String) r[1]).optBoolean("untied", false);
+    }
+
+    private Object[] send(String method, String path, String json) throws Exception {
+        HttpURLConnection c = null;
+        try {
+            c = (HttpURLConnection) new URL(signerUrl + path).openConnection();
+            c.setRequestMethod(method);
+            c.setRequestProperty("Accept", "application/json");
+            if (!signerToken.isEmpty()) c.setRequestProperty("X-Signer-Token", signerToken);
+            c.setConnectTimeout(30000);
+            c.setReadTimeout(30000);
+            if (json != null) {
+                c.setRequestProperty("Content-Type", "application/json");
+                c.setDoOutput(true);
+                OutputStream out = c.getOutputStream();
+                try { out.write(json.getBytes("UTF-8")); } finally { try { out.close(); } catch (Throwable ignored) { } }
+            }
+            int status = c.getResponseCode();
+            return new Object[] { status, readBody(c) };
         } finally {
             if (c != null) try { c.disconnect(); } catch (Throwable ignored) { }
         }

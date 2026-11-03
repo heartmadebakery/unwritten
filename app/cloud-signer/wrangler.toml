@@ -22,9 +22,10 @@ CORS_ORIGIN = "*"
 #   npx wrangler d1 execute unwritten-hub --remote --file migrations/0002_fetch_jobs.sql
 #   npx wrangler d1 execute unwritten-hub --remote --file migrations/0003_ignored.sql
 #   npx wrangler d1 execute unwritten-hub --remote --file migrations/0004_duration.sql
+#   npx wrangler d1 execute unwritten-hub --remote --file migrations/0005_parts.sql
 # Existing databases apply the files they are missing, then redeploy
-# (the hub list reads ignored_videos and duration_seconds: without
-# 0003/0004 it answers 503 naming the file).
+# (the hub list reads ignored_videos, duration_seconds and
+# session_parts: without 0003/0004/0005 it answers 503 naming the file).
 [[d1_databases]]
 binding = "DB"
 database_name = "unwritten-hub"

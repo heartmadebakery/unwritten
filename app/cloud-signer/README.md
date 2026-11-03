@@ -32,8 +32,8 @@ npx wrangler secret put CLOUD_API_KEY  # library's AccessKey (Stream → library
 paste -sd, tokens.txt | npx wrangler secret put SIGNER_TOKENS  # the pool, never printed
 ```
 
-Hub store (optional, powers the in-app hub, the URL fetch queue, and
-the ignored-take badges): a D1 database behind the same worker.
+Hub store (optional, powers the in-app hub, the URL fetch queue,
+session parts, and the ignored-take badges): a D1 database behind the same worker.
 Create it once, paste the printed id into `wrangler.toml`, run every
 migration, redeploy. `--remote` matters: without it Wrangler
 migrates a local dev copy and the deployed store never gets the
@@ -45,11 +45,35 @@ npx wrangler d1 create unwritten-hub
 npx wrangler d1 execute unwritten-hub --remote --file migrations/0001_sessions.sql
 npx wrangler d1 execute unwritten-hub --remote --file migrations/0002_fetch_jobs.sql
 npx wrangler d1 execute unwritten-hub --remote --file migrations/0003_ignored.sql
+npx wrangler d1 execute unwritten-hub --remote --file migrations/0004_duration.sql
+npx wrangler d1 execute unwritten-hub --remote --file migrations/0005_parts.sql
 npx wrangler deploy
 ```
 
 An existing store applies just the files it is missing, then
-redeploys.
+redeploys. Apply a migration **before** deploying the worker that
+reads it: the hub list reads `session_parts` (0005), so a new worker
+on a store without it answers 503 naming the file until it is applied.
+
+**Session parts** (0005): several videos tied into one overall
+session — a lesson filmed in several takes, uploaded in pieces, or
+fetched from more than one link. `POST /hub/parts {videoIds: [a, b,
+…]}` ties b, … onto the end of a's session (a video already tied
+elsewhere brings its whole session along, order kept); `DELETE
+/hub/parts/<videoId>` unties one (a session left with one part
+dissolves; deleting a hub session unties it too). A part may be a
+video the pipeline has not published yet — the apps tie a take as
+soon as its upload has an id — and the hub counts it as
+`pendingParts` until it is published. `GET /hub/sessions` lists a
+tied session once, under its first published part, with `partCount`,
+`groupId`, `pendingParts` and the summed `durationSeconds`; `GET
+/hub/sessions/<any part>` answers the whole session: one write-up
+with a `**Part N — title**` heading per part, corrections and
+chapters tagged with their `part`, and `parts` (each part's id,
+title, length and streams) in order. A queued link continues a
+session with `POST /fetch/jobs {url, joinTo}`; the pipeline reports
+the fetched video's id on `/fetch/jobs/<id>/done` and the worker ties
+it on. `node hub-check.mjs` drives all of it against real SQLite.
 
 Then publish finished runs: `CLOUD_LIBRARY_ID=.. CLOUD_LIBRARY_KEY=..
 CLOUD_CDN_HOSTNAME=.. HUB_SIGNER_URL=.. HUB_SIGNER_TOKEN=.. python3

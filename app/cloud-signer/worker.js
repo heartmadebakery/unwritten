@@ -50,7 +50,31 @@
  *
  *   GET  /hub/sessions/<videoId> -> the full session row
  *
- *   DELETE /hub/sessions/<videoId> -> {deleted: true}
+ *   DELETE /hub/sessions/<videoId> -> {deleted: true} (also unties it)
+ *
+ *   Parts (D1 table session_parts): several videos tied together read
+ *   as one overall session — a lesson filmed in several takes,
+ *   uploaded in pieces, or fetched from more than one link. A part
+ *   may be a video the pipeline has not published yet (the apps tie a
+ *   take as soon as its upload has an id); the hub shows published
+ *   parts only and counts the rest as pendingParts.
+ *
+ *   POST /hub/parts  {videoIds: [a, b, ...]} -> {groupId, parts: [...]}
+ *                     Ties b, ... onto a's session in that order (a
+ *                     video already in another session brings its
+ *                     whole session along, order kept).
+ *   DELETE /hub/parts/<videoId> -> {untied: bool} (the video stands
+ *                     alone again; a session left with one part
+ *                     dissolves)
+ *
+ *   With parts, GET /hub/sessions lists each tied session once, under
+ *   its first published part, with partCount, groupId, pendingParts,
+ *   and the summed durationSeconds (untied rows: partCount 1, groupId
+ *   ""). GET /hub/sessions/<any part> answers the whole session: the
+ *   first part's fields, the summed length, one write-up with a
+ *   "**Part N — title**" heading per part, corrections and chapters
+ *   tagged with their 1-based part, and parts: [{videoId, libraryId,
+ *   title, lessonDate, durationSeconds, hlsUrl, mp4Url}] in order.
  *
  *   Ignored videos (D1 table ignored_videos): operator set-asides
  *   the hub never shows. The pipeline syncs them here; the
@@ -72,17 +96,21 @@
  * pipeline machine claims them one at a time, downloads each
  * (yt-dlp or direct), and runs it like any session.
  *
- *   POST /fetch/jobs  {url} -> {id, status} (resubmitting a queued
- *                       URL returns the existing job)
+ *   POST /fetch/jobs  {url, joinTo?} -> {id, status} (resubmitting a
+ *                       queued URL returns the existing job; joinTo, a
+ *                       session's video id, makes the fetched video
+ *                       its next part)
  *   GET  /fetch/jobs   -> the 50 most recent jobs, newest first
  *   GET  /fetch/jobs?claim=1&by=<worker>[&includeFailed=1]
- *                     -> {job: {id, url, attempts, session} | null}
+ *                     -> {job: {id, url, attempts, session, joinTo} | null}
  *                     (oldest pending first; failed stays failed
  *                     unless includeFailed=1, like --retry-failed,
  *                     and those retries follow pending work, least
  *                     recently tried first; claims older than two
  *                     hours count as abandoned and come back)
- *   POST /fetch/jobs/<id>/done   {session?} -> {ok: true}
+ *   POST /fetch/jobs/<id>/done   {session?, videoId?} -> {ok: true, tied}
+ *                     (videoId is the fetched lesson's Stream id: a
+ *                     job with joinTo ties it onto that session)
  *   POST /fetch/jobs/<id>/failed {error?}   -> {ok: true}
  */
 
@@ -93,6 +121,8 @@ const MIGRATIONS = {
   fetch_jobs: "0002_fetch_jobs.sql",
   ignored_videos: "0003_ignored.sql",
   duration_seconds: "0004_duration.sql",
+  session_parts: "0005_parts.sql",
+  join_to: "0005_parts.sql",
 };
 
 export default {
@@ -133,11 +163,11 @@ export default {
       let m = msg.match(/no such table: (\w+)/);
       let file = m && MIGRATIONS[m[1]];
       if (!file) {
-        m = msg.match(/no such column: (\w+)/);
+        m = msg.match(/no such column: (\w+)/) || msg.match(/has no column named (\w+)/);
         file = m && MIGRATIONS[m[1]];
       }
       if (file) {
-        const what = m ? (msg.includes("no such column") ? `column ${m[1]}` : `table ${m[1]}`) : "store";
+        const what = m ? (/no such table/.test(msg) ? `table ${m[1]}` : `column ${m[1]}`) : "store";
         return json({ error: `hub store is missing ${what} — apply migrations/${file}: ` +
           `npx wrangler d1 execute unwritten-hub --remote --file migrations/${file}` }, 503);
       }
@@ -168,16 +198,31 @@ export default {
           if (!url) return json({ error: "url required" }, 400);
           if (url.length > 2000 || !/^https?:\/\/.+/.test(url))
             return json({ error: "url must be an http(s) URL" }, 400);
+          const joinTo = String(body.joinTo || "").trim().slice(0, 200);
           const now = Math.floor(Date.now() / 1000);
           const dup = await store
             .prepare("SELECT id, status FROM fetch_jobs WHERE url = ? AND status IN ('pending','claimed')")
             .bind(url).first();
-          if (dup) return json({ id: dup.id, status: dup.status });
+          if (dup) {
+            // The newest choice of session wins for a link still queued.
+            if (joinTo)
+              await store.prepare(`UPDATE fetch_jobs SET join_to=? WHERE id=?`).bind(joinTo, dup.id).run();
+            return json({ id: dup.id, status: dup.status });
+          }
           const id = "job_" + crypto.randomUUID().replace(/-/g, "");
-          await store
-            .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at)
-                      VALUES (?, ?, 'pending', 0, ?, ?)`)
-            .bind(id, url, now, now).run();
+          // join_to only when asked: a store without 0005 keeps
+          // queueing plain links, and a continue names the migration.
+          if (joinTo) {
+            await store
+              .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at, join_to)
+                        VALUES (?, ?, 'pending', 0, ?, ?, ?)`)
+              .bind(id, url, now, now, joinTo).run();
+          } else {
+            await store
+              .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at)
+                        VALUES (?, ?, 'pending', 0, ?, ?)`)
+              .bind(id, url, now, now).run();
+          }
           return json({ id, status: "pending" });
         }
         if (request.method === "GET") {
@@ -206,13 +251,15 @@ export default {
             await store
               .prepare(`UPDATE fetch_jobs SET status='claimed', claimed_by=?, updated_at=? WHERE id=?`)
               .bind(by, now, job.id).run();
-            return json({ job: { id: job.id, url: job.url, attempts: job.attempts || 0, session: job.session || "" } });
+            return json({ job: { id: job.id, url: job.url, attempts: job.attempts || 0,
+              session: job.session || "", joinTo: job.join_to || "" } });
           }
           const rows = await store
             .prepare(`SELECT * FROM fetch_jobs ORDER BY created_at DESC, id ASC LIMIT 50`).all();
           return json((rows.results || []).map((r) => ({
             id: r.id, url: r.url, status: r.status, attempts: r.attempts,
             claimedBy: r.claimed_by, error: r.error, session: r.session,
+            joinTo: r.join_to || "",
             createdAt: r.created_at, updatedAt: r.updated_at,
           })));
         }
@@ -236,11 +283,49 @@ export default {
           if (verb === "done") {
             await store.prepare(`UPDATE fetch_jobs SET status='done', session=?, updated_at=? WHERE id=?`)
               .bind(String(body.session || "").slice(0, 500), now, id).run();
+            // A link that continues a session becomes its next part.
+            const videoId = String(body.videoId || "").trim();
+            const joinTo = String(job.join_to || "").trim();
+            let tied = false;
+            if (joinTo && videoId && joinTo !== videoId) {
+              await tieParts(store, [joinTo, videoId], now);
+              tied = true;
+            }
+            return json({ ok: true, tied });
           } else {
             await store.prepare(`UPDATE fetch_jobs SET status='failed', attempts=attempts+1, error=?, updated_at=? WHERE id=?`)
               .bind(String(body.error || "").slice(0, 500), now, id).run();
           }
           return json({ ok: true });
+        }
+      }
+      // Parts: tie videos into one overall session, or untie one.
+      // Like the fetch queue, needs only the token gate plus D1.
+      if (normPath === "/hub/parts") {
+        const store = hubStore(env);
+        if (!store) return json({ error: "hub store not configured" }, 503);
+        if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+        const body = await request.json().catch(() => ({}));
+        const raw = Array.isArray(body.videoIds) ? body.videoIds : [];
+        const ids = [];
+        for (const v of raw) {
+          const id = String(v == null ? "" : v).trim();
+          if (id && id.length <= 200 && !ids.includes(id)) ids.push(id);
+        }
+        if (ids.length < 2) return json({ error: "videoIds needs at least two different videos" }, 400);
+        if (ids.length > 50) return json({ error: "at most 50 parts in one session" }, 400);
+        const tied = await tieParts(store, ids, Math.floor(Date.now() / 1000));
+        return json(tied);
+      }
+      {
+        const m = normPath.match(/^\/hub\/parts\/([^/]+)$/);
+        if (m) {
+          const store = hubStore(env);
+          if (!store) return json({ error: "hub store not configured" }, 503);
+          if (request.method !== "DELETE") return json({ error: "method not allowed" }, 405);
+          let videoId;
+          try { videoId = decodeURIComponent(m[1]); } catch { return json({ error: "bad video id" }, 400); }
+          return json({ untied: await untiePart(store, videoId) });
         }
       }
       // Ignored videos: operator set-asides the hub never shows. Like
@@ -406,16 +491,56 @@ export default {
              ORDER BY published_at DESC, video_id ASC`
           )
           .all();
-        return json(
-          (rows.results || []).map((r) => ({
-            videoId: r.video_id,
-            libraryId: r.library_id,
-            title: r.title,
-            lessonDate: r.lesson_date,
-            durationSeconds: r.duration_seconds | 0,
-            publishedAt: r.published_at,
-          }))
-        );
+        const parts = await store
+          .prepare(
+            `SELECT p.video_id, p.group_id, p.position,
+                    (s.video_id IS NOT NULL) AS published
+             FROM session_parts p LEFT JOIN sessions s ON s.video_id = p.video_id
+             WHERE p.video_id NOT IN (SELECT video_id FROM ignored_videos)
+             ORDER BY p.group_id ASC, p.position ASC, p.video_id ASC`
+          )
+          .all();
+        // Collapse each tied session into one row, placed where its
+        // newest part falls in the newest-first order.
+        const partOf = {}, pending = {}, firstOf = {};
+        for (const p of parts.results || []) {
+          if (!p.published) { pending[p.group_id] = (pending[p.group_id] || 0) + 1; continue; }
+          partOf[p.video_id] = p.group_id;
+          if (!(p.group_id in firstOf)) firstOf[p.group_id] = p.video_id;
+        }
+        const out = [], byGroup = {};
+        const all = rows.results || [];
+        const rowById = {};
+        for (const r of all) rowById[r.video_id] = r;
+        for (const r of all) {
+          const g = partOf[r.video_id] || "";
+          if (!g) {
+            out.push({
+              videoId: r.video_id, libraryId: r.library_id, title: r.title,
+              lessonDate: r.lesson_date, durationSeconds: r.duration_seconds | 0,
+              publishedAt: r.published_at, partCount: 1, groupId: "", pendingParts: 0,
+            });
+            continue;
+          }
+          if (byGroup[g]) {
+            byGroup[g].partCount++;
+            byGroup[g].durationSeconds += r.duration_seconds | 0;
+            continue;
+          }
+          const first = rowById[firstOf[g]] || r;
+          byGroup[g] = {
+            videoId: first.video_id, libraryId: first.library_id, title: first.title,
+            lessonDate: first.lesson_date, durationSeconds: r.duration_seconds | 0,
+            publishedAt: r.published_at, partCount: 1, groupId: g, pendingParts: pending[g] || 0,
+          };
+          out.push(byGroup[g]);
+        }
+        // A session whose only published part is alone with parts
+        // still processing keeps its group, so the count shows.
+        for (const row of out) {
+          if (row.groupId && row.partCount === 1 && !row.pendingParts) row.groupId = "";
+        }
+        return json(out);
       }
       {
         const m = normPath.match(/^\/hub\/sessions\/([^/]+)$/);
@@ -435,22 +560,71 @@ export default {
               .bind(videoId)
               .first();
             if (snubbed) return json({ error: "not found" }, 404);
+            // The whole session this video is a part of (just itself
+            // when untied): published, non-ignored parts in order.
+            const mine = await store
+              .prepare(`SELECT group_id FROM session_parts WHERE video_id = ?`)
+              .bind(videoId).first();
+            let members = [row], pendingParts = 0, groupId = "";
+            if (mine) {
+              const ps = await store
+                .prepare(
+                  `SELECT s.*, (s.video_id IS NOT NULL) AS published, p.video_id AS part_id
+                   FROM session_parts p LEFT JOIN sessions s ON s.video_id = p.video_id
+                   WHERE p.group_id = ?
+                     AND p.video_id NOT IN (SELECT video_id FROM ignored_videos)
+                   ORDER BY p.position ASC, p.video_id ASC`
+                )
+                .bind(mine.group_id).all();
+              const pub = (ps.results || []).filter((p) => p.published);
+              pendingParts = (ps.results || []).length - pub.length;
+              if (pub.length) members = pub;
+              if (members.length > 1 || pendingParts) groupId = mine.group_id;
+            }
+            const multi = members.length > 1;
+            const head = members[0];
+            const tag = (list, part) => list.map((x) =>
+              x && typeof x === "object" && !Array.isArray(x) ? Object.assign({}, x, { part }) : x);
+            let corrections = [], chapters = [], duration = 0;
+            const writeups = [];
+            members.forEach((m, i) => {
+              corrections = corrections.concat(tag(parseList(m.corrections_json), i + 1));
+              chapters = chapters.concat(tag(parseList(m.chapters_json), i + 1));
+              duration += m.duration_seconds | 0;
+              const w = String(m.writeup_md || "");
+              if (!multi) writeups.push(w);
+              else writeups.push(`**Part ${i + 1} — ${m.title || m.video_id}**\n\n` + (w.trim() || "_No write-up for this part yet._"));
+            });
             return json({
-              videoId: row.video_id,
-              libraryId: row.library_id,
-              title: row.title,
-              lessonDate: row.lesson_date,
-              hlsUrl: row.hls_url,
-              mp4Url: row.mp4_url,
-              writeupMd: row.writeup_md,
-              corrections: parseList(row.corrections_json),
-              chapters: parseList(row.chapters_json),
-              glossary: parseObj(row.glossary_json),
-              durationSeconds: row.duration_seconds | 0,
-              publishedAt: row.published_at,
+              videoId: head.video_id,
+              libraryId: head.library_id,
+              title: head.title,
+              lessonDate: head.lesson_date,
+              hlsUrl: head.hls_url,
+              mp4Url: head.mp4_url,
+              writeupMd: writeups.join("\n\n"),
+              corrections,
+              chapters,
+              glossary: parseObj(head.glossary_json),
+              durationSeconds: duration,
+              publishedAt: Math.max(...members.map((m) => m.published_at | 0)),
+              groupId,
+              pendingParts,
+              parts: members.map((m) => ({
+                videoId: m.video_id,
+                libraryId: m.library_id,
+                title: m.title,
+                lessonDate: m.lesson_date,
+                durationSeconds: m.duration_seconds | 0,
+                hlsUrl: m.hls_url,
+                mp4Url: m.mp4_url,
+              })),
             });
           }
           if (request.method === "DELETE") {
+            // Untie first: a failed untie leaves the session in place
+            // instead of a session_parts row pointing at nothing.
+            await untiePart(store, videoId);
             await store
               .prepare(`DELETE FROM sessions WHERE video_id = ?`)
               .bind(videoId)
@@ -518,6 +692,57 @@ export default {
     }
   },
 };
+
+/* Ties ids onto ids[0]'s session, in order. A video already in
+   another session brings that whole session along (its order kept);
+   one already in the target stays where it is. Sequential statements
+   (no batch) so the D1 stub and real D1 behave alike; the cron loop
+   and the apps never tie the same session concurrently in practice,
+   and a crash mid-way leaves every row in some valid group. */
+async function tieParts(store, ids, now) {
+  const groupOf = async (id) => {
+    const r = await store.prepare(`SELECT group_id FROM session_parts WHERE video_id = ?`).bind(id).first();
+    return r ? r.group_id : "";
+  };
+  const membersOf = async (g) => {
+    const rs = await store
+      .prepare(`SELECT video_id FROM session_parts WHERE group_id = ? ORDER BY position ASC, video_id ASC`)
+      .bind(g).all();
+    return (rs.results || []).map((r) => r.video_id);
+  };
+  let target = await groupOf(ids[0]);
+  const ordered = target ? await membersOf(target) : [ids[0]];
+  if (!target) target = "grp_" + crypto.randomUUID().replace(/-/g, "");
+  for (const id of ids.slice(1)) {
+    if (ordered.includes(id)) continue;
+    const g = await groupOf(id);
+    const bring = g && g !== target ? await membersOf(g) : [id];
+    for (const v of bring) if (!ordered.includes(v)) ordered.push(v);
+  }
+  for (let i = 0; i < ordered.length; i++) {
+    await store
+      .prepare(
+        `INSERT INTO session_parts (video_id, group_id, position, linked_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(video_id) DO UPDATE SET group_id=excluded.group_id, position=excluded.position,
+           linked_at=excluded.linked_at`
+      )
+      .bind(ordered[i], target, i, now).run();
+  }
+  return { groupId: target, parts: ordered };
+}
+
+/* Unties one video; a session left with a single part dissolves.
+   Returns whether the video was tied at all. */
+async function untiePart(store, videoId) {
+  const r = await store.prepare(`SELECT group_id FROM session_parts WHERE video_id = ?`).bind(videoId).first();
+  if (!r) return false;
+  await store.prepare(`DELETE FROM session_parts WHERE video_id = ?`).bind(videoId).run();
+  const left = await store
+    .prepare(`SELECT COUNT(*) AS n FROM session_parts WHERE group_id = ?`).bind(r.group_id).first();
+  if (left && (left.n | 0) <= 1)
+    await store.prepare(`DELETE FROM session_parts WHERE group_id = ?`).bind(r.group_id).run();
+  return true;
+}
 
 function hubStore(env) {
   return (env && env.DB) || null;

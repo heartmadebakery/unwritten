@@ -582,6 +582,7 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
         session = os.path.join(root, fetch_jobs.session_dir_name(job_id))
         os.makedirs(session, exist_ok=True)
         upload_error = ""
+        guid = ""
         try:
             lesson = fetch_jobs.existing_media(session)
             title = fetch_jobs.read_source_title(session)
@@ -635,7 +636,10 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
                 cfg, job_id, code == 0,
                 session=work if code == 0 else lesson,
                 error="" if code == 0 else (upload_error
-                                            or "pipeline failed (see log)"))
+                                            or "pipeline failed (see log)"),
+                # the Stream id lets the signer tie a link queued to
+                # continue a session onto it (joinTo)
+                video_id=guid if code == 0 else "")
         except Exception as exc:
             failures += 1
             print("[fetch] could not mark finished: %s — the job comes "

@@ -6,6 +6,26 @@ of it has to be rediscovered. The app overview lives in
 [`app/ios/README.md`](../app/ios/README.md); this file is the history,
 the evidence, and the open items.
 
+## Update — 2026-11-03: session parts (contract-only)
+
+A lesson in several videos reads as one hub session. `SessionStore`:
+`HubPart` + `parts`/`partCount`/`pendingParts`/`groupId` on
+`HubSession`, `part` on corrections and chapters; `joinTo` (set by
+the hub screen's **Add a part**, cleared on return home or by *Make
+it its own session*) is stamped onto each take/upload's link record
+(`CloudStore.setLinkFields`) and tied via `POST /hub/parts` from the
+uploader's `onSession` (three tries, retried by `cloudResumePending`);
+`queueFetchUrl` sends `joinTo`; tie/untie/delete-all-parts.
+`ContentView`: `joinBanner` on Record/Upload/Fetch from link, a Parts
+list (play one / Untie), Add a part, a tie picker
+(`confirmationDialog`), Play running part to part
+(`AVPlayerItemDidPlayToEndTime`), "Part N ·" chips, and a delete
+confirm that names every part. **Not compiled** — no Xcode on the
+Linux host; `tests/test_session_parts.py` is the contract. Build it
+and walk a two-part session (record part 1, Add a part → Record part
+2, wait for both to publish, play through, untie, re-tie) on a device
+before relying on it.
+
 ## Update — 2026-11-02: bug sweep (contract-only)
 
 `SessionStore`: the passthrough export now writes to the temp dir

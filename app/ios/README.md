@@ -106,6 +106,21 @@ the phone *and* its cloud copy (cloud first — if that fails, the local
 lesson is kept). Pasting a link instead queues it to the pipeline
 fetcher (`POST /fetch/jobs`), which downloads YouTube and watch pages
 with yt-dlp, processes them like a take, and publishes them to the hub.
+
+**Parts — one session in several videos.** Open a hub session and
+use **Add a part** (Record / Upload / Link): the capture screen says
+"Adds a part to …" (with *Make it its own session* to back out), and
+every take, upload or link saved there becomes that session's next
+part — tied the moment its upload has a video id (retried until it
+lands), or, for a link, when the pipeline finishes it. **Tie a
+session to this one** joins another hub session (with its own parts)
+onto the end. A tied session lists once in the hub (total length,
+"N parts", parts still processing), plays its parts in order, shows
+each part's write-up under a "Part N" heading with corrections and
+chapters tagged by part, and each part can be played on its own or
+untied. Deleting a tied session names every part and deletes them
+all. The signer owns the model (`/hub/parts`, see
+[the signer README](../cloud-signer/README.md)).
 **Export sessions to Downloads** is shown only when Cloud is off
 (offline fallback); it shares every lesson through the share sheet
 (Save to Files, AirDrop, …).

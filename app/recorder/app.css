@@ -320,3 +320,14 @@ input:focus{outline:none;border-color:var(--ember);background:var(--surface);}
   #view,#player,#hubplayer{height:380px;}
   .tile{min-height:190px;}
 }
+/* Session parts: the capture screens' "Adds a part to ..." note, and
+   a tied session's parts list in the hub detail. */
+.joinbanner{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;padding:12px 14px;
+  border-radius:18px;background:var(--sage-soft);color:var(--ink);font-size:15px;line-height:1.45;}
+.joinbanner .pill{min-height:44px;padding:0 16px;font-size:15px;}
+.parts li{gap:10px;}
+.parts .tchip{display:inline-flex;align-items:center;gap:4px;border:0;cursor:pointer;font:inherit;}
+.parts .tchip .i{width:14px;height:14px;}
+.parts .ptitle{flex:1;min-width:0;overflow-wrap:anywhere;}
+.parts .pill{min-height:40px;padding:0 14px;font-size:14px;}
+.addpart .pill{text-decoration:none;color:inherit;}

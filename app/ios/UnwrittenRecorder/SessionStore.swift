@@ -9,11 +9,28 @@ struct HubCorrection: Decodable {
     var quote: String?
     var correcting: String?
     var segment: String?
+    /// 1-based part of a tied session it comes from.
+    var part: Int?
 }
 
 struct HubChapter: Decodable {
     var start: String?
     var label: String?
+    var part: Int?
+}
+
+/// One part of a tied session: several videos (takes, uploads, links)
+/// that read in the hub as one overall session, in order.
+struct HubPart: Decodable, Identifiable {
+    var videoId: String
+    var libraryId: String?
+    var title: String?
+    var lessonDate: String?
+    var durationSeconds: Int?
+    var hlsUrl: String?
+    var mp4Url: String?
+
+    var id: String { videoId }
 }
 
 /// One operator set-aside from the hub store: a video the hub never
@@ -37,6 +54,12 @@ struct HubSession: Decodable, Identifiable {
     var corrections: [HubCorrection]?
     var chapters: [HubChapter]?
     var glossary: [String: String]?
+    /// Session parts: the list row carries the count and how many are
+    /// still processing; the detail carries every published part.
+    var parts: [HubPart]?
+    var partCount: Int?
+    var pendingParts: Int?
+    var groupId: String?
 
     var id: String { videoId }
 }
@@ -61,6 +84,10 @@ struct SessionRow: Identifiable {
     /// Set when the pipeline operator set this take aside: the row
     /// shows an "ignored" badge instead of hub content.
     var ignoredReason: String? = nil
+    /// The hub session this take continues, and whether it is tied on
+    /// yet (it is once its upload has a video id).
+    var partOf: String? = nil
+    var joined: Bool = false
 
     var id: String { name }
 }
@@ -170,9 +197,13 @@ final class SessionStore: ObservableObject {
         let dur = row.durationSeconds ?? 0
         let durStr = dur > 0 ? hubDurationText(dur) : ""
         let date = row.lessonDate ?? ""
-        if !date.isEmpty && !durStr.isEmpty { return date + " \u2022 " + durStr }
-        if !date.isEmpty { return date }
-        return durStr
+        var bits: [String] = []
+        if !date.isEmpty { bits.append(date) }
+        if !durStr.isEmpty { bits.append(durStr) }
+        // A tied session lists once: its parts and any still processing.
+        if let n = row.partCount, n > 1 { bits.append("\(n) parts") }
+        if let p = row.pendingParts, p > 0 { bits.append("\(p) processing") }
+        return bits.joined(separator: " \u2022 ")
     }
     private func durationText(_ ms: Int64) -> String {
         let s = ms / 1000
@@ -211,9 +242,13 @@ final class SessionStore: ObservableObject {
             let name = file.lastPathComponent
             let dur = durationCache[name] ?? ""
             let middle = dur.isEmpty ? displayDateFor(name) : displayDateFor(name) + "  •  " + dur
+            let link = cloud.cloudLink(name)
+            let join = (link?["joinTo"] as? String) ?? ""
             return SessionRow(name: name, url: file, leftIcon: leftIconFor(name),
                               middleText: middle, rightKind: rightKindFor(name),
-                              ignoredReason: ignoredReason(for: name))
+                              ignoredReason: ignoredReason(for: name),
+                              partOf: join.isEmpty ? nil : ((link?["joinTitle"] as? String) ?? "a session"),
+                              joined: (link?["joined"] as? Bool) ?? false)
         }
         for file in clipFiles() where durationCache[file.lastPathComponent] == nil {
             loadDuration(for: file)
@@ -332,6 +367,7 @@ final class SessionStore: ObservableObject {
 
     private func registerLesson(url: URL) {
         status = "✅ Session saved — on this device. Hand the file to whoever runs the pipeline."
+        markJoin(url.lastPathComponent)
         // A duration read before the file was complete must not stick.
         durationCache.removeValue(forKey: url.lastPathComponent)
         refresh()
@@ -491,6 +527,9 @@ final class SessionStore: ObservableObject {
                         cloud.setCloudLink(name, state: "uploading", videoId: creds.videoId,
                                            libraryId: creds.libraryId, uploadUrl: uploadUrl, progress: -1)
                         NotificationCenter.default.post(name: .uwCloudProgress, object: name)
+                        // The id exists now: a take that continues a
+                        // session is tied on before its bytes finish.
+                        Task { @MainActor [weak self] in self?.tieCloudPart(name) }
                     },
                     onProgress: { sent, total in
                         let pct = total > 0 ? Int(sent * 100 / total) : 0
@@ -589,6 +628,10 @@ final class SessionStore: ObservableObject {
         if !cloud.cloudEnabledCfg() { return }
         for (name, link) in cloud.links() {
             guard url(for: name) != nil else { continue }
+            // A tie that failed earlier (offline, signer down) retries here.
+            if let j = link["joinTo"] as? String, !j.isEmpty,
+               let v = link["videoId"] as? String, !v.isEmpty,
+               (link["joined"] as? Bool) != true { tieCloudPart(name) }
             switch (link["state"] as? String) ?? "" {
             case "processing":
                 pollCloud(name, videoId: (link["videoId"] as? String) ?? "")
@@ -762,8 +805,10 @@ final class SessionStore: ObservableObject {
                 let rows = try JSONDecoder().decode([HubSession].self, from: data)
                 self?.hubRows = rows
                 self?.hubNotice = ""
-                if let detail = self?.hubDetail,
-                   !rows.contains(where: { $0.videoId == detail.videoId }) {
+                // A tied session lists under its first part: keep the
+                // detail while any of its parts is listed.
+                if let detail = self?.hubDetail, let parts = self?.hubParts(detail),
+                   !rows.contains(where: { r in parts.contains(where: { $0.videoId == r.videoId }) }) {
                     self?.hubDetail = nil
                 }
             } catch {
@@ -795,7 +840,11 @@ final class SessionStore: ObservableObject {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         req.setValue(cloud.effSignerToken(), forHTTPHeaderField: "X-Signer-Token")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["url": trimmed])
+        // Continuing a session: the fetched video becomes its next part.
+        let join = joinTo
+        var body: [String: Any] = ["url": trimmed]
+        if let join { body["joinTo"] = join.videoId }
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         status = "⬇ Queuing…"
         Task { [weak self] in
             do {
@@ -809,6 +858,7 @@ final class SessionStore: ObservableObject {
                     throw CloudError.message("queue refused (\(code)): \(String(data: data, encoding: .utf8) ?? "")")
                 }
                 self?.status = "✅ Queued — the pipeline will fetch the video."
+                    + (join.map { " It joins \($0.title ?? $0.videoId) as its next part." } ?? "")
             } catch {
                 let cause = String(error.localizedDescription.prefix(180))
                 self?.status = "Couldn't queue that link (\(cause)) — check the connection and Cloud settings."
@@ -846,6 +896,18 @@ final class SessionStore: ObservableObject {
     /// Per-session hub share: the link is copied, then offered through
     /// the share sheet — same as device sessions.
     func shareHubSession(_ session: HubSession) {
+        let parts = hubParts(session)
+        if parts.count > 1 {
+            // One link per part, in order.
+            let text = parts.enumerated().compactMap { i, p -> String? in
+                var one = HubSession(videoId: p.videoId)
+                one.libraryId = p.libraryId ?? session.libraryId
+                return hubEmbedUrl(one).map { "Part \(i + 1): " + $0 }
+            }.joined(separator: "\n")
+            UIPasteboard.general.string = text
+            presentShare(items: [text])
+            return
+        }
         guard let url = hubEmbedUrl(session) else {
             status = "No Cloud link yet for this session."
             return
@@ -860,6 +922,33 @@ final class SessionStore: ObservableObject {
     /// pointing at a dead video. The partial outcome is reported as
     /// partial, never as "nothing was lost".
     func deleteHubSession(_ session: HubSession) {
+        // One overall session: deleting it deletes every part (the
+        // confirm names them). A failure stops and says how far it got.
+        let parts = hubParts(session)
+        if parts.count > 1 {
+            Task { [weak self] in
+                guard let self else { return }
+                var done = 0
+                var err: String?
+                for p in parts {
+                    do {
+                        guard let uploader = self.cloud.uploader() else { throw CloudError.message("Cloud settings incomplete.") }
+                        try await uploader.deleteHubRecord(p.videoId)
+                        done += 1
+                        try await uploader.deleteVideo(p.videoId)
+                    } catch {
+                        if case let CloudError.message(m) = error { err = m } else { err = error.localizedDescription }
+                        break
+                    }
+                }
+                self.hubDetail = nil
+                self.loadHub()
+                self.status = err == nil
+                    ? "🗑 All \(parts.count) parts deleted from the hub and the cloud."
+                    : "☁️ Stopped after \(done) of \(parts.count) parts (\(err ?? "")) — the rest are untouched."
+            }
+            return
+        }
         let videoId = session.videoId
         guard !videoId.isEmpty else { return }
         Task { [weak self] in
@@ -892,6 +981,121 @@ final class SessionStore: ObservableObject {
             if self.hubDetail?.videoId == videoId { self.hubDetail = nil }
             self.loadHub()
             self.status = "🗑 Session deleted from the hub and the cloud."
+        }
+    }
+
+    // ---------- session parts: continue a session, tie sessions ----------
+
+    /// The hub session that takes, uploads and links made now continue
+    /// ("Add a part" on a hub session sets it; Home or "Make it its own
+    /// session" clears it). Nil = each is its own session.
+    @Published var joinTo: HubSession?
+
+    /// A saved take or upload remembers the session it continues.
+    private func markJoin(_ name: String) {
+        guard let join = joinTo else { return }
+        cloud.setLinkFields(name, ["joinTo": join.videoId, "joinTitle": join.title ?? join.videoId])
+    }
+
+    /// The parts of a hub session in order (itself when untied, or when
+    /// an older signer sends no parts).
+    func hubParts(_ session: HubSession) -> [HubPart] {
+        if let ps = session.parts, !ps.isEmpty { return ps }
+        return [HubPart(videoId: session.videoId, libraryId: session.libraryId, title: session.title,
+                        lessonDate: session.lessonDate, durationSeconds: session.durationSeconds,
+                        hlsUrl: session.hlsUrl, mp4Url: session.mp4Url)]
+    }
+
+    private var tieInFlight: Set<String> = []
+
+    private func postParts(_ method: String, _ path: String, _ body: [String: Any]?) async throws {
+        guard let endpoint = URL(string: cloud.effSignerUrl() + path),
+              endpoint.scheme != nil, endpoint.host != nil else {
+            throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+        }
+        var req = URLRequest(url: endpoint)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue(cloud.effSignerToken(), forHTTPHeaderField: "X-Signer-Token")
+        if let body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        }
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401 { throw CloudError.message("the signer refused the token — check it in Cloud settings") }
+        guard code >= 200 && code < 300 else {
+            throw CloudError.message("HTTP \(code): \(String(data: data, encoding: .utf8) ?? "")")
+        }
+    }
+
+    /// Ties a take onto its session once its upload has a video id;
+    /// three tries, then a status line — it retries on the next resume,
+    /// so a tie is never silently dropped.
+    func tieCloudPart(_ name: String) {
+        guard let link = cloud.cloudLink(name),
+              let join = link["joinTo"] as? String, !join.isEmpty,
+              let vid = link["videoId"] as? String, !vid.isEmpty,
+              (link["joined"] as? Bool) != true, !tieInFlight.contains(name) else { return }
+        let title = (link["joinTitle"] as? String) ?? "its session"
+        guard hubAvailable() else {
+            status = "☁️ Couldn't tie this take to \(title) — parts need the signer token (Cloud settings). It will retry once the token is set."
+            return
+        }
+        tieInFlight.insert(name)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.tieInFlight.remove(name) }
+            var last = ""
+            for attempt in 1...3 {
+                do {
+                    try await self.postParts("POST", "/hub/parts", ["videoIds": [join, vid]])
+                    self.cloud.setLinkFields(name, ["joined": true])
+                    self.refresh()
+                    return
+                } catch {
+                    if case let CloudError.message(m) = error { last = m } else { last = error.localizedDescription }
+                    try? await Task.sleep(nanoseconds: UInt64(2_000_000_000 * attempt))
+                }
+            }
+            self.status = "☁️ Couldn't tie this take to \(title) (\(last)) — it will retry when you next open the app. The take itself is safe."
+        }
+    }
+
+    /// Tie: another hub session (with its own parts) joins the end of
+    /// this one.
+    func tieHubSessions(_ session: HubSession, _ otherId: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.postParts("POST", "/hub/parts", ["videoIds": [session.videoId, otherId]])
+            } catch {
+                self.status = "☁️ Couldn't tie those sessions (\(error.localizedDescription)) — nothing changed."
+                return
+            }
+            self.status = "Tied — they're one session now."
+            self.openHubSession(session)
+            self.loadHub()
+        }
+    }
+
+    /// Untie: the part becomes its own session again. Nothing is deleted.
+    func untieHubPart(_ session: HubSession, _ videoId: String) {
+        // Reopen the session this screen shows (its route is that id):
+        // untying its first part leaves that part as its own session.
+        let stay = session.videoId
+        let encoded = videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoId
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.postParts("DELETE", "/hub/parts/" + encoded, nil)
+            } catch {
+                self.status = "☁️ Couldn't untie that part (\(error.localizedDescription)) — nothing changed."
+                return
+            }
+            self.status = "Part untied — it's its own session again."
+            self.openHubSession(HubSession(videoId: stay))
+            self.loadHub()
         }
     }
 
