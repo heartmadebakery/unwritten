@@ -16,7 +16,9 @@ missing) → `.venv` (Python 3.12) → `requirements.txt` (+ the retired
 torch file, harmless) → static `ffmpeg`/`ffprobe` into `~/.local/bin`
 when missing (amd64 or arm64 Linux; on macOS it stops and asks for
 `brew install ffmpeg`) → the SAM checkpoint into `pipeline/models/`
-(git-ignored, 375 MB; an interrupted download is retried, never kept).
+(git-ignored, 375 MB; an interrupted download is retried, never kept)
+→ a scaffolded `.env` with `CLOUD_PROXY_URL`/`FETCH_QUEUE_URL` defaulted
+to the baked signer (so YouTube links work without hand-editing).
 It ends by running the full test suite — no secrets needed for that;
 green here means the tree is good before you touch any credential.
 
@@ -37,8 +39,8 @@ of these places:
 |---|---|---|
 | `MODEL_API_KEY` (Meta Model API) | `.env` at repo root (git-ignored, `export KEY=value` lines) | Paste your key. Without it the pipeline falls back to local faster-whisper transcription and the keyless `muse`-runner drafting path — slower, fully offline-capable. |
 | `CLOUD_LIBRARY_ID`, `CLOUD_LIBRARY_KEY`, `CLOUD_CDN_HOSTNAME` | `.env` | Stream dashboard → your library → API page. `KEY` may be omitted when `CLOUD_PROXY_URL` is set (listing goes through the signer instead) — except `--fetch`, which needs the key to upload finished lessons. |
-| `CLOUD_PROXY_URL` (optional) | `.env` | The signer worker URL (below). Lets the pipeline list the library without holding the library key. |
-| `FETCH_QUEUE_URL`, `FETCH_QUEUE_TOKEN` (optional) | `.env` | Fetch-queue worker URL (falls back to `CLOUD_PROXY_URL`); token falls back to `CLOUD_PROXY_TOKEN`, then line 1 of `tokens.txt`. |
+| `CLOUD_PROXY_URL` (optional, defaults to baked signer) | `.env` | The signer worker URL (below). Lets the pipeline list the library without holding the library key. |
+| `FETCH_QUEUE_URL`, `FETCH_QUEUE_TOKEN` (optional, URL defaults to baked signer/`CLOUD_PROXY_URL`) | `.env` | Fetch-queue worker URL (falls back to `CLOUD_PROXY_URL`, then `https://unwritten-cloud-signer.heartmade.workers.dev`); token falls back to `CLOUD_PROXY_TOKEN`, then line 1 of `tokens.txt`. |
 | `HUB_SIGNER_URL`, `HUB_SIGNER_TOKEN` (optional) | `.env`, or `run_cloud.sh` defaults | Publish target; the token defaults to line 1 of `tokens.txt`. |
 | `UNWRITTEN_TRANSCRIBE`, `UNWRITTEN_WHISPER_MODEL`, `UNWRITTEN_ASR_KEYWORDS`, `UNWRITTEN_ASR_LANGUAGES`, `MUSE_BIN` (all optional) | `.env` / environment | Transcription backend + hints; `muse` CLI override (default: `muse` on `PATH`, else `~/.local/bin/muse`). |
 | Signer token pool, 10 lines | `app/cloud-signer/tokens.txt` (git-ignored, `chmod 600`) | **Either** copy the existing file over securely (preferred — keeps every shipped build valid), **or** mint a fresh pool: `bash app/cloud-signer/mint-tokens.sh`, then set it on the worker (step 3). Never print a token; builds log only `token #N of 10`. |

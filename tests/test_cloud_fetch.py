@@ -206,6 +206,17 @@ class TestRunCloudSh(unittest.TestCase):
         self.assertNotIn("$HOME/unwritten", sh)
         self.assertIn('cd "$(dirname "$0")"', sh)
 
+    def test_fetch_runs_without_env_override(self):
+        # A fresh clone has no FETCH_QUEUE_URL — the fetch step must
+        # still run against the baked signer (2026-11-03).
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            sh = fh.read()
+        self.assertIn("https://unwritten-cloud-signer.heartmade.workers.dev", sh)
+        self.assertIn("pipeline/run_pipeline.py --fetch", sh)
+        # The old gate silently skipped YouTube jobs when env was empty.
+        self.assertNotIn('if [ -n "${FETCH_QUEUE_URL:-${CLOUD_PROXY_URL:-}}"', sh)
+
 
 class TestState(unittest.TestCase):
     def test_roundtrip_and_missing(self):

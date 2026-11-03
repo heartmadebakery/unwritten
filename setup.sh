@@ -36,6 +36,26 @@ SAM=pipeline/models/sam_vit_b_01ec64.pth
 [ -f "$SAM" ] || { curl -fL -o "$SAM.part" \
   https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && mv "$SAM.part" "$SAM"; }
 
+# Scaffold .env with fetch queue defaults so a fresh clone processes
+# YouTube links without hand-editing (2026-11-03). Never overwrites.
+DEFAULT_SIGNER="https://unwritten-cloud-signer.heartmade.workers.dev"
+if [ ! -f .env ]; then
+  cat > .env <<EOF
+# Unwritten Craft — machine-local credentials. Gitignored: never commit.
+# Fill CLOUD_LIBRARY_ID/KEY/HOSTNAME from Stream dashboard → library → API.
+# The queue/proxy default to the baked signer; override only for a custom worker.
+export CLOUD_LIBRARY_ID=
+export CLOUD_LIBRARY_KEY=
+export CLOUD_CDN_HOSTNAME=
+export MODEL_API_KEY=
+export CLOUD_PROXY_URL=$DEFAULT_SIGNER
+export FETCH_QUEUE_URL=$DEFAULT_SIGNER
+EOF
+else
+  grep -q "FETCH_QUEUE_URL" .env || echo "export FETCH_QUEUE_URL=$DEFAULT_SIGNER" >> .env
+  grep -q "CLOUD_PROXY_URL" .env || echo "export CLOUD_PROXY_URL=$DEFAULT_SIGNER" >> .env
+fi
+
 # Android (optional): JDK 17 in ~/opt, SDK in ~/Android/Sdk (both user-local,
 # env persisted in ~/.bashrc). Rebuild the app APK with:
 #   cd app/android && bash build.sh    # needs SDK cmake bin on PATH for ninja

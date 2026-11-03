@@ -91,8 +91,8 @@ loops) — and a claim older than two hours counts as a crashed worker
 and comes back. A resumed session never reuses a `.part` sidecar
 left by a killed download: it downloads again. `FETCH_QUEUE_TOKEN` overrides the signer token (else
 `CLOUD_PROXY_TOKEN`, else line 1 of the pool file);
-`CLOUD_PROXY_URL` stands in for the queue URL. `run_cloud.sh` runs
-`--fetch` ahead of `--cloud` whenever the queue is configured.
+`CLOUD_PROXY_URL` (or the baked signer `https://unwritten-cloud-signer.heartmade.workers.dev` by default) stands in for the queue URL. `run_cloud.sh` runs
+`--fetch` ahead of `--cloud` on every run (queue defaults to the baked signer so a fresh clone never stalls).
 
 ## Races and reruns
 

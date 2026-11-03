@@ -60,10 +60,12 @@ class TestClassifyUrl(unittest.TestCase):
 
 
 class TestLoadConfig(unittest.TestCase):
-    def test_missing_queue_url_exits_loudly(self):
-        with self.assertRaises(SystemExit) as ctx:
-            fj.load_config(env={})
-        self.assertIn("FETCH_QUEUE_URL", str(ctx.exception))
+    def test_default_queue_is_baked_signer(self):
+        # A fresh clone has no .env yet — the queue must default to the
+        # baked signer so YouTube links never silently stall (2026-11-03).
+        cfg = fj.load_config(env={})
+        self.assertEqual(cfg["queue"],
+                         "https://unwritten-cloud-signer.heartmade.workers.dev")
 
     def test_proxy_url_is_the_fallback(self):
         cfg = fj.load_config(env={"CLOUD_PROXY_URL": "https://w.example/"})

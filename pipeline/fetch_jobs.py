@@ -6,7 +6,8 @@ The apps queue video URLs the browser cannot download itself
 module claims them one at a time, downloads each video, and lays it
 out as a session dir the pipeline runs like any other:
 
-  FETCH_QUEUE_URL   signer Worker URL (falls back to CLOUD_PROXY_URL)
+  FETCH_QUEUE_URL   signer Worker URL (falls back to CLOUD_PROXY_URL,
+                    then the baked signer)
   FETCH_QUEUE_TOKEN signer token (falls back to CLOUD_PROXY_TOKEN,
                     then line 1 of app/cloud-signer/tokens.txt)
 
@@ -30,6 +31,8 @@ import urllib.request
 
 import cloud_fetch
 
+DEFAULT_SIGNER = "https://unwritten-cloud-signer.heartmade.workers.dev"
+
 MEDIA_EXTS = (".mp4", ".webm", ".mov", ".mkv", ".m4v",
               ".mp3", ".m4a", ".wav", ".ogg")
 YTDLP_TIMEOUT = 1800
@@ -41,15 +44,13 @@ class QueueError(Exception):
 
 
 def load_config(env=None):
-    """Read the queue URL + token. Exits loudly without a URL so a
-    --fetch run never silently processes nothing."""
+    """Read the queue URL + token. Defaults to the baked signer so a
+    fresh clone without .env still processes YouTube links."""
     env = os.environ if env is None else env
-    queue = (env.get("FETCH_QUEUE_URL")
-             or env.get("CLOUD_PROXY_URL") or "").strip().rstrip("/")
-    if not queue:
-        raise SystemExit("Missing FETCH_QUEUE_URL — export the signer "
-                         "Worker URL (or CLOUD_PROXY_URL) to fetch "
-                         "queued URLs.")
+    raw = (env.get("FETCH_QUEUE_URL")
+           or env.get("CLOUD_PROXY_URL")
+           or DEFAULT_SIGNER).strip().rstrip("/")
+    queue = raw or DEFAULT_SIGNER
     token = (env.get("FETCH_QUEUE_TOKEN")
              or env.get("CLOUD_PROXY_TOKEN") or "").strip()
     if not token:

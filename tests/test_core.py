@@ -402,6 +402,14 @@ class TestSetupSh(unittest.TestCase):
         self.assertIn("curl -fL", sam)
         self.assertIn("mv ", sam)
 
+    def test_scaffolds_env_with_fetch_defaults(self):
+        # A fresh clone has no .env — setup.sh must scaffold it with
+        # the baked signer so --fetch never silently skips (2026-11-03).
+        self.assertIn(".env", self.sh)
+        self.assertIn("FETCH_QUEUE_URL", self.sh)
+        self.assertIn("CLOUD_PROXY_URL", self.sh)
+        self.assertIn("https://unwritten-cloud-signer.heartmade.workers.dev", self.sh)
+
 
 if __name__ == "__main__":
     unittest.main()

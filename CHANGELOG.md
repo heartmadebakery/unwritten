@@ -9,6 +9,9 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Fixed
+- **New-machine YouTube stall.** `fetch_jobs.load_config()` and `run_cloud.sh` now default the fetch queue to the baked signer `https://unwritten-cloud-signer.heartmade.workers.dev` so a fresh clone with no `.env` still processes queued YouTube links instead of silently skipping `--fetch`; `setup.sh` now scaffolds `.env` with `CLOUD_PROXY_URL`/`FETCH_QUEUE_URL` defaults and appends them non-destructively on re-run; `docs/SETUP.md` and `docs/PIPELINE.md` updated; contract tests added (`test_default_queue_is_baked_signer`, `test_fetch_runs_without_env_override`, `test_scaffolds_env_with_fetch_defaults`), kept green (495 tests, 69 hub checks).
+
+### Fixed
 - **Bug sweep: pipeline, hub, web, and docs.** Kept green (493 tests,
   69 hub checks): `draft_writeup.py`/`find_corrections.py` no longer
   crash with `UnboundLocalError` on muse timeout; `make_page.py` leak
