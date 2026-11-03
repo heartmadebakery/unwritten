@@ -7,7 +7,7 @@ agents: read `AGENTS.md` at the repo root first, then come back here.
 ## 0. Clone and bootstrap
 
 ```sh
-git clone git@github.com:tinio/unwritten.git && cd unwritten
+git clone git@github.com:heartmadebakery/unwritten.git && cd unwritten
 bash setup.sh
 ```
 

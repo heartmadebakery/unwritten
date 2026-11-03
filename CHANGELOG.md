@@ -9,6 +9,9 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-03
 
 ### Changed
+- **Repo moved to `heartmadebakery/unwritten`.** `origin` and the
+  clone line in `docs/SETUP.md` now point at the new organization;
+  dated docs and worklogs keep the old name as history.
 - **Repo hygiene.** `.gitignore` now ignores `.venv-python/`, the
   Python 3.12 that `uv` downloads for `.venv` on hosts without one
   (`rm -rf .venv .venv-python` undoes the whole local setup).
