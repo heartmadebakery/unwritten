@@ -6,6 +6,22 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-03
+
+### Fixed
+- **Android build: new value resources link, wrong JDK fails fast.**
+  The first official-SDK build of the Hearth redesign failed twice:
+  `aapt2 link` takes the app's resources as an overlay (`-R`), which
+  may not add a resource the base lacks, so the new
+  `values/colors.xml` was refused — the link step now passes
+  `--auto-add-overlay`. And JDK 21's javac output crashes
+  build-tools 34's `d8` (an NPE inside R8 on an anonymous class), so
+  `build.sh` now honours `JAVA_HOME` and stops early on javac 18+,
+  naming the JDK 17 fix. Two contract tests added first. With both
+  fixes the full official route (CMake/NDK, aapt2, javac 17, d8,
+  apksigner) builds and verifies here; the committed APK is not
+  replaced, since no token pool is on this host to stamp it.
+
 ## 2026-11-02
 
 ### Changed

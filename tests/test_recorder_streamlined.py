@@ -461,6 +461,29 @@ class AndroidBuildExitTests(unittest.TestCase):
         self.assertEqual(len(hits), 1, hits)
         self.assertTrue(hits[0].rstrip().endswith("|| true"), hits[0])
 
+    def test_link_accepts_new_value_resources(self):
+        # Found by the first real build of the Hearth redesign (Nov 3):
+        # the app's compiled resources reach `aapt2 link` as an overlay
+        # (-R), and an overlay may not add a resource the base lacks —
+        # so the new values/colors.xml (the launcher's ember background)
+        # failed with "does not override an existing resource". The
+        # link step must auto-add overlay resources.
+        link = self.build_sh.split('"$BT/aapt2" link', 1)[1].split("\n\n", 1)[0]
+        self.assertIn("-R ", link)
+        self.assertIn("--auto-add-overlay", link)
+
+    def test_wrong_jdk_fails_fast_naming_the_fix(self):
+        # Found the same day: JDK 21's javac gives anonymous-class
+        # constructors a Signature attribute that build-tools 34's d8
+        # crashes on (an NPE deep in R8, naming MainActivity$25). The
+        # script asks for JDK 17; it must check before compiling and
+        # say which JAVA_HOME to use instead of dying inside d8.
+        pre = self.build_sh.split('echo "== native', 1)[0]
+        self.assertIn("javac -version", pre)
+        self.assertIn("JDK 17", pre)
+        self.assertIn("JAVA_HOME", pre)
+        self.assertIn("exit 1", pre.split("javac -version", 1)[1])
+
 
 CLOUD_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
                               "java", "org", "tinio", "unwritten",
