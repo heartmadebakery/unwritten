@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd /home/aurelio/unwritten
+# Runs from its own checkout, wherever the repo is cloned (cron:
+# `cd /home/<you>/unwritten && bash run_cloud.sh`, see docs/SETUP.md).
+cd "$(dirname "$0")"
 set -a; source .env 2>/dev/null || true; set +a
 export PATH="$HOME/.local/bin:$PATH"
-LOG="$HOME/unwritten/work/cloud/cron.log"
+LOG="$PWD/work/cloud/cron.log"
 mkdir -p "$(dirname "$LOG")"
 (
   flock -n 9 || { echo "[cloud] $(date '+%F %T'): previous run still holds the lock — skipping" >>"$LOG"; exit 0; }
@@ -15,7 +17,9 @@ mkdir -p "$(dirname "$LOG")"
   fi
   .venv/bin/python pipeline/run_pipeline.py --cloud work/cloud >>"$LOG" 2>&1 || { echo "[cloud] FAIL: pipeline step failed (see above)" >>"$LOG"; FAIL=1; }
   # Rebuild site so new sessions appear immediately
-  # Publish finished work dirs to the hub (idempotent upsert; needs signer token)
+  # Publish finished work dirs to the hub (needs the signer token).
+  # --if-changed posts a session only when its artifacts changed:
+  # re-posting each cycle resurrected hub deletes made in the apps.
   HUB_SIGNER_URL="${HUB_SIGNER_URL:-https://unwritten-cloud-signer.heartmade.workers.dev}"
   HUB_SIGNER_TOKEN="${HUB_SIGNER_TOKEN:-$(head -1 app/cloud-signer/tokens.txt 2>/dev/null || echo "")}"
   if [ -n "$HUB_SIGNER_TOKEN" ]; then
@@ -27,7 +31,7 @@ mkdir -p "$(dirname "$LOG")"
       # cron run would end FAIL on them.
       GUID="$(.venv/bin/python -c 'import json,os,sys; st=json.load(open("work/cloud/cloud_state.json")); w=os.path.abspath(sys.argv[1]); print(next((g for g,e in st.items() if isinstance(e,dict) and os.path.abspath(e.get("workDir",""))==w),""))' "$work" 2>/dev/null || true)"
       [ -n "$GUID" ] || continue
-      .venv/bin/python pipeline/publish.py --work "$work" --guid "$GUID" --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" >>"$LOG" 2>&1 || { echo "[cloud] FAIL: publish $work failed (see above)" >>"$LOG"; FAIL=1; }
+      .venv/bin/python pipeline/publish.py --work "$work" --guid "$GUID" --state work/cloud/cloud_state.json --signer "$HUB_SIGNER_URL" --token "$HUB_SIGNER_TOKEN" --if-changed >>"$LOG" 2>&1 || { echo "[cloud] FAIL: publish $work failed (see above)" >>"$LOG"; FAIL=1; }
     done
     # Sync operator set-asides so the apps badge them on Record (the
     # hub sessions list excludes them server-side).

@@ -65,6 +65,7 @@
  *
  * Env: DB (d1_databases binding, see wrangler.toml + migrations/).
  * Without it the /hub/* routes answer 503 — uploads keep working.
+ * A store missing a migration answers 503 naming the file to apply.
  *
  * URL fetch queue (D1 table fetch_jobs): the apps queue video URLs
  * the browser cannot download itself (YouTube/watch pages); the
@@ -77,14 +78,21 @@
  *   GET  /fetch/jobs?claim=1&by=<worker>[&includeFailed=1]
  *                     -> {job: {id, url, attempts, session} | null}
  *                     (oldest pending first; failed stays failed
- *                     unless includeFailed=1, like --retry-failed;
- *                     claims older than two hours count as abandoned
- *                     and come back)
+ *                     unless includeFailed=1, like --retry-failed,
+ *                     and those retries follow pending work, least
+ *                     recently tried first; claims older than two
+ *                     hours count as abandoned and come back)
  *   POST /fetch/jobs/<id>/done   {session?} -> {ok: true}
  *   POST /fetch/jobs/<id>/failed {error?}   -> {ok: true}
  */
 
 const CLOUD_API = "https://video.bunnycdn.com";
+// Which migration creates each D1 table (see migrations/).
+const MIGRATIONS = {
+  sessions: "0001_sessions.sql",
+  fetch_jobs: "0002_fetch_jobs.sql",
+  ignored_videos: "0003_ignored.sql",
+};
 
 export default {
   async fetch(request, env) {
@@ -115,178 +123,199 @@ export default {
         return v && typeof v === "object" && !Array.isArray(v) ? v : {};
       } catch { return {}; }
     };
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
-    if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
-    // No pool configured fails LOUD, never open: an unset
-    // SIGNER_TOKENS must not silently serve the library to the world.
-    if (!pool.length) return json({ error: "signer tokens not configured" }, 500);
-    if (!pool.includes(request.headers.get("X-Signer-Token") || "")) {
-      return json({ error: "unauthorized" }, 401);
-    }
-    // Clients paste signer URLs with or without a trailing slash;
-    // normalize so every form routes the same.
-    const normPath = new URL(request.url).pathname.replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
-    // Pipeline proxy: lets the local pipeline list videos without
-    // holding the vendor API key (it sends X-Signer-Token). Behind
-    // the token check like every other route — an open proxy would
-    // leak the library listing to anyone.
-    {
-      const pUrl = new URL(request.url);
+    // Every failure answers JSON with CORS (a thrown D1 or network
+    // error would otherwise surface as the platform's HTML error
+    // page), and a store migrated short of the schema — a deployed
+    // worker whose D1 never got 0002/0003 — names the file to apply.
+    const failed = (e) => {
+      const msg = String((e && e.message) || e);
+      const m = msg.match(/no such table: (\w+)/);
+      const file = m && MIGRATIONS[m[1]];
+      if (file) {
+        return json({ error: `hub store is missing table ${m[1]} — apply migrations/${file}: ` +
+          `npx wrangler d1 execute unwritten-hub --remote --file migrations/${file}` }, 503);
+      }
+      return json({ error: msg }, 500);
+    };
+    try {
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+      const pool = (env.SIGNER_TOKENS || "").split(",").map((t) => t.trim()).filter(Boolean);
+      if (env.SIGNER_TOKEN) pool.push(env.SIGNER_TOKEN);
+      // No pool configured fails LOUD, never open: an unset
+      // SIGNER_TOKENS must not silently serve the library to the world.
+      if (!pool.length) return json({ error: "signer tokens not configured" }, 500);
+      if (!pool.includes(request.headers.get("X-Signer-Token") || "")) {
+        return json({ error: "unauthorized" }, 401);
+      }
+      // Clients paste signer URLs with or without a trailing slash;
+      // normalize so every form routes the same.
+      const normPath = new URL(request.url).pathname.replace(/\/+/g, "/").replace(/\/+$/, "") || "/";
+      // URL fetch queue: needs only the token gate above plus D1 — no
+      // cloud credentials — so it lives ahead of the CLOUD check below
+      // and keeps queueing while cloud creds rotate.
+      if (normPath === "/fetch/jobs") {
+        const store = hubStore(env);
+        if (!store) return json({ error: "fetch store not configured" }, 503);
+        if (request.method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const url = String(body.url || "").trim();
+          if (!url) return json({ error: "url required" }, 400);
+          if (url.length > 2000 || !/^https?:\/\/.+\..+/.test(url))
+            return json({ error: "url must be an http(s) URL" }, 400);
+          const now = Math.floor(Date.now() / 1000);
+          const dup = await store
+            .prepare("SELECT id, status FROM fetch_jobs WHERE url = ? AND status IN ('pending','claimed')")
+            .bind(url).first();
+          if (dup) return json({ id: dup.id, status: dup.status });
+          const id = "job_" + crypto.randomUUID().replace(/-/g, "");
+          await store
+            .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at)
+                      VALUES (?, ?, 'pending', 0, ?, ?)`)
+            .bind(id, url, now, now).run();
+          return json({ id, status: "pending" });
+        }
+        if (request.method === "GET") {
+          const qs = new URL(request.url).searchParams;
+          if (qs.get("claim") === "1") {
+            const by = (qs.get("by") || "").trim();
+            if (!by) return json({ error: "by (worker name) required" }, 400);
+            const retry = qs.get("includeFailed") === "1";
+            const states = retry ? "('pending','failed')" : "('pending')";
+            // Retries go after pending work, least recently tried
+            // first: oldest-created first would hand one job that
+            // keeps failing back every time, and no other failed job
+            // would ever get its retry.
+            const order = retry
+              ? "ORDER BY (status = 'failed') ASC, CASE WHEN status = 'failed' THEN updated_at ELSE created_at END ASC, id ASC"
+              : "ORDER BY created_at ASC, id ASC";
+            const now = Math.floor(Date.now() / 1000);
+            // A claim older than two hours is a crashed worker, not a
+            // running one: hand the job out again instead of sticking it
+            // in claimed forever. One pipeline machine claims (cron
+            // flock); no fencing beyond that.
+            const job = await store
+              .prepare(`SELECT * FROM fetch_jobs WHERE status IN ${states} OR (status='claimed' AND updated_at < ?) ${order} LIMIT 1`)
+              .bind(now - 7200).first();
+            if (!job) return json({ job: null });
+            await store
+              .prepare(`UPDATE fetch_jobs SET status='claimed', claimed_by=?, updated_at=? WHERE id=?`)
+              .bind(by, now, job.id).run();
+            return json({ job: { id: job.id, url: job.url, attempts: job.attempts || 0, session: job.session || "" } });
+          }
+          const rows = await store
+            .prepare(`SELECT * FROM fetch_jobs ORDER BY created_at DESC, id ASC LIMIT 50`).all();
+          return json((rows.results || []).map((r) => ({
+            id: r.id, url: r.url, status: r.status, attempts: r.attempts,
+            claimedBy: r.claimed_by, error: r.error, session: r.session,
+            createdAt: r.created_at, updatedAt: r.updated_at,
+          })));
+        }
+        return json({ error: "method not allowed" }, 405);
+      }
+      {
+        const m = normPath.match(/^\/fetch\/jobs\/([^/]+)\/(done|failed)$/);
+        if (m) {
+          const store = hubStore(env);
+          if (!store) return json({ error: "fetch store not configured" }, 503);
+          if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+          let id;
+          try { id = decodeURIComponent(m[1]); } catch { return json({ error: "bad job id" }, 400); }
+          const verb = m[2];
+          const job = await store.prepare(`SELECT * FROM fetch_jobs WHERE id = ?`).bind(id).first();
+          if (!job) return json({ error: "not found" }, 404);
+          if (job.status !== "claimed")
+            return json({ error: "job is " + job.status + ", only a claimed job can finish" }, 409);
+          const now = Math.floor(Date.now() / 1000);
+          const body = await request.json().catch(() => ({}));
+          if (verb === "done") {
+            await store.prepare(`UPDATE fetch_jobs SET status='done', session=?, updated_at=? WHERE id=?`)
+              .bind(String(body.session || "").slice(0, 500), now, id).run();
+          } else {
+            await store.prepare(`UPDATE fetch_jobs SET status='failed', attempts=attempts+1, error=?, updated_at=? WHERE id=?`)
+              .bind(String(body.error || "").slice(0, 500), now, id).run();
+          }
+          return json({ ok: true });
+        }
+      }
+      // Ignored videos: operator set-asides the hub never shows. Like
+      // the fetch queue, needs only the token gate plus D1.
+      if (normPath === "/hub/ignored") {
+        const store = hubStore(env);
+        if (!store) return json({ error: "hub store not configured" }, 503);
+        if (request.method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const videoId = String(body.videoId || "").trim();
+          if (!videoId) return json({ error: "videoId required" }, 400);
+          const now = Math.floor(Date.now() / 1000);
+          await store
+            .prepare(
+              `INSERT INTO ignored_videos (video_id, title, reason, ignored_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(video_id) DO UPDATE SET
+                 title=excluded.title, reason=excluded.reason,
+                 ignored_at=excluded.ignored_at`
+            )
+            .bind(videoId, String(body.title || ""),
+              String(body.reason || ""), now).run();
+          return json({ ignored: videoId });
+        }
+        if (request.method === "GET") {
+          const rows = await store
+            .prepare(
+              `SELECT video_id, title, reason, ignored_at FROM ignored_videos
+               ORDER BY ignored_at DESC, video_id ASC`
+            )
+            .all();
+          return json(
+            (rows.results || []).map((r) => ({
+              videoId: r.video_id,
+              title: r.title,
+              reason: r.reason,
+              ignoredAt: r.ignored_at,
+            }))
+          );
+        }
+        return json({ error: "method not allowed" }, 405);
+      }
+      {
+        const m = normPath.match(/^\/hub\/ignored\/([^/]+)$/);
+        if (m) {
+          const store = hubStore(env);
+          if (!store) return json({ error: "hub store not configured" }, 503);
+          let videoId;
+          try { videoId = decodeURIComponent(m[1]); } catch { return json({ error: "bad video id" }, 400); }
+          if (request.method === "DELETE") {
+            await store
+              .prepare(`DELETE FROM ignored_videos WHERE video_id = ?`)
+              .bind(videoId)
+              .run();
+            return json({ deleted: true });
+          }
+          return json({ error: "method not allowed" }, 405);
+        }
+      }
+      if (!env.CLOUD_LIBRARY_ID || !env.CLOUD_API_KEY) {
+        return json({ error: "signer not configured (CLOUD_LIBRARY_ID / CLOUD_API_KEY)" }, 500);
+      }
+      const url = new URL(request.url);
+      // Pipeline proxy: lets the local pipeline list videos without
+      // holding the vendor API key (it sends X-Signer-Token). Behind
+      // the token check like every other route — an open proxy would
+      // leak the library listing to anyone — and behind the config
+      // check: an empty AccessKey's vendor 401 would read like a bad
+      // signer token.
       if (normPath === "/pipeline/videos") {
-        const page = pUrl.searchParams.get("page") || "1";
+        const page = parseInt(url.searchParams.get("page") || "1", 10) || 1;
         const br = await fetch(CLOUD_API + "/library/" + env.CLOUD_LIBRARY_ID + "/videos?page=" + page + "&itemsPerPage=100&orderBy=date", {
           headers: { AccessKey: env.CLOUD_API_KEY, Accept: "application/json" }
         });
         return new Response(await br.text(), { status: br.status, headers: Object.assign({ "Content-Type": "application/json" }, cors) });
       }
-    }
-    // URL fetch queue: needs only the token gate above plus D1 — no
-    // cloud credentials — so it lives ahead of the CLOUD check below
-    // and keeps queueing while cloud creds rotate.
-    if (normPath === "/fetch/jobs") {
-      const store = hubStore(env);
-      if (!store) return json({ error: "fetch store not configured" }, 503);
-      if (request.method === "POST") {
-        const body = await request.json().catch(() => ({}));
-        const url = String(body.url || "").trim();
-        if (!url) return json({ error: "url required" }, 400);
-        if (url.length > 2000 || !/^https?:\/\/.+\..+/.test(url))
-          return json({ error: "url must be an http(s) URL" }, 400);
-        const now = Math.floor(Date.now() / 1000);
-        const dup = await store
-          .prepare("SELECT id, status FROM fetch_jobs WHERE url = ? AND status IN ('pending','claimed')")
-          .bind(url).first();
-        if (dup) return json({ id: dup.id, status: dup.status });
-        const id = "job_" + crypto.randomUUID().replace(/-/g, "");
-        await store
-          .prepare(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at)
-                    VALUES (?, ?, 'pending', 0, ?, ?)`)
-          .bind(id, url, now, now).run();
-        return json({ id, status: "pending" });
-      }
-      if (request.method === "GET") {
-        const qs = new URL(request.url).searchParams;
-        if (qs.get("claim") === "1") {
-          const by = (qs.get("by") || "").trim();
-          if (!by) return json({ error: "by (worker name) required" }, 400);
-          const states = qs.get("includeFailed") === "1" ? "('pending','failed')" : "('pending')";
-          const now = Math.floor(Date.now() / 1000);
-          // A claim older than two hours is a crashed worker, not a
-          // running one: hand the job out again instead of sticking it
-          // in claimed forever. One pipeline machine claims (cron
-          // flock); no fencing beyond that.
-          const job = await store
-            .prepare(`SELECT * FROM fetch_jobs WHERE status IN ${states} OR (status='claimed' AND updated_at < ?) ORDER BY created_at ASC, id ASC LIMIT 1`)
-            .bind(now - 7200).first();
-          if (!job) return json({ job: null });
-          await store
-            .prepare(`UPDATE fetch_jobs SET status='claimed', claimed_by=?, updated_at=? WHERE id=?`)
-            .bind(by, now, job.id).run();
-          return json({ job: { id: job.id, url: job.url, attempts: job.attempts || 0, session: job.session || "" } });
-        }
-        const rows = await store
-          .prepare(`SELECT * FROM fetch_jobs ORDER BY created_at DESC, id ASC LIMIT 50`).all();
-        return json((rows.results || []).map((r) => ({
-          id: r.id, url: r.url, status: r.status, attempts: r.attempts,
-          claimedBy: r.claimed_by, error: r.error, session: r.session,
-          createdAt: r.created_at, updatedAt: r.updated_at,
-        })));
-      }
-      return json({ error: "method not allowed" }, 405);
-    }
-    {
-      const m = normPath.match(/^\/fetch\/jobs\/([^/]+)\/(done|failed)$/);
-      if (m) {
-        const store = hubStore(env);
-        if (!store) return json({ error: "fetch store not configured" }, 503);
-        if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
-        let id;
-        try { id = decodeURIComponent(m[1]); } catch { return json({ error: "bad job id" }, 400); }
-        const verb = m[2];
-        const job = await store.prepare(`SELECT * FROM fetch_jobs WHERE id = ?`).bind(id).first();
-        if (!job) return json({ error: "not found" }, 404);
-        if (job.status !== "claimed")
-          return json({ error: "job is " + job.status + ", only a claimed job can finish" }, 409);
-        const now = Math.floor(Date.now() / 1000);
-        const body = await request.json().catch(() => ({}));
-        if (verb === "done") {
-          await store.prepare(`UPDATE fetch_jobs SET status='done', session=?, updated_at=? WHERE id=?`)
-            .bind(String(body.session || "").slice(0, 500), now, id).run();
-        } else {
-          await store.prepare(`UPDATE fetch_jobs SET status='failed', attempts=attempts+1, error=?, updated_at=? WHERE id=?`)
-            .bind(String(body.error || "").slice(0, 500), now, id).run();
-        }
-        return json({ ok: true });
-      }
-    }
-    // Ignored videos: operator set-asides the hub never shows. Like
-    // the fetch queue, needs only the token gate plus D1.
-    if (normPath === "/hub/ignored") {
-      const store = hubStore(env);
-      if (!store) return json({ error: "hub store not configured" }, 503);
-      if (request.method === "POST") {
-        const body = await request.json().catch(() => ({}));
-        const videoId = String(body.videoId || "").trim();
-        if (!videoId) return json({ error: "videoId required" }, 400);
-        const now = Math.floor(Date.now() / 1000);
-        await store
-          .prepare(
-            `INSERT INTO ignored_videos (video_id, title, reason, ignored_at)
-             VALUES (?, ?, ?, ?)
-             ON CONFLICT(video_id) DO UPDATE SET
-               title=excluded.title, reason=excluded.reason,
-               ignored_at=excluded.ignored_at`
-          )
-          .bind(videoId, String(body.title || ""),
-            String(body.reason || ""), now).run();
-        return json({ ignored: videoId });
-      }
-      if (request.method === "GET") {
-        const rows = await store
-          .prepare(
-            `SELECT video_id, title, reason, ignored_at FROM ignored_videos
-             ORDER BY ignored_at DESC, video_id ASC`
-          )
-          .all();
-        return json(
-          (rows.results || []).map((r) => ({
-            videoId: r.video_id,
-            title: r.title,
-            reason: r.reason,
-            ignoredAt: r.ignored_at,
-          }))
-        );
-      }
-      return json({ error: "method not allowed" }, 405);
-    }
-    {
-      const m = normPath.match(/^\/hub\/ignored\/([^/]+)$/);
-      if (m) {
-        const store = hubStore(env);
-        if (!store) return json({ error: "hub store not configured" }, 503);
-        let videoId;
-        try { videoId = decodeURIComponent(m[1]); } catch { return json({ error: "bad video id" }, 400); }
-        if (request.method === "DELETE") {
-          await store
-            .prepare(`DELETE FROM ignored_videos WHERE video_id = ?`)
-            .bind(videoId)
-            .run();
-          return json({ deleted: true });
-        }
-        return json({ error: "method not allowed" }, 405);
-      }
-    }
-    if (!env.CLOUD_LIBRARY_ID || !env.CLOUD_API_KEY) {
-      return json({ error: "signer not configured (CLOUD_LIBRARY_ID / CLOUD_API_KEY)" }, 500);
-    }
-    const url = new URL(request.url);
-    try {
       if (normPath === "/hub/publish" && request.method === "POST") {
         const store = hubStore(env);
         if (!store) return json({ error: "hub store not configured" }, 503);
         const body = await request.json().catch(() => ({}));
-        const videoId = (body.videoId || "").trim();
+        const videoId = String(body.videoId || "").trim();
         if (!videoId) return json({ error: "videoId required" }, 400);
         const now = Math.floor(Date.now() / 1000);
         await store
@@ -419,7 +448,7 @@ export default {
       if (request.method === "GET") {
         const videoId = url.searchParams.get("videoId");
         if (!videoId) return json({ error: "videoId required" }, 400);
-        const r = await fetch(`${CLOUD_API}/library/${env.CLOUD_LIBRARY_ID}/videos/${videoId}`, {
+        const r = await fetch(`${CLOUD_API}/library/${env.CLOUD_LIBRARY_ID}/videos/${encodeURIComponent(videoId)}`, {
           headers: { "AccessKey": env.CLOUD_API_KEY, "Accept": "application/json" },
         });
         let body;
@@ -429,7 +458,7 @@ export default {
       if (request.method === "DELETE") {
         const videoId = url.searchParams.get("videoId");
         if (!videoId) return json({ error: "videoId required" }, 400);
-        const r = await fetch(`${CLOUD_API}/library/${env.CLOUD_LIBRARY_ID}/videos/${videoId}`, {
+        const r = await fetch(`${CLOUD_API}/library/${env.CLOUD_LIBRARY_ID}/videos/${encodeURIComponent(videoId)}`, {
           method: "DELETE",
           headers: { "AccessKey": env.CLOUD_API_KEY, "Accept": "application/json" },
         });
@@ -438,7 +467,7 @@ export default {
       }
       return json({ error: "method not allowed" }, 405);
     } catch (e) {
-      return json({ error: String((e && e.message) || e) }, 500);
+      return failed(e);
     }
   },
 };

@@ -676,6 +676,30 @@ class TestPoster(unittest.TestCase):
         self.assertEqual(rp.try_poster(work, "/nonexistent.mp4"), "")
         self.assertEqual(rp.try_poster(work, ""), "")
 
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
+    def test_poster_past_the_end_falls_back_to_the_midpoint(self):
+        # A model answer past the end of the video grabbed no frame
+        # and left the session poster-less; the midpoint fallback
+        # covers that too.
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            lesson = os.path.join(td, "lesson.mp4")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i",
+                 "testsrc=duration=4:size=64x48:rate=10", "-pix_fmt",
+                 "yuv420p", lesson], check=True, capture_output=True,
+                timeout=120)
+            work = lambda *p: os.path.join(td, *p)
+            with mock.patch.object(rp.meta_api, "api_key",
+                                   return_value="k"), \
+                 mock.patch.object(rp.meta_api, "upload_file",
+                                   return_value="file-1"), \
+                 mock.patch.object(rp.meta_api, "delete_file"), \
+                 mock.patch.object(rp.meta_api, "ask_video",
+                                   return_value="59:00"):
+                self.assertEqual(rp.try_poster(work, lesson), "poster.jpg")
+            self.assertGreater(os.path.getsize(work("poster.jpg")), 0)
+
 
 class TestSchemas(unittest.TestCase):
     def test_validate_ok_and_missing(self):
@@ -764,6 +788,25 @@ class TestDraftRouting(unittest.TestCase):
             with open(webm, "wb") as fh:
                 fh.write(b"")
             self.assertEqual(dw.ensure_mp4(webm, td), "")
+
+    @unittest.skipUnless(__import__("shutil").which("ffmpeg"), "needs ffmpeg")
+    def test_ensure_mp4_converts_a_vp8_web_take(self):
+        # The web recorder takes VP8/Opus WebM, which the MP4 muxer
+        # refuses to stream-copy ("Could not find tag for codec vp8"):
+        # every raw web take fell back to still frames. A refused
+        # remux now transcodes instead.
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            webm = os.path.join(td, "take.webm")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error",
+                 "-f", "lavfi", "-i", "testsrc=duration=2:size=160x120:rate=10",
+                 "-f", "lavfi", "-i", "sine=duration=2",
+                 "-c:v", "libvpx", "-c:a", "libopus", webm],
+                check=True, capture_output=True, timeout=120)
+            out = dw.ensure_mp4(webm, td)
+            self.assertTrue(out.endswith(".mp4"), out)
+            self.assertGreater(os.path.getsize(out), 0)
 
     def test_finder_prompt_names_segment(self):
         with open(os.path.join(ROOT, "prompts", "correction_finder.md")) as fh:

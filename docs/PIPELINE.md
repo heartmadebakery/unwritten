@@ -45,7 +45,9 @@ pipeline/run_pipeline.py --cloud work/cloud [--max N] [--retry-failed]
 ```
 
 `--cloud` lists the Cloud library, downloads each new finished video
-(status 4) into `cloud_downloads/`, and runs the full pipeline on
+(status 4) into `cloud_downloads/` (the highest MP4 rendition, else
+an ffmpeg remux of the HLS playlist; a body cut off before its
+`Content-Length` is refused, never kept), and runs the full pipeline on
 each into its own `work/cloud/<title>__<videoid>/` dir. Seen videos
 are remembered in `cloud_state.json`, so reruns only pick up new
 lessons; failed ones stay failed unless `--retry-failed` is given,
@@ -82,9 +84,12 @@ the bytes go up, so a retry reuses it instead of minting a
 duplicate. Uploads need the direct library key
 (`CLOUD_LIBRARY_ID` + `CLOUD_LIBRARY_KEY` in `.env` — the proxy
 cannot stand in); without it `--fetch` fails fast before claiming.
-Failed jobs stay failed until `--retry-failed` reclaims them, and a
-claim older than two hours counts as a crashed worker and comes
-back. `FETCH_QUEUE_TOKEN` overrides the signer token (else
+Failed jobs stay failed until `--retry-failed` reclaims them — after
+any pending work, least recently tried first, each job once per run
+(one that fails again is put back as failed and the run ends, never
+loops) — and a claim older than two hours counts as a crashed worker
+and comes back. A resumed session never reuses a `.part` sidecar
+left by a killed download: it downloads again. `FETCH_QUEUE_TOKEN` overrides the signer token (else
 `CLOUD_PROXY_TOKEN`, else line 1 of the pool file);
 `CLOUD_PROXY_URL` stands in for the queue URL. `run_cloud.sh` runs
 `--fetch` ahead of `--cloud` whenever the queue is configured.
@@ -98,7 +103,11 @@ adds its own `flock` so cron never overlaps itself.) Every step is
 idempotent: reruns skip `done`/`ignored` state, resume downloads
 from the `.part` sidecar discipline, reuse stored upload ids, and
 republish through the hub upsert, so a crash loses at most the
-in-flight video. One rule: run `--cloud` on exactly one machine —
+in-flight video. The cron loop publishes with `--if-changed`: a
+session posts once per version of its artifacts (fingerprints in
+`work/cloud/hub_published.json`), so a session deleted from the hub
+in an app stays deleted, and one whose Stream video is gone (404) is
+never published. One rule: run `--cloud` on exactly one machine —
 the state file is local, so two machines would each process every
 new video.
 
@@ -133,7 +142,9 @@ stdlib + ffmpeg + Muse calls.
   document in the mentor's voice; the transcript is the spine, and
   what it leaves unsaid is filled in from the lesson video — never
   from outside knowledge. With `MODEL_API_KEY` set, Spark watches
-  the whole video (Meta video understanding, visuals and speech);
+  the whole video (Meta video understanding, visuals and speech; a
+  non-MP4 lesson is remuxed, or transcoded to H.264/AAC when its
+  codecs cannot ride in MP4, like the web's VP8 WebM takes);
   otherwise evenly spaced still frames go along (`--image`
   attachments), and without lesson media it degrades to
   transcript-only.

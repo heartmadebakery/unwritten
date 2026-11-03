@@ -99,22 +99,38 @@ def http_download(url, dest, referer=""):
     """Stream a URL to dest. 404s raise DownloadError(404); anything
     else missing raises DownloadError with its status. The CDN's
     hotlink protection 403s bare fetches, so callers pass the
-    video's player page as referer."""
+    video's player page as referer. A body cut off before its
+    Content-Length raises too: urllib returns a short read at EOF
+    instead of failing, and a truncated lesson must never pass the
+    .part rename as complete."""
     headers = {"User-Agent": "UnwrittenCraft/1.0"}
     if referer:
         headers["Referer"] = referer
     req = urllib.request.Request(url, headers=headers)
+    expected = None
     try:
         with urllib.request.urlopen(req, timeout=120) as resp, \
                 open(dest, "wb") as fh:
+            length = (getattr(resp, "headers", None) or {}).get(
+                "Content-Length")
+            if length and str(length).strip().isdigit():
+                expected = int(str(length).strip())
             shutil.copyfileobj(resp, fh, length=1024 * 256)
     except urllib.error.HTTPError as exc:
         raise DownloadError(exc.code, "HTTP %s for %s" % (exc.code, url))
     except urllib.error.URLError as exc:
         raise DownloadError(-1, "request failed for %s: %s"
                             % (url, exc.reason))
+    except (OSError, http.client.HTTPException) as exc:
+        # A stall or reset mid-body (read timeout, connection reset).
+        raise DownloadError(-1, "download interrupted for %s: %s"
+                            % (url, exc))
     if not os.path.exists(dest) or os.path.getsize(dest) == 0:
         raise DownloadError(-1, "empty download for %s" % url)
+    got = os.path.getsize(dest)
+    if expected is not None and got != expected:
+        raise DownloadError(-1, "truncated download for %s: %d of %d "
+                            "bytes arrived" % (url, got, expected))
     return dest
 
 
@@ -174,12 +190,16 @@ def select_ready(videos, state, retry_failed=False):
     decision that the video is not a lesson, so even --retry-failed
     leaves it set aside. 'downloaded' means fetched but
     pipeline-never-finished, so it reprocesses: run_cloud_mode skips
-    the re-download (the lesson is on disk) and runs the pipeline."""
+    the re-download (the lesson is on disk) and runs the pipeline.
+    A video listed twice (an upload landing between page requests
+    shifts the date-ordered pages) is ready once."""
     ready = []
+    seen = set()
     for vid in videos:
         guid = vid.get("guid", "")
-        if not guid or vid.get("status") != FINISHED:
+        if not guid or vid.get("status") != FINISHED or guid in seen:
             continue
+        seen.add(guid)
         entry = state.get(guid, {})
         if entry.get("result") in ("done", "ignored"):
             continue
@@ -221,7 +241,9 @@ def remux_hls(url, dest, referer=""):
     cmd = [ffmpeg, "-y", "-v", "error"]
     if referer:
         cmd += ["-headers", "Referer: %s" % referer]
-    cmd += ["-i", url, "-c", "copy", dest]
+    # The muxer is named, not inferred: download_video hands over a
+    # ".mp4.part" sidecar, an extension ffmpeg cannot map to a format.
+    cmd += ["-i", url, "-c", "copy", "-f", "mp4", dest]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True,
                               timeout=900)

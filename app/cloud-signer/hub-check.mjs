@@ -19,10 +19,10 @@ db.exec(readFileSync(join(dir, "migrations", "0003_ignored.sql"), "utf8"));
 
 // D1-compatible stub over the real database: prepare/bind/first/all/run
 // (bind is optional on real D1 when the query takes no parameters).
-function d1() {
+function d1(database = db) {
   return {
     prepare(sql) {
-      const stmt = db.prepare(sql);
+      const stmt = database.prepare(sql);
       const bound = (...params) => ({
         first: () => stmt.get(...params) ?? null,
         all: () => ({ results: stmt.all(...params) }),
@@ -322,5 +322,81 @@ const VID = "vid-123";
   const t = await call(authed, "GET", "/hub/ignored/", undefined, TOKEN);
   check(t.status === 200 && Array.isArray(t.data), "ignored list tolerates a trailing slash");
   await call(authed, "DELETE", "/hub/ignored/junk-1", undefined, TOKEN);
+}
+// A database missing a migration (deployed worker, store migrated
+// only up to 0001) answers a JSON 503 naming the migration to apply,
+// never an uncaught exception or a bare "no such table" 500.
+{
+  const old = new DatabaseSync(":memory:");
+  old.exec(readFileSync(join(dir, "migrations", "0001_sessions.sql"), "utf8"));
+  const env = { ...authed, DB: d1(old) };
+  const s = await call(env, "GET", "/hub/sessions", undefined, TOKEN);
+  check(s.status === 503 && /0003_ignored\.sql/.test(s.data.error) && /--remote/.test(s.data.error),
+    "hub list names the missing migration");
+  const i = await call(env, "GET", "/hub/ignored", undefined, TOKEN);
+  check(i.status === 503 && /0003_ignored\.sql/.test(i.data.error), "ignored list names the missing migration");
+  const f = await call(env, "GET", "/fetch/jobs", undefined, TOKEN);
+  check(f.status === 503 && /0002_fetch_jobs\.sql/.test(f.data.error), "fetch list names the missing migration");
+}
+// Without the vendor key the listing proxy fails loud naming the
+// secret, instead of forwarding an empty AccessKey whose 401 reads
+// like a bad signer token.
+{
+  const realFetch = globalThis.fetch;
+  let called = false;
+  globalThis.fetch = async () => { called = true; return new Response("{}", { status: 401 }); };
+  try {
+    const r = await call({ SIGNER_TOKENS: TOKEN, CLOUD_LIBRARY_ID: "L", DB: d1() },
+      "GET", "/pipeline/videos?page=1", undefined, TOKEN);
+    check(r.status === 500 && /CLOUD_API_KEY/.test(r.data.error) && !called,
+      "pipeline proxy names a missing vendor key");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+// --retry-failed claims rotate: the least recently tried failed job
+// comes first (after any pending work), so one job that keeps
+// failing cannot starve every other failed job of its retry.
+{
+  const rdb = new DatabaseSync(":memory:");
+  rdb.exec(readFileSync(join(dir, "migrations", "0002_fetch_jobs.sql"), "utf8"));
+  rdb.exec(`INSERT INTO fetch_jobs (id, url, status, attempts, created_at, updated_at) VALUES
+    ('job_a', 'https://x/a.mp4', 'failed', 3, 100, 500),
+    ('job_b', 'https://x/b.mp4', 'failed', 1, 200, 300),
+    ('job_p', 'https://x/p.mp4', 'pending', 0, 900, 900)`);
+  const env = { ...authed, DB: d1(rdb) };
+  const claim = "/fetch/jobs?claim=1&by=pipe&includeFailed=1";
+  const c1 = await call(env, "GET", claim, undefined, TOKEN);
+  check(c1.data.job && c1.data.job.id === "job_p", "pending work goes ahead of retries");
+  const c2 = await call(env, "GET", claim, undefined, TOKEN);
+  check(c2.data.job && c2.data.job.id === "job_b", "a retry takes the least recently tried failed job");
+  const c3 = await call(env, "GET", claim, undefined, TOKEN);
+  check(c3.data.job && c3.data.job.id === "job_a", "the next retry takes the next one");
+}
+// Status and delete splice the videoId into the vendor path encoded:
+// a malformed id from a client bug must stay one path segment, never
+// walk to another vendor endpoint ("x/.." resolves upward).
+{
+  const realFetch = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url) => {
+    seen.push(String(url));
+    return new Response(JSON.stringify({ status: 4 }), { status: 200 });
+  };
+  try {
+    await call(authed, "GET", "/?videoId=" + encodeURIComponent("x/../.."), undefined, TOKEN);
+    await call(authed, "DELETE", "/?videoId=" + encodeURIComponent("x/../.."), undefined, TOKEN);
+    check(seen.length === 2 && seen.every((u) => u.endsWith("/library/L/videos/x%2F..%2F..")),
+      "vendor status/delete paths carry the videoId encoded");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+// A non-string videoId publishes under its string form instead of
+// crashing the handler.
+{
+  const r = await call(authed, "POST", "/hub/publish", { videoId: 42, title: "Num" }, TOKEN);
+  check(r.status === 200 && r.data.published === "42", "a numeric videoId publishes as a string");
+  await call(authed, "DELETE", "/hub/sessions/42", undefined, TOKEN);
 }
 console.log(`ALL HUB CHECKS PASSED (${n})`);

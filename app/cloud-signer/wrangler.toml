@@ -14,11 +14,15 @@ CORS_ORIGIN = "*"
 #   paste -sd, tokens.txt | npx wrangler secret put SIGNER_TOKENS
 
 # Hub store (D1, SQLite) behind the in-app hub. Create once, then fill
-# in the real database_id it prints:
+# in the real database_id it prints, and apply every migration in
+# order. --remote is required: without it Wrangler migrates a local
+# dev copy and the deployed store never gets the table.
 #   npx wrangler d1 create unwritten-hub
-#   npx wrangler d1 execute unwritten-hub --file migrations/0001_sessions.sql
-# URL fetch queue (0002): existing databases apply it too, then redeploy:
-#   npx wrangler d1 execute unwritten-hub --file migrations/0002_fetch_jobs.sql
+#   npx wrangler d1 execute unwritten-hub --remote --file migrations/0001_sessions.sql
+#   npx wrangler d1 execute unwritten-hub --remote --file migrations/0002_fetch_jobs.sql
+#   npx wrangler d1 execute unwritten-hub --remote --file migrations/0003_ignored.sql
+# Existing databases apply the newer files too, then redeploy (the hub
+# list reads ignored_videos: without 0003 it answers 503 naming it).
 [[d1_databases]]
 binding = "DB"
 database_name = "unwritten-hub"

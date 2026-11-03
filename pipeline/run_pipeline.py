@@ -448,6 +448,24 @@ def try_poster(work, lesson):
     if not lesson or not os.path.exists(lesson):
         return ""
     out = work("poster.jpg")
+
+    def grab(stamp):
+        if os.path.exists(out):
+            os.unlink(out)
+        proc = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-ss", str(int(stamp)),
+             "-i", lesson, "-frames:v", "1", "-vf", "scale=1280:-1",
+             out], capture_output=True, timeout=120)
+        return proc.returncode == 0 and os.path.exists(out) \
+            and os.path.getsize(out) > 0
+
+    def midpoint():
+        probed = highlight_mod.probe_clip(lesson)
+        if probed is None:
+            return None
+        _, _, fps, count = probed
+        return (count / fps) / 2 if fps else 0
+
     try:
         stamp = None
         from draft_writeup import MP4_EXTS
@@ -461,17 +479,12 @@ def try_poster(work, lesson):
             finally:
                 meta_api.delete_file(file_id)
             stamp = pick_poster_ts(answer)
-        if stamp is None:
-            probed = highlight_mod.probe_clip(lesson)
-            if probed is None:
-                return ""
-            _, _, fps, count = probed
-            stamp = (count / fps) / 2 if fps else 0
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-ss", str(int(stamp)),
-             "-i", lesson, "-frames:v", "1", "-vf", "scale=1280:-1",
-             out], capture_output=True, timeout=120)
-        if proc.returncode != 0 or not os.path.exists(out):
+            # A moment past the end grabs no frame: the midpoint
+            # stands in, as it does when the model names none.
+            if stamp is not None and grab(stamp):
+                return "poster.jpg"
+        stamp = midpoint()
+        if stamp is None or not grab(stamp):
             return ""
         return "poster.jpg"
     except Exception:
@@ -556,13 +569,17 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
     state_path = os.path.join(root, "cloud_state.json")
     state = cloud_fetch.load_state(state_path)
     processed = failures = 0
+    # --retry-failed hands a job that just failed straight back:
+    # each job runs once per run (see fetch_jobs.rehanded).
+    attempted = {}  # job id -> its error this run ("" when it finished)
     while True:
         if max_n and max_n > 0 and processed + failures >= max_n:
             break
         job = fetch_jobs.claim_job(cfg, include_failed=retry_failed)
-        if not job:
+        if not job or fetch_jobs.rehanded(cfg, job, attempted):
             break
         job_id = job.get("id", "")
+        attempted[job_id] = ""
         session = os.path.join(root, fetch_jobs.session_dir_name(job_id))
         os.makedirs(session, exist_ok=True)
         upload_error = ""
@@ -597,6 +614,7 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
                     cloud_fetch.save_state(state_path, state)
         except Exception as exc:
             failures += 1
+            attempted[job_id] = str(exc)
             print("[fetch] failed for %r: %s" % (job.get("url"), exc))
             try:
                 fetch_jobs.finish_job(cfg, job_id, False, error=str(exc))
@@ -606,6 +624,7 @@ def run_fetch_mode(root, max_n=0, retry_failed=False):
         processed += 1
         if code != 0:
             failures += 1
+            attempted[job_id] = upload_error or "pipeline failed (see log)"
             print("[fetch] failed for %r (%s) — recorded as failed; "
                   "use --retry-failed to retry it."
                   % (job.get("url"),

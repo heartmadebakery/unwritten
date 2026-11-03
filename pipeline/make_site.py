@@ -50,7 +50,9 @@ def find_sessions(work_root):
 def session_meta(path):
     """(title, date, blurb) from a work dir. Title is the write-up's
     first heading, date the lesson stamp (else the dir mtime), blurb
-    the first paragraph after the title."""
+    the first paragraph after the title. The stamp comes from the
+    manifest, the transcript, or the work dir's own name (cloud
+    lessons run on one file and their dirs are named after the take)."""
     title, blurb = "", ""
     with open(os.path.join(path, "writeup.md")) as fh:
         lines = [line.rstrip("\n") for line in fh]
@@ -63,22 +65,27 @@ def session_meta(path):
                     break
             break
     stamp = ""
-    for probe in (os.path.join(path, "manifest.json"),
-                  os.path.join(path, "transcript.txt")):
-        try:
-            with open(probe) as fh:
-                text = fh.read(500)
-        except OSError:
-            continue
+
+    def probes():
+        for name in ("manifest.json", "transcript.txt"):
+            try:
+                with open(os.path.join(path, name)) as fh:
+                    yield fh.read(500)
+            except OSError:
+                continue
+        yield os.path.basename(os.path.normpath(path))
+
+    for text in probes():
         m = re.search(r"unwritten_lesson_(\d{4})(\d{2})(\d{2})-(\d{6})",
                       text)
-        if m:
+        if m and 1 <= int(m.group(2)) <= 12:
             stamp = "%s %d, %s" % (MONTHS[int(m.group(2)) - 1],
                                    int(m.group(3)), m.group(1))
             break
     if not stamp:
-        stamp = datetime.datetime.fromtimestamp(
-            os.path.getmtime(path)).strftime("%b %d, %Y")
+        # Same shape as a stamp date ("Nov 1, 2026"), never zero-padded.
+        when = datetime.datetime.fromtimestamp(os.path.getmtime(path))
+        stamp = "%s %d, %d" % (MONTHS[when.month - 1], when.day, when.year)
     return (title or os.path.basename(path), stamp, blurb)
 
 

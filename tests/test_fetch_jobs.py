@@ -175,6 +175,17 @@ class TestNaming(unittest.TestCase):
                 fh.write(b"data")
             self.assertEqual(fj.existing_media(td), dest)
 
+    def test_existing_media_never_resumes_a_part_sidecar(self):
+        # A killed run (cron timeout, reboot) skips download_direct's
+        # cleanup and leaves "unwritten_lesson_x.mp4.part" behind. The
+        # retry must download again, never process the truncated
+        # sidecar as the lesson.
+        with tempfile.TemporaryDirectory() as td:
+            with open(os.path.join(td, "unwritten_lesson_x.mp4.part"),
+                      "wb") as fh:
+                fh.write(b"half")
+            self.assertEqual(fj.existing_media(td), "")
+
     def test_failed_direct_leaves_no_lesson_file(self):
         # Mirror of the cloud path's .part discipline: an interrupted
         # direct download must leave neither the lesson file (a
@@ -282,6 +293,24 @@ class TestYtdlp(unittest.TestCase):
             self.assertTrue(out.endswith(".mp4"))
             self.assertFalse(os.path.exists(os.path.join(td, "video.mp4")))
 
+    def test_download_ignores_leftover_partials(self):
+        # A partial from an earlier, killed attempt can outweigh the
+        # finished file; the lesson must be the finished media file,
+        # never "video.webm.part".
+        with tempfile.TemporaryDirectory() as td:
+            with open(os.path.join(td, "video.webm.part"), "wb") as fh:
+                fh.write(b"x" * 4096)
+
+            def fake_run(cmd, capture_output, text, timeout):
+                with open(os.path.join(td, "video.mp4"), "wb") as fh:
+                    fh.write(b"data")
+                return mock.Mock(returncode=0, stderr="")
+
+            with mock.patch.object(fj.shutil, "which", return_value="/bin/yt-dlp"), \
+                 mock.patch.object(fj.subprocess, "run", fake_run):
+                out = fj.ytdlp_download("https://youtube.com/watch?v=x", td)
+            self.assertTrue(out.endswith(".mp4"), out)
+
     def test_failed_download_raises_with_tail(self):
         def fake_run(cmd, capture_output, text, timeout):
             return mock.Mock(returncode=1, stderr="line1\nbang")
@@ -300,14 +329,19 @@ class TestYtdlp(unittest.TestCase):
 
 class TestFetchCli(unittest.TestCase):
     def test_single_positional_is_the_work_root(self):
-        argv = ["run_pipeline.py", "--fetch", "work/cloud"]
-        with mock.patch.object(sys, "argv", argv), \
-                mock.patch.object(rp, "run_fetch_mode",
-                                  return_value=0) as mode:
-            with self.assertRaises(SystemExit) as ctx:
-                rp.main()
+        # A temp root, never the live work/cloud: the cron run holds
+        # that root's lock every five minutes, and a held lock skips
+        # the mode this test asserts on.
+        with tempfile.TemporaryDirectory() as td:
+            root = os.path.join(td, "cloud")
+            argv = ["run_pipeline.py", "--fetch", root]
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(rp, "run_fetch_mode",
+                                      return_value=0) as mode:
+                with self.assertRaises(SystemExit) as ctx:
+                    rp.main()
         self.assertEqual(ctx.exception.code, 0)
-        self.assertEqual(mode.call_args[0][0], "work/cloud")
+        self.assertEqual(mode.call_args[0][0], root)
 
     def test_fetch_rejects_zero_and_two_positionals(self):
         for argv in (["run_pipeline.py", "--fetch"],
@@ -470,6 +504,53 @@ class TestFetchMode(unittest.TestCase):
         mk.assert_not_called()
         self.assertEqual(up.call_args[0][1], "vid-old")
         self.assertEqual(fin.call_args[0][:3], ({"queue": "q", "token": ""}, "job_9", True))
+
+    def test_retry_failed_never_loops_on_one_bad_job(self):
+        # --retry-failed reclaims failed jobs, and a job that fails
+        # again is failed again — so the queue hands the same job
+        # straight back. The run must process each job once, put the
+        # re-handed one back as failed (a dangling claim would come
+        # back after two hours even without --retry-failed), and end.
+        job = {"id": "job_1", "url": "https://cdn/x/v.mp4"}
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(cf, "require_upload_config",
+                                   return_value=UPLOAD_CFG), \
+                 mock.patch.object(fj, "claim_job",
+                                   side_effect=[job, job, job, None]) as claim, \
+                 mock.patch.object(fj, "download_direct",
+                                   side_effect=RuntimeError("boom")) as dl, \
+                 mock.patch.object(fj, "finish_job") as fin, \
+                 mock.patch.object(rp, "_run_one") as one:
+                code = rp.run_fetch_mode(td, retry_failed=True)
+        self.assertEqual(code, 1)
+        self.assertEqual(dl.call_count, 1)
+        self.assertEqual(claim.call_count, 2)
+        one.assert_not_called()
+        self.assertEqual(fin.call_count, 2)
+        for call in fin.call_args_list:
+            self.assertEqual(call[0][1:3], ("job_1", False))
+            self.assertIn("boom", call[1]["error"])
+
+    def test_download_only_retry_failed_never_loops(self):
+        # fetch_jobs.py main() claims the same way, so the same guard.
+        job = {"id": "job_1", "url": "https://cdn/x/v.mp4"}
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(sys, "argv",
+                                   ["fetch_jobs.py", td, "--retry-failed"]), \
+                 mock.patch.object(fj, "load_config",
+                                   return_value={"queue": "q", "token": ""}), \
+                 mock.patch.object(fj, "claim_job",
+                                   side_effect=[job, job, job, None]) as claim, \
+                 mock.patch.object(fj, "download_direct",
+                                   side_effect=RuntimeError("boom")) as dl, \
+                 mock.patch.object(fj, "finish_job") as fin:
+                self.assertEqual(fj.main(), 1)
+        self.assertEqual(dl.call_count, 1)
+        self.assertEqual(claim.call_count, 2)
+        self.assertEqual(fin.call_count, 2)
+        self.assertIn("boom", fin.call_args[1]["error"])
 
     def test_download_only_needs_no_library_key(self):
         # fetch_jobs.py main() downloads without running the pipeline

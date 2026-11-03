@@ -16,11 +16,20 @@ Usage:
 --guid overrides the state lookup (the state maps each cloud video id
 to the work dir the pipeline ran in). Playback URLs come from the
 vendor video object when the Cloud credentials are present, else the
-HLS pattern is used blind and mp4 is left empty. --sync-ignored
-converges the hub's ignored markers on the state instead of
-publishing: every ignored video upserted, stale markers removed.
+HLS pattern is used blind and mp4 is left empty. A video Stream
+answers 404 for (deleted, e.g. by an app's hub delete) is never
+published. --sync-ignored converges the hub's ignored markers on the
+state instead of publishing: every ignored video upserted, stale
+markers removed.
+
+--if-changed (the cron loop's mode) posts a session only when its
+artifacts changed since the last publish, recorded in
+hub_published.json beside the state file: re-posting every cycle
+resurrected sessions deleted from the hub in the apps and churned
+the hub's newest-first order.
 """
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -66,11 +75,13 @@ def read_json(path, default):
 
 
 def playback_urls(guid):
-    """(hls, mp4) for the video, vendor-confirmed when possible."""
+    """(hls, mp4, gone) for the video, vendor-confirmed when possible.
+    gone is True only when the vendor answers 404: the video was
+    deleted, and a hub row for it would point at nothing."""
     try:
         cfg = cloud_fetch.load_config()
     except SystemExit:
-        return "", ""
+        return "", "", False
     hls = cloud_fetch.playlist_url(cfg["cdn"], guid)
     try:
         req = urllib.request.Request(
@@ -82,9 +93,45 @@ def playback_urls(guid):
             vid = json.load(resp)
         cands = cloud_fetch.mp4_candidates(
             cfg["cdn"], guid, vid.get("availableResolutions"))
-        return hls, (cands[0] if cands else "")
+        return hls, (cands[0] if cands else ""), False
+    except urllib.error.HTTPError as exc:
+        return hls, "", exc.code == 404
     except Exception:
-        return hls, ""
+        return hls, "", False
+
+
+MARKERS = "hub_published.json"
+
+
+def markers_path(state_path):
+    """Publish markers live beside the cloud state, never in a work
+    dir: a write there would move the dir-mtime lesson date."""
+    return os.path.join(os.path.dirname(os.path.abspath(state_path)),
+                        MARKERS)
+
+
+def load_markers(path):
+    obj = read_json(path, {})
+    return obj if isinstance(obj, dict) else {}
+
+
+def save_marker(path, guid, fingerprint):
+    markers = load_markers(path)
+    markers[guid] = fingerprint
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump(markers, fh, indent=1, sort_keys=True)
+    os.replace(tmp, path)
+
+
+def fingerprint(guid, title, date, writeup, corrections, chapters):
+    """One version of a session's published fields. The date counts:
+    a corrected lesson date must reach the hub (and the work dir is
+    never touched after its run, so a mtime-fallback date holds)."""
+    blob = json.dumps({"guid": guid, "title": title, "date": date,
+                       "writeup": writeup, "corrections": corrections,
+                       "chapters": chapters}, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def post_json(url, payload, token):
@@ -202,6 +249,9 @@ def main(argv=None):
     ap.add_argument("--sync-ignored", action="store_true",
                     help="sync the cloud state's ignored videos to the "
                          "hub instead of publishing one work dir")
+    ap.add_argument("--if-changed", action="store_true",
+                    help="skip the post when the session's artifacts "
+                         "are unchanged since its last publish")
     args = ap.parse_args(argv)
 
     if not args.signer or not args.token:
@@ -223,7 +273,18 @@ def main(argv=None):
     title, date, _ = session_meta(work)
     corrections = read_json(os.path.join(work, "corrections.json"), [])
     chapters = read_json(os.path.join(work, "chapters.json"), [])
-    hls, mp4 = playback_urls(guid)
+    corrections = corrections if isinstance(corrections, list) else []
+    chapters = chapters if isinstance(chapters, list) else []
+    marks = markers_path(args.state)
+    version = fingerprint(guid, title, date, writeup, corrections, chapters)
+    if args.if_changed and load_markers(marks).get(guid) == version:
+        return 0
+    hls, mp4, gone = playback_urls(guid)
+    if gone:
+        save_marker(marks, guid, version)
+        print("[hub] skipped %s (%s): Stream no longer has the video "
+              "(deleted?) — not publishing it." % (guid, title))
+        return 0
     payload = {
         "videoId": guid,
         "title": title,
@@ -231,14 +292,15 @@ def main(argv=None):
         "hlsUrl": hls,
         "mp4Url": mp4,
         "writeupMd": writeup,
-        "corrections": corrections if isinstance(corrections, list) else [],
-        "chapters": chapters if isinstance(chapters, list) else [],
+        "corrections": corrections,
+        "chapters": chapters,
         "glossary": {},
     }
     status, body = post_json(args.signer.rstrip("/") + "/hub/publish",
                              payload, args.token)
     if status < 200 or status >= 300:
         raise SystemExit("hub publish refused (%s): %s" % (status, body))
+    save_marker(marks, guid, version)
     print("[hub] published %s (%s)" % (guid, title))
     return 0
 

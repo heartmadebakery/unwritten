@@ -43,16 +43,37 @@ class TestDiscovery(unittest.TestCase):
         self.assertEqual(date, "Oct 29, 2026")
         self.assertEqual(blurb, "A short blurb here.")
 
+    def test_meta_reads_the_stamp_from_a_cloud_work_dir(self):
+        # Cloud lessons run on a single file (no manifest), but the
+        # work dir is named after the take: its stamp is the lesson
+        # date. The mtime fallback showed the processing date, wrong
+        # for every lesson the cron caught up on later.
+        with tempfile.TemporaryDirectory() as td:
+            path = os.path.join(
+                td, "unwritten_lesson_20261028-091500-123.webm__77d78d25")
+            os.makedirs(path)
+            with open(os.path.join(path, "writeup.md"), "w") as fh:
+                fh.write("# Bread\n\nBody.\n")
+            title, date, blurb = make_site.session_meta(path)
+        self.assertEqual(date, "Oct 28, 2026")
+
     def test_meta_falls_back(self):
         with tempfile.TemporaryDirectory() as td:
             path = os.path.join(td, "w")
             os.makedirs(path)
             with open(os.path.join(path, "writeup.md"), "w") as fh:
                 fh.write("no heading here\n")
+            # A single-digit day, so zero-padding would show.
+            import datetime
+            when = datetime.datetime(2026, 11, 1, 12, 0).timestamp()
+            os.utime(path, (when, when))
             title, date, blurb = make_site.session_meta(path)
+        self.assertEqual(date, "Nov 1, 2026")
         self.assertEqual(title, "w")
         self.assertEqual(blurb, "")
         self.assertRegex(date, r"^[A-Z][a-z]{2} \d{1,2}, \d{4}$")
+        # Same shape as stamp dates ("Nov 1"), never zero-padded.
+        self.assertNotRegex(date, r" 0\d,")
 
 
 class TestRenderHub(unittest.TestCase):

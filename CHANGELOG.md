@@ -6,6 +6,59 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-02
+
+### Fixed
+- **Bug sweep, part 1: pipeline, hub publish, and worker**
+  (user-ordered "fix all bugs"; every fix test-first).
+  - *HLS fallback always failed.* Since downloads land in a
+    `.mp4.part` sidecar, ffmpeg could not infer the muxer ("Unable
+    to choose an output format") and blamed token auth; the remux
+    now names `-f mp4` (verified against real ffmpeg).
+  - *Truncated downloads passed as complete.* urllib returns a
+    short read at EOF instead of failing: `http_download` now checks
+    `Content-Length` and wraps mid-body resets, so a cut-off lesson
+    never survives the `.part` rename (local-socket tests).
+  - *`--retry-failed` looped forever* on a job that failed again
+    (the queue hands it straight back). Each job now runs once per
+    run, a re-handed one goes back to failed, and the worker orders
+    retries after pending work, least recently tried first, so one
+    bad job cannot starve the rest. Same guard in `fetch_jobs.py`.
+  - *A killed direct download resumed from its `.part`* as if it
+    were the lesson; resume and yt-dlp pickup accept finished media
+    names only. A video listed on two pages runs once.
+  - *Hub deletes made in the apps came back within 5 minutes*:
+    `run_cloud.sh` re-posted every work dir each cycle (also
+    churning `publishedAt`, the hub's newest-first order).
+    `publish.py --if-changed` posts once per artifact version
+    (`work/cloud/hub_published.json`), and a video Stream answers
+    404 for is never published. `run_cloud.sh` also runs from its
+    own checkout instead of a hard-coded `/home/aurelio`.
+  - *Worker:* deploy docs never applied `0003_ignored.sql` (the hub
+    list reads it) and every `wrangler d1 execute` lacked
+    `--remote`, which Wrangler 4 needs to touch production; a
+    missing table now answers 503 naming the file, every route
+    answers JSON on a thrown error, the listing proxy checks its key
+    first, a numeric `videoId` publishes, and vendor status/delete
+    paths carry the videoId encoded. 9 new hub checks (69).
+    Not yet deployed: production still runs the Nov 1 worker until
+    `npx wrangler deploy` (its D1 already has all three tables).
+  - *Second pass, pipeline side.* Lesson dates came from the work
+    dir's mtime (the processing day) although cloud work dirs carry
+    the take's stamp in their name; the publish fingerprint now
+    includes the date, so corrected dates reach the hub, and
+    mtime-fallback dates match the stamp format ("Nov 1", not
+    "Nov 01"). A poster time past the video's end falls back to the
+    midpoint instead of no poster. Raw web takes (VP8/Opus WebM,
+    which the MP4 muxer refuses) transcode for video understanding
+    instead of always falling back to stills. `setup.sh` picks the
+    ffmpeg build for the machine (arm64 Linux got an amd64 binary;
+    macOS is told to `brew install ffmpeg`) and lands the SAM
+    checkpoint atomically.
+  - *Tests:* the two "single positional" CLI tests locked the live
+    `work/cloud` and flaked whenever cron held it; they use a temp
+    root now.
+
 ## 2026-11-01
 
 ### Fixed

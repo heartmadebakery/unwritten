@@ -12,16 +12,29 @@ command -v uv >/dev/null || curl -fsSL https://astral.sh/uv/install.sh | sh
 uv pip install --python .venv/bin/python -r requirements.txt
 uv pip install --python .venv/bin/python -r requirements-retired.txt
 
-# ffmpeg/ffprobe as static binaries (no apt/sudo)
+# ffmpeg/ffprobe as static binaries (no apt/sudo), built for this
+# machine: an amd64 build cannot run on arm64 Linux, and there is no
+# static Linux build that runs on macOS.
 if ! command -v ffmpeg >/dev/null; then
-  (cd /tmp && curl -fsSL -o ffmpeg.tar.xz https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz \
-    && tar -xf ffmpeg.tar.xz && cp ffmpeg-*-amd64-static/ffmpeg ffmpeg-*-amd64-static/ffprobe "$HOME/.local/bin/")
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) FFARCH=amd64 ;;
+    Linux-aarch64|Linux-arm64) FFARCH=arm64 ;;
+    *) echo "ffmpeg not found, and no static build for $(uname -s)-$(uname -m) — install it (macOS: brew install ffmpeg), then re-run setup.sh." >&2
+       exit 1 ;;
+  esac
+  FFTMP="$(mktemp -d)"
+  (cd "$FFTMP" && curl -fsSL -o ffmpeg.tar.xz "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-$FFARCH-static.tar.xz" \
+    && tar -xf ffmpeg.tar.xz && mkdir -p "$HOME/.local/bin" \
+    && cp ffmpeg-*-"$FFARCH"-static/ffmpeg ffmpeg-*-"$FFARCH"-static/ffprobe "$HOME/.local/bin/")
+  rm -rf "$FFTMP"
 fi
 
-# SAM ViT-B checkpoint (375 MB, git-ignored)
+# SAM ViT-B checkpoint (375 MB, git-ignored). Lands via .part + mv: an
+# interrupted download must never pass the existence check as complete.
 mkdir -p pipeline/models
-[ -f pipeline/models/sam_vit_b_01ec64.pth ] || curl -L -o pipeline/models/sam_vit_b_01ec64.pth \
-  https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth
+SAM=pipeline/models/sam_vit_b_01ec64.pth
+[ -f "$SAM" ] || { curl -fL -o "$SAM.part" \
+  https://dl.fbaipublicfiles.com/segment_anything/sam_vit_b_01ec64.pth && mv "$SAM.part" "$SAM"; }
 
 # Android (optional): JDK 17 in ~/opt, SDK in ~/Android/Sdk (both user-local,
 # env persisted in ~/.bashrc). Rebuild the app APK with:

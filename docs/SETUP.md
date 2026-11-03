@@ -14,7 +14,9 @@ bash setup.sh
 `setup.sh` is idempotent and needs no sudo. It installs: `uv` (if
 missing) → `.venv` (Python 3.12) → `requirements.txt` (+ the retired
 torch file, harmless) → static `ffmpeg`/`ffprobe` into `~/.local/bin`
-→ the SAM checkpoint into `pipeline/models/` (git-ignored, 375 MB).
+when missing (amd64 or arm64 Linux; on macOS it stops and asks for
+`brew install ffmpeg`) → the SAM checkpoint into `pipeline/models/`
+(git-ignored, 375 MB; an interrupted download is retried, never kept).
 It ends by running the full test suite — no secrets needed for that;
 green here means the tree is good before you touch any credential.
 
@@ -41,7 +43,7 @@ of these places:
 | `UNWRITTEN_TRANSCRIBE`, `UNWRITTEN_WHISPER_MODEL`, `UNWRITTEN_ASR_KEYWORDS`, `UNWRITTEN_ASR_LANGUAGES`, `MUSE_BIN` (all optional) | `.env` / environment | Transcription backend + hints; `muse` CLI override (default: `muse` on `PATH`, else `~/.local/bin/muse`). |
 | Signer token pool, 10 lines | `app/cloud-signer/tokens.txt` (git-ignored, `chmod 600`) | **Either** copy the existing file over securely (preferred — keeps every shipped build valid), **or** mint a fresh pool: `bash app/cloud-signer/mint-tokens.sh`, then set it on the worker (step 3). Never print a token; builds log only `token #N of 10`. |
 | `CLOUD_API_KEY`, `SIGNER_TOKENS` | Cloudflare Worker secrets (never a file) | `npx wrangler secret put CLOUD_API_KEY`, and `paste -sd, tokens.txt \| npx wrangler secret put SIGNER_TOKENS` (comma-joins without printing). |
-| Worker D1 binding | `wrangler.toml` (`database_id`, committed) | Reuse the existing worker: keep as is, but apply `migrations/0002_fetch_jobs.sql` + redeploy for the URL queue. Fresh worker: `npx wrangler d1 create unwritten-hub`, paste the printed id, apply `migrations/0001_sessions.sql` and `0002_fetch_jobs.sql`. |
+| Worker D1 binding | `wrangler.toml` (`database_id`, committed) | Reuse the existing worker: keep as is, but apply `migrations/0002_fetch_jobs.sql` (URL queue) and `0003_ignored.sql` (ignored takes) + redeploy — the hub list reads `ignored_videos`, so a worker deployed without 0003 answers 503 naming the file. Fresh worker: `npx wrangler d1 create unwritten-hub`, paste the printed id, apply `0001_sessions.sql`, `0002_fetch_jobs.sql`, and `0003_ignored.sql`. Always `npx wrangler d1 execute unwritten-hub --remote --file migrations/<file>`: without `--remote`, Wrangler migrates a local dev copy and production never sees it. |
 | Android signing | `app/android/debug.keystore` (auto-generated, git-ignored) | `build.sh` creates it on first run. Release signing is an open item. |
 | LAN HTTPS certs | `.certs/` (git-ignored, `mkcert`) | Only for serving the web app to a phone camera (step 6). |
 
@@ -51,8 +53,8 @@ Copy order on a new machine: `.env` first (repo root), then
 ## 2. Verify the tree (no secrets needed)
 
 ```sh
-.venv/bin/python -m unittest discover -s tests   # ~270 tests, contract-only
-node app/cloud-signer/hub-check.mjs              # 41 checks against a local D1
+.venv/bin/python -m unittest discover -s tests   # ~440 tests, contract-only
+node app/cloud-signer/hub-check.mjs              # 68 checks against a local D1
 ```
 
 Both must be green before you build anything.
@@ -112,7 +114,8 @@ it verified.
 # Web app (this host only):
 .venv/bin/python -m http.server 8765 --directory app/recorder/dist
 # Web app to a phone camera (camera APIs need https on LAN):
-.venv/bin/python app/recorder/serve_https.py   # first: make .certs/ per its header,
+.venv/bin/python app/recorder/serve_https.py   # serves dist/ like the line above;
+                                               # first: make .certs/ per its header,
                                                # install .certs/rootCA.pem on the phone
 
 # Pipeline, one lesson:

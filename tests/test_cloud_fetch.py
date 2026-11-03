@@ -68,6 +68,14 @@ class TestSelectReady(unittest.TestCase):
                         "result": "downloaded"}}
         self.assertEqual(len(cf.select_ready(vids, state)), 1)
 
+    def test_a_video_listed_twice_runs_once(self):
+        # The listing pages by date: an upload landing between page
+        # requests shifts every row, so one video can appear on two
+        # pages. It must still run through the pipeline once per run.
+        vids = [video("a"), video("b"), video("a")]
+        self.assertEqual([v["guid"] for v in cf.select_ready(vids, {})],
+                         ["a", "b"])
+
 
 class TestSanitizeAndUrls(unittest.TestCase):
     def test_sanitize(self):
@@ -178,6 +186,25 @@ class TestRunCloudSh(unittest.TestCase):
         with open(os.path.join(root, "run_cloud.sh")) as fh:
             sh = fh.read()
         self.assertIn('[ -f "$work/corrections.json" ]', sh)
+
+    def test_publish_loop_posts_only_changed_sessions(self):
+        # Re-posting every work dir each cycle resurrected sessions
+        # deleted from the hub in the apps and churned the hub order.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            publish_line = next(line for line in fh
+                                if "publish.py --work" in line)
+        self.assertIn("--if-changed", publish_line)
+
+    def test_runs_from_its_own_checkout(self):
+        # SETUP targets any machine and user: the runner works from
+        # wherever the repo is cloned, never a hard-coded home path.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "run_cloud.sh")) as fh:
+            sh = fh.read()
+        self.assertNotIn("/home/aurelio", sh)
+        self.assertNotIn("$HOME/unwritten", sh)
+        self.assertIn('cd "$(dirname "$0")"', sh)
 
 
 class TestState(unittest.TestCase):
@@ -312,6 +339,39 @@ class TestDownloadReferer(unittest.TestCase):
         self.assertIn("-headers", cmd)
         self.assertIn("Referer: REF", cmd)
 
+    def test_remux_names_the_muxer(self):
+        # download_video remuxes into a ".mp4.part" sidecar, and
+        # ffmpeg picks the muxer from the extension: without an
+        # explicit "-f mp4" every HLS fallback dies with "Unable to
+        # choose an output format".
+        with mock.patch.object(cf.shutil, "which",
+                               return_value="/bin/ffmpeg"), \
+                mock.patch("subprocess.run") as run:
+            run.return_value = mock.Mock(returncode=0)
+            with tempfile.TemporaryDirectory() as td:
+                dest = os.path.join(td, "v.mp4.part")
+                with open(dest, "wb") as fh:
+                    fh.write(b"x")
+                cf.remux_hls("https://cdn/pl.m3u8", dest, "REF")
+        cmd = run.call_args[0][0]
+        self.assertEqual(cmd[-3:], ["-f", "mp4", dest])
+
+    @unittest.skipUnless(cf.shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_remux_into_part_sidecar_with_real_ffmpeg(self):
+        # The same contract end to end: a real HLS playlist remuxes
+        # into the .part name download_video hands over.
+        import subprocess
+        with tempfile.TemporaryDirectory() as td:
+            playlist = os.path.join(td, "pl.m3u8")
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error",
+                 "-f", "lavfi", "-i", "testsrc=duration=2:size=64x48:rate=5",
+                 "-c:v", "libx264", "-f", "hls", "-hls_time", "1",
+                 playlist], check=True, capture_output=True, timeout=120)
+            dest = os.path.join(td, "lesson.mp4.part")
+            cf.remux_hls(playlist, dest)
+            self.assertGreater(os.path.getsize(dest), 0)
+
     def test_download_video_uses_player_page(self):
         cfg = {"library_id": "793098", "cdn": "vz-x.b-cdn.net"}
         vid = {"guid": "guid-1234", "title": "t",
@@ -444,16 +504,68 @@ class TestDownloadReferer(unittest.TestCase):
             self.assertEqual(state["good"]["result"], "downloaded")
 
 
+class TestDownloadIntegrity(unittest.TestCase):
+    """http_download against a real local socket: the .part
+    discipline only helps if a cut-off body is refused, and urllib
+    hands back a short read at EOF instead of raising."""
+
+    def serve(self, head, body):
+        import socket
+        import threading
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        self.addCleanup(srv.close)
+
+        def one():
+            conn, _ = srv.accept()
+            conn.recv(65536)
+            conn.sendall(head + body)
+            conn.close()
+
+        threading.Thread(target=one, daemon=True).start()
+        return "http://127.0.0.1:%d/v.mp4" % srv.getsockname()[1]
+
+    def test_truncated_body_is_refused(self):
+        url = self.serve(b"HTTP/1.1 200 OK\r\nContent-Length: 100000\r\n"
+                         b"Content-Type: video/mp4\r\n\r\n", b"x" * 1000)
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaises(cf.DownloadError) as ctx:
+                cf.http_download(url, os.path.join(td, "v.mp4.part"))
+        self.assertIn("truncated", str(ctx.exception))
+
+    def test_complete_body_lands(self):
+        url = self.serve(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n"
+                         b"Content-Type: video/mp4\r\n\r\n", b"x" * 1000)
+        with tempfile.TemporaryDirectory() as td:
+            dest = cf.http_download(url, os.path.join(td, "v.mp4.part"))
+            self.assertEqual(os.path.getsize(dest), 1000)
+
+    def test_body_without_length_still_lands(self):
+        # No Content-Length (connection-close framing): nothing to
+        # check against, so the bytes stand.
+        url = self.serve(b"HTTP/1.0 200 OK\r\nContent-Type: video/mp4"
+                         b"\r\n\r\n", b"x" * 500)
+        with tempfile.TemporaryDirectory() as td:
+            dest = cf.http_download(url, os.path.join(td, "v.mp4.part"))
+            self.assertEqual(os.path.getsize(dest), 500)
+
+
 class TestCloudCli(unittest.TestCase):
     def test_single_positional_is_the_work_root(self):
-        argv = ["run_pipeline.py", "--cloud", "work/cloud"]
-        with mock.patch.object(sys, "argv", argv), \
-                mock.patch.object(rp, "run_cloud_mode",
-                                  return_value=0) as mode:
-            with self.assertRaises(SystemExit) as ctx:
-                rp.main()
+        # A temp root, never the live work/cloud: the cron run holds
+        # that root's lock every five minutes, and a held lock skips
+        # the mode this test asserts on.
+        with tempfile.TemporaryDirectory() as td:
+            root = os.path.join(td, "cloud")
+            argv = ["run_pipeline.py", "--cloud", root]
+            with mock.patch.object(sys, "argv", argv), \
+                    mock.patch.object(rp, "run_cloud_mode",
+                                      return_value=0) as mode:
+                with self.assertRaises(SystemExit) as ctx:
+                    rp.main()
         self.assertEqual(ctx.exception.code, 0)
-        self.assertEqual(mode.call_args[0][0], "work/cloud")
+        self.assertEqual(mode.call_args[0][0], root)
 
     def test_cloud_rejects_zero_and_two_positionals(self):
         for argv in (["run_pipeline.py", "--cloud"],

@@ -103,13 +103,22 @@ def job_slug(title, job_id):
     return "%s__%s" % (cloud_fetch.sanitize(title), _short_id(job_id))
 
 
+def is_media_file(name):
+    """True for finished media names only — never a ".part" sidecar
+    or a yt-dlp ".ytdl"/".temp" leftover from a killed run."""
+    return name.lower().endswith(MEDIA_EXTS)
+
+
 def existing_media(session_dir):
     """A previously downloaded lesson in the session dir, else '' —
-    lets --retry-failed resume without re-downloading."""
+    lets --retry-failed resume without re-downloading. An interrupted
+    download's sidecar never counts: a killed run skips the cleanup,
+    and resuming from it would process a truncated lesson as real."""
     if not os.path.isdir(session_dir):
         return ""
     for entry in sorted(os.listdir(session_dir)):
-        if not entry.startswith("unwritten_lesson_"):
+        if not entry.startswith("unwritten_lesson_") \
+                or not is_media_file(entry):
             continue
         full = os.path.join(session_dir, entry)
         if os.path.isfile(full) and os.path.getsize(full) > 0:
@@ -202,6 +211,26 @@ def finish_job(cfg, job_id, ok, session="", error=""):
              body)
 
 
+def rehanded(cfg, job, attempted, tag="[fetch]"):
+    """True when the queue hands back a job this run already tried.
+    --retry-failed reclaims failed jobs, so one that just failed
+    comes straight back: claiming it again would loop forever. The
+    claim is put back as failed with its error (a dangling claim
+    would return after two hours even without --retry-failed) and
+    the caller stops claiming."""
+    job_id = job.get("id", "")
+    if job_id not in attempted:
+        return False
+    print("%s %r already failed this run — leaving it failed."
+          % (tag, job.get("url")))
+    try:
+        finish_job(cfg, job_id, False,
+                   error=attempted[job_id] or "failed again this run")
+    except Exception as exc:
+        print("%s could not mark failed: %s" % (tag, exc))
+    return True
+
+
 def download_direct(url, dest):
     """Plain-HTTPS download into a .part sidecar, renamed only on
     success — the cloud path's discipline: an interrupted download
@@ -274,7 +303,7 @@ def ytdlp_download(url, session_dir):
                          % (url, tail[-1] if tail else proc.returncode))
     produced = [os.path.join(session_dir, entry)
                 for entry in os.listdir(session_dir)
-                if entry.startswith("video.")]
+                if entry.startswith("video.") and is_media_file(entry)]
     produced = [p for p in produced
                 if os.path.isfile(p) and os.path.getsize(p) > 0]
     if not produced:
@@ -325,6 +354,7 @@ def main():
     cfg = load_config()
     os.makedirs(root, exist_ok=True)
     done = failures = 0
+    attempted = {}  # job id -> its error this run ("" when it finished)
     while True:
         if max_n > 0 and done + failures >= max_n:
             break
@@ -333,8 +363,9 @@ def main():
         except QueueError as exc:
             print("[fetch] claim failed: %s" % exc)
             return 1
-        if not job:
+        if not job or rehanded(cfg, job, attempted):
             break
+        attempted[job.get("id", "")] = ""
         session = os.path.join(root, session_dir_name(job.get("id", "")))
         os.makedirs(session, exist_ok=True)
         try:
@@ -346,6 +377,7 @@ def main():
             finish_job(cfg, job["id"], True, session=lesson)
         except Exception as exc:
             failures += 1
+            attempted[job.get("id", "")] = str(exc)
             print("[fetch] failed for %r: %s" % (job.get("url"), exc))
             try:
                 finish_job(cfg, job["id"], False, error=str(exc))

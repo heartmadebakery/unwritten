@@ -372,5 +372,34 @@ class TestRootLock(unittest.TestCase):
                                      state_path="")
 
 
+class TestSetupSh(unittest.TestCase):
+    """setup.sh promises any new machine (Ubuntu/WSL2, macOS) a
+    verified tree."""
+
+    @classmethod
+    def setUpClass(cls):
+        with open(os.path.join(ROOT, "setup.sh")) as fh:
+            cls.sh = fh.read()
+
+    def test_ffmpeg_download_matches_the_machine(self):
+        # A hard-coded amd64 build cannot run on arm64 Linux (this
+        # very host) or macOS: the static build follows uname, and a
+        # machine with none names the install instead.
+        ff = self.sh.split("if ! command -v ffmpeg", 1)[1].split("\nfi\n", 1)[0]
+        self.assertIn("uname -m", ff)
+        self.assertIn("arm64", ff)
+        self.assertIn("amd64", ff)
+        self.assertIn("brew install ffmpeg", ff)
+        self.assertIn("exit 1", ff)
+
+    def test_checkpoint_download_lands_atomically(self):
+        # An interrupted 375 MB download left a truncated checkpoint
+        # that the existence check accepted forever after.
+        sam = self.sh.split("# SAM", 1)[1].split("\n\n", 1)[0]
+        self.assertIn(".part", sam)
+        self.assertIn("curl -fL", sam)
+        self.assertIn("mv ", sam)
+
+
 if __name__ == "__main__":
     unittest.main()

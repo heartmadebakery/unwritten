@@ -151,21 +151,28 @@ MP4_EXTS = {".mp4", ".mov", ".m4v"}
 
 def ensure_mp4(media, tmpdir):
     """The video API takes MP4-family containers: mp4 passes through,
-    anything else is remuxed losslessly, "" when neither works."""
+    anything else is remuxed losslessly — or, when the codecs cannot
+    ride in MP4 (the web recorder's VP8/Opus WebM: "Could not find tag
+    for codec vp8"), transcoded to H.264/AAC. "" when neither works."""
     if not media or not os.path.isfile(media):
         return ""
     if os.path.splitext(media)[1].lower() in MP4_EXTS:
         return media
     out = os.path.join(tmpdir, "lesson.mp4")
-    try:
-        proc = subprocess.run(
-            ["ffmpeg", "-y", "-v", "error", "-i", media, "-c", "copy", out],
-            capture_output=True, timeout=600)
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    if proc.returncode != 0 or not os.path.exists(out):
-        return ""
-    return out
+    for codecs, timeout in ((["-c", "copy"], 600),
+                            (["-c:v", "libx264", "-preset", "veryfast",
+                              "-crf", "28", "-pix_fmt", "yuv420p",
+                              "-c:a", "aac"], 3600)):
+        try:
+            proc = subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-i", media] + codecs
+                + [out], capture_output=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError):
+            return ""
+        if proc.returncode == 0 and os.path.exists(out) \
+                and os.path.getsize(out) > 0:
+            return out
+    return ""
 
 
 def draft_video(transcript, mp4):
@@ -240,7 +247,7 @@ def draft(transcript, media=""):
                     print("  [write-up] video understanding unavailable "
                           "(%s) — falling back to frames" % exc)
             else:
-                print("  [write-up] lesson is not MP4 and would not remux — "
+                print("  [write-up] lesson is not MP4 and would not convert — "
                       "falling back to frames")
         if writeup is None:
             writeup = draft_frames(transcript, media, rules, tmpdir)

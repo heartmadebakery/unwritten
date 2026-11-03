@@ -32,16 +32,24 @@ npx wrangler secret put CLOUD_API_KEY  # library's AccessKey (Stream → library
 paste -sd, tokens.txt | npx wrangler secret put SIGNER_TOKENS  # the pool, never printed
 ```
 
-Hub store (optional, powers the in-app hub): a D1 database behind the
-same worker. Create it once, paste the printed id into
-`wrangler.toml`, run the migration, redeploy:
+Hub store (optional, powers the in-app hub, the URL fetch queue, and
+the ignored-take badges): a D1 database behind the same worker.
+Create it once, paste the printed id into `wrangler.toml`, run every
+migration, redeploy. `--remote` matters: without it Wrangler
+migrates a local dev copy and the deployed store never gets the
+tables (the worker then answers 503 naming the missing file).
 
 ```sh
 npx wrangler d1 create unwritten-hub
 # database_id = "<printed>" in wrangler.toml
-npx wrangler d1 execute unwritten-hub --file migrations/0001_sessions.sql
+npx wrangler d1 execute unwritten-hub --remote --file migrations/0001_sessions.sql
+npx wrangler d1 execute unwritten-hub --remote --file migrations/0002_fetch_jobs.sql
+npx wrangler d1 execute unwritten-hub --remote --file migrations/0003_ignored.sql
 npx wrangler deploy
 ```
+
+An existing store applies just the files it is missing, then
+redeploys.
 
 Then publish finished runs: `CLOUD_LIBRARY_ID=.. CLOUD_LIBRARY_KEY=..
 CLOUD_CDN_HOSTNAME=.. HUB_SIGNER_URL=.. HUB_SIGNER_TOKEN=.. python3
@@ -81,9 +89,21 @@ as a fallback if set.)
   these routes against real SQLite).
 - `GET /hub/sessions` → newest-first session summaries;
   `GET /hub/sessions/<videoId>` → the full session record;
-  `DELETE /hub/sessions/<videoId>` → `{deleted: true}`.
-- When tokens are set, every request must carry a matching
-  `X-Signer-Token` header; the clients do this automatically.
+  `DELETE /hub/sessions/<videoId>` → `{deleted: true}`. Ignored
+  videos are left out of both.
+- `POST /hub/ignored` `{videoId, title?, reason?}` → `{ignored:
+  videoId}`; `GET /hub/ignored` → the operator's set-asides;
+  `DELETE /hub/ignored/<videoId>` → `{deleted: true}`.
+- `POST /fetch/jobs` `{url}` → `{id, status}` queues a link for the
+  pipeline; `GET /fetch/jobs?claim=1&by=<worker>[&includeFailed=1]`
+  claims the oldest pending job (retries after it, least recently
+  tried first); `POST /fetch/jobs/<id>/done|failed` closes it;
+  `GET /fetch/jobs` lists the 50 newest.
+- `GET /pipeline/videos?page=N` → the library listing, for the
+  pipeline machine.
+- Every request must carry an `X-Signer-Token` header matching a
+  pool entry; the clients do this automatically. With no pool set
+  the worker fails closed (500), never open.
 
 Keep `CORS_ORIGIN` pinned to your app's origin in production — CORS
 is not authentication, the token is.
