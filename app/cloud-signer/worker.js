@@ -127,7 +127,15 @@ const MIGRATIONS = {
 
 export default {
   async fetch(request, env) {
-    const origin = env.CORS_ORIGIN || "*";
+    // Allowed page origins: CORS_ORIGIN holds a comma-separated list,
+    // canonical app origin first. The request's origin is reflected
+    // only when listed — browsers then enforce it — otherwise the
+    // canonical origin answers and the browser blocks the read.
+    const allowed = String(env.CORS_ORIGIN || "*").split(",")
+      .map(s => s.trim()).filter(Boolean);
+    const asking = request.headers.get("Origin");
+    const origin = allowed.includes("*") ? "*"
+      : (asking && allowed.includes(asking) ? asking : allowed[0]);
     const cors = {
       "Access-Control-Allow-Origin": origin,
       "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",

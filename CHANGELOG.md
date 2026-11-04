@@ -33,6 +33,14 @@ history (30 commits) and is maintained in the open from then on.
   the attempts history. *Android / iOS:* the link screen and its
   routes are removed; the upload screen holds the fetch field after
   the upload section with previous attempts at the end.
+- **Web app hosted on Cloudflare Pages.** (User-ordered: serve it
+  from `unwritten.heartmadebakery.com`.) The static `dist/`
+  deploys as the Pages project `unwritten` from this machine, so
+  the token pool never leaves the host; the signer pins its CORS
+  allowlist to the custom domain plus `localhost:8765` and
+  reflects only listed origins. The custom-domain attach is one
+  dashboard click (DNS + cert automatic); hub-check covers the
+  allowlist.
 
 ## 2026-11-03
 

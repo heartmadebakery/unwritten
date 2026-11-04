@@ -207,6 +207,24 @@ const VID = "vid-123";
     globalThis.fetch = realFetch;
   }
 }
+// CORS allowlist: a listed origin is reflected, anything else gets the
+// canonical first entry (never the requester's), "*" still opens up.
+{
+  const listed = { ...authed, CORS_ORIGIN: "https://app.example, http://localhost:8765" };
+  const ask = (origin) => new Request(URL + "/hub/sessions",
+    { headers: { "X-Signer-Token": TOKEN, ...(origin ? { Origin: origin } : {}) } });
+  const echo = await worker.fetch(ask("http://localhost:8765"), listed);
+  check(echo.headers.get("Access-Control-Allow-Origin") === "http://localhost:8765",
+    "cors reflects a listed origin");
+  const evil = await worker.fetch(ask("https://evil.example"), listed);
+  const fell = evil.headers.get("Access-Control-Allow-Origin");
+  check(fell === "https://app.example" && fell !== "https://evil.example",
+    "cors answers an unlisted origin with the canonical entry");
+  const star = await worker.fetch(ask("https://evil.example"),
+    { ...authed, CORS_ORIGIN: "*" });
+  check(star.headers.get("Access-Control-Allow-Origin") === "*",
+    "cors keeps the first-test wildcard");
+}
 // Fetch queue: same token gate as every other route.
 {
   const r = await call(authed, "POST", "/fetch/jobs", { url: "https://x/y.mp4" }, "nope");

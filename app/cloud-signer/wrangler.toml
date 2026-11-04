@@ -5,9 +5,13 @@ compatibility_date = "2026-10-01"
 [vars]
 # Your Stream library ID (Stream → your library → API on bunny.net).
 CLOUD_LIBRARY_ID = "793098"
-# Where the web recorder is served, e.g. "https://you.github.io".
-# "*" works for a first test; pin it down before real use.
-CORS_ORIGIN = "*"
+# Where the web recorder is served (Pages custom domain, Nov 2026).
+# "*" works for a first test; pinned origins are the minimum before
+# real use (the vendor warns an open create route lets anyone fill
+# the library: the token + origin are the gate). First entry is the
+# canonical app origin (the fallback the worker answers with);
+# localhost:8765 keeps the `build.sh` + `http.server` dev loop working.
+CORS_ORIGIN = "https://unwritten.heartmadebakery.com, http://localhost:8765"
 
 # Secrets — set with wrangler, never commit real values:
 #   npx wrangler secret put CLOUD_API_KEY

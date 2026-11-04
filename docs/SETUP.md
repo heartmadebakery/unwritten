@@ -116,6 +116,14 @@ it verified.
 ```sh
 # Web app (this host only):
 .venv/bin/python -m http.server 8765 --directory app/recorder/dist
+# Web app hosted (Cloudflare Pages project `unwritten`, machine deploy —
+# the token pool never leaves this host):
+bash app/recorder/build.sh && npx wrangler pages deploy app/recorder/dist --project-name unwritten
+# Custom domain `unwritten.heartmadebakery.com`: Pages → unwritten →
+# Custom domains (one click; DNS + cert are automatic on our zone).
+# The signer already allows that origin plus localhost:8765
+# (`CORS_ORIGIN` in `app/cloud-signer/wrangler.toml`, comma-separated,
+# canonical first); redeploy the worker after changing it.
 # Web app to a phone camera (camera APIs need https on LAN):
 .venv/bin/python app/recorder/serve_https.py   # serves dist/ like the line above;
                                                # first: make .certs/ per its header,
