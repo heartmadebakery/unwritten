@@ -1,11 +1,11 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'org.tinio.unwritten'
+    namespace 'com.heartmadebakery.unwritten'
     compileSdk 34
 
     defaultConfig {
-        applicationId "org.tinio.unwritten"
+        applicationId "com.heartmadebakery.unwritten"
         minSdk 29
         targetSdk 34
         versionCode 1

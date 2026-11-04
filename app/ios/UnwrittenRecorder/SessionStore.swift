@@ -1117,7 +1117,7 @@ final class SessionStore: ObservableObject {
 /// Posted (from any thread) when a TUS callback persists new upload
 /// progress; the store observes it on the main queue and refreshes rows.
 extension Notification.Name {
-    static let uwCloudProgress = Notification.Name("org.tinio.unwritten.cloudProgress")
+    static let uwCloudProgress = Notification.Name("com.heartmadebakery.unwritten.cloudProgress")
 }
 
 /// Carries an AVAssetExportSession across to its @Sendable completion

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.tinio.unwritten"
+    package="com.heartmadebakery.unwritten"
     android:versionCode="1"
     android:versionName="1.0">
 
@@ -39,7 +39,7 @@
 
         <provider
             android:name=".TinyFileProvider"
-            android:authorities="org.tinio.unwritten.files"
+            android:authorities="com.heartmadebakery.unwritten.files"
             android:exported="false"
             android:grantUriPermissions="true" />
 

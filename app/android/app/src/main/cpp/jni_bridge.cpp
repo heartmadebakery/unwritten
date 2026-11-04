@@ -12,7 +12,7 @@
 // ---------------------------------------------------------------------------
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeStartWav(JNIEnv* env, jclass /*clazz*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeStartWav(JNIEnv* env, jclass /*clazz*/,
                                                    jstring path) {
     try {
         if (env == nullptr || path == nullptr) {
@@ -37,7 +37,7 @@ Java_org_tinio_unwritten_NativeCore_nativeStartWav(JNIEnv* env, jclass /*clazz*/
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeStopWav(JNIEnv* /*env*/, jclass /*clazz*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeStopWav(JNIEnv* /*env*/, jclass /*clazz*/,
                                                   jlong handle) {
     try {
         if (handle == 0) {
@@ -54,7 +54,7 @@ Java_org_tinio_unwritten_NativeCore_nativeStopWav(JNIEnv* /*env*/, jclass /*claz
 }
 
 extern "C" JNIEXPORT jdouble JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeWavRms(JNIEnv* /*env*/, jclass /*clazz*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeWavRms(JNIEnv* /*env*/, jclass /*clazz*/,
                                                  jlong handle) {
     try {
         if (handle == 0) {
@@ -69,7 +69,7 @@ Java_org_tinio_unwritten_NativeCore_nativeWavRms(JNIEnv* /*env*/, jclass /*clazz
 }
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeWavDurationMs(JNIEnv* /*env*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeWavDurationMs(JNIEnv* /*env*/,
                                                         jclass /*clazz*/,
                                                         jlong handle) {
     try {
@@ -89,7 +89,7 @@ Java_org_tinio_unwritten_NativeCore_nativeWavDurationMs(JNIEnv* /*env*/,
 // ---------------------------------------------------------------------------
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeLuma(JNIEnv* env, jclass /*clazz*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeLuma(JNIEnv* env, jclass /*clazz*/,
                                                jbyteArray yPlane, jint width,
                                                jint height, jint rowStride) {
     try {
@@ -156,7 +156,7 @@ Java_org_tinio_unwritten_NativeCore_nativeLuma(JNIEnv* env, jclass /*clazz*/,
 // ---------------------------------------------------------------------------
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeFlashCreate(JNIEnv* /*env*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeFlashCreate(JNIEnv* /*env*/,
                                                       jclass /*clazz*/) {
     try {
         auto* detector = new uwcore::FlashDetector();
@@ -167,7 +167,7 @@ Java_org_tinio_unwritten_NativeCore_nativeFlashCreate(JNIEnv* /*env*/,
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeFlashFeed(JNIEnv* /*env*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeFlashFeed(JNIEnv* /*env*/,
                                                     jclass /*clazz*/,
                                                     jlong handle, jdouble mean,
                                                     jlong nowMs) {
@@ -186,7 +186,7 @@ Java_org_tinio_unwritten_NativeCore_nativeFlashFeed(JNIEnv* /*env*/,
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_org_tinio_unwritten_NativeCore_nativeFlashDestroy(JNIEnv* /*env*/,
+Java_com_heartmadebakery_unwritten_NativeCore_nativeFlashDestroy(JNIEnv* /*env*/,
                                                        jclass /*clazz*/,
                                                        jlong handle) {
     try {

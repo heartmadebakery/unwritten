@@ -19,7 +19,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REC = os.path.join(ROOT, "app", "recorder")
 ANDROID = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                       "org", "tinio", "unwritten")
+                       "com", "heartmadebakery", "unwritten")
 IOS = os.path.join(ROOT, "app", "ios", "UnwrittenRecorder")
 SIGNER = os.path.join(ROOT, "app", "cloud-signer")
 

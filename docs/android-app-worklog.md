@@ -167,7 +167,7 @@ older devices can use their hardware efficiently: **C/C++ for the
 critical paths**, **compatible back to old Android**, and **the code
 written by the Muse Wonder model**.
 
-Result: package `org.tinio.unwritten`, **minSdk 26** (Android 8.0, an
+Result: package `com.heartmadebakery.unwritten`, **minSdk 26** (Android 8.0, an
 old-Android-era launch OS), target/compileSdk 34, Java 8, **no AndroidX,
 no Kotlin, no third-party libraries**, programmatic UI (no layout
 XML), one C++17 library (`libuwcore`). APK ≈ 0.5 MB.
@@ -176,13 +176,13 @@ XML), one C++17 library (`libuwcore`). APK ≈ 0.5 MB.
 
 | File | Lines | Role |
 |---|---|---|
-| `app/android/app/src/main/java/org/tinio/unwritten/MainActivity.java` | 905 | Home/session/companion screens, pre-roll sync countdown (ToneGenerator beeps + white flash overlay), native-WAV dialogue mode with RMS meter, session manifest JSON export, TTS interviewer prompts, export to Downloads |
+| `app/android/app/src/main/java/com/heartmadebakery/unwritten/MainActivity.java` | 905 | Home/session/companion screens, pre-roll sync countdown (ToneGenerator beeps + white flash overlay), native-WAV dialogue mode with RMS meter, session manifest JSON export, TTS interviewer prompts, export to Downloads |
 | `…/CameraEngine.java` | 1062 | Camera2 state machine: preview, photo (JPEG still), video via MediaRecorder (≤720p, 4 Mbps H.264), YUV_420_888 reader feeding luma analysis at ≤10 fps; video-only fallback when the mic is denied |
 | `…/NativeCore.java` | 27 | JNI declarations for `libuwcore` |
 | `…/Names.java` | 61 | The filename contract — single source of truth, identical to the web recorder's (below) |
 | `…/Prefs.java` | 96 | Persisted role, session code, apprentice line, current step |
 | `app/android/app/src/main/cpp/uwcore.h` / `uwcore.cpp` | 114 / 555 | C++ core: AAudio WAV recorder + luma/flash analysis |
-| `…/cpp/jni_bridge.cpp` | 202 | JNI bindings (8 exported `Java_org_tinio_unwritten_NativeCore_*` symbols) |
+| `…/cpp/jni_bridge.cpp` | 202 | JNI bindings (8 exported `Java_com_heartmadebakery_unwritten_NativeCore_*` symbols) |
 | `…/cpp/CMakeLists.txt` | — | Builds `libuwcore` against `log` + `aaudio` |
 | `app/android/app/src/main/AndroidManifest.xml` | — | CAMERA, RECORD_AUDIO, WAKE_LOCK, WRITE_EXTERNAL_STORAGE (maxSdk 28); no INTERNET |
 | `app/android/build.sh` | 82 | Offline build (below) |
@@ -212,7 +212,7 @@ LODGE CORAL BASIL HARBOR MEADOW
 ```
 
 Clips land in the app's external-files `clips/` dir
-(`Android/data/org.tinio.unwritten/files/clips`), export copies a
+(`Android/data/com.heartmadebakery.unwritten/files/clips`), export copies a
 session to `Downloads/Unwritten` (MediaStore on API 29+, legacy path
 on 26–28). Because the contract matches, `pipeline/ingest.py` ingests
 Android sessions unchanged — that was the point of the design.
@@ -292,14 +292,14 @@ tmpfs — the 1.2 GB NDK zip must be downloaded to a real disk.
 - Clean end-to-end `build.sh` run: both ABIs compiled, javac clean,
   dex built, APK signed.
 - `apksigner verify` — OK.
-- `aapt2 dump badging` — package `org.tinio.unwritten`, versionCode 1,
+- `aapt2 dump badging` — package `com.heartmadebakery.unwritten`, versionCode 1,
   **sdkVersion 26**, targetSdkVersion 34, permissions exactly
   CAMERA / RECORD_AUDIO / WAKE_LOCK / WRITE_EXTERNAL_STORAGE
   (maxSdk 28), launchable activity `.MainActivity`.
 - APK contents: `classes.dex` (71 KB) + `lib/arm64-v8a/libuwcore.so`
   (856 KB) + `lib/armeabi-v7a/libuwcore.so` (705 KB) + signed manifest.
 - Dex contains all five app classes (+ inner classes); `llvm-nm -D`
-  on the .so shows all 8 `Java_org_tinio_unwritten_NativeCore_*`
+  on the .so shows all 8 `Java_com_heartmadebakery_unwritten_NativeCore_*`
   exports.
 
 ## Update — 2026-11-03: session parts (javac only)
