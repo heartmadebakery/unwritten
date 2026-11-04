@@ -360,35 +360,31 @@ var CLOUD_SIGNER_TOKEN_DEFAULT = ""; // stamped per build by build.sh into dist/
 var CLOUD_CHUNK = 5 * 1024 * 1024;
 var cloudActive = {}, cloudPolling = {};
 
+/* Connection values load fresh from the stamped build on every
+   load — nothing persists them (a stale saved signer URL once
+   broke every cloud request). Only the Cloud on/off switch
+   persists, under uw_cloud_cfg. */
 function cloudLoadCfg(){
   try{
     var raw = localStorage.getItem("uw_cloud_cfg");
     if(!raw) raw = localStorage.getItem("uw_bunny_cfg"); // legacy key from the Bunny-named release
-    return JSON.parse(raw || "{}");
-  }catch(e){ return {}; }
+    var cfg = JSON.parse(raw || "{}");
+    return {enabled: cfg.enabled !== false};
+  }catch(e){ return {enabled: true}; }
 }
 var cloudCfg = cloudLoadCfg();
-function cloudSaveCfg(){ try{ localStorage.setItem("uw_cloud_cfg", JSON.stringify(cloudCfg)); localStorage.removeItem("uw_bunny_cfg"); }catch(e){} paintCloudToggle(); } // legacy key dropped on first save
-function cloudSignerUrl(){ return cloudCfg.signerUrl || CLOUD_SIGNER_DEFAULT; }
-function cloudToken(){ return cloudCfg.signerToken || CLOUD_SIGNER_TOKEN_DEFAULT; }
+function cloudSaveCfg(){ try{ localStorage.setItem("uw_cloud_cfg", JSON.stringify({enabled: cloudEnabled()})); localStorage.removeItem("uw_bunny_cfg"); }catch(e){} paintCloudToggle(); } // legacy key dropped on first save
+function cloudSignerUrl(){ return CLOUD_SIGNER_DEFAULT; }
+function cloudToken(){ return CLOUD_SIGNER_TOKEN_DEFAULT; }
 function cloudEnabled(){ return cloudCfg.enabled !== false; }
-function cloudUseDirect(){ return !!(cloudCfg.libraryId && cloudCfg.apiKey); }
-function cloudReady(){
-  if(!cloudEnabled()) return false;
-  if(cloudSignerUrl()) return true;
-  return cloudUseDirect();
-}
-/* True when an upload could possibly succeed. Signer mode needs
-   its token — the URL always has a built-in default, so URL-alone
-   must not count — and direct mode needs library ID + API key.
-   Without this, fresh installs (Cloud on by default, no
-   credentials yet) fire doomed uploads that can only 401. Same
-   contract as the native recorders' canUpload. */
+function cloudReady(){ return cloudEnabled(); }
+/* True when an upload could possibly succeed: the build carries a
+   stamped signer token. Without this, builds without a token fire
+   doomed uploads that can only 401. Same contract as the native
+   recorders' canUpload. */
 function cloudCanUpload(){
-  if(cloudToken()) return true;
-  return cloudUseDirect();
+  return !!cloudToken();
 }
-function cloudLibraryId(){ return cloudCfg.libraryId || ""; }
 function loadCloudLinks(){
   try{
     var raw = localStorage.getItem("uw_cloud_links");
@@ -399,17 +395,11 @@ function loadCloudLinks(){
 function setCloudLink(name, patch){
   var m = loadCloudLinks(), cur = m[name] || {};
   for(var k in patch) cur[k] = patch[k];
-  if(cur.libraryId === undefined && cloudCfg.libraryId) cur.libraryId = cloudCfg.libraryId;
   m[name] = cur;
   try{ localStorage.setItem("uw_cloud_links", JSON.stringify(m)); localStorage.removeItem("uw_bunny_links"); }catch(e){} // legacy key dropped on first save
 }
 function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
-async function sha256Hex(text){
-  if(!window.crypto || !crypto.subtle) throw new Error("Cloud signing needs a secure (https) page.");
-  var buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return Array.from(new Uint8Array(buf)).map(function(b){ return ("0" + b.toString(16)).slice(-2); }).join("");
-}
 function isVideoLesson(blob, name){
   if(blob && blob.type) return blob.type.indexOf("video/") === 0;
   return /\.(mp4|webm|mov|mkv|m4v)$/i.test(name || "");
@@ -425,41 +415,23 @@ function idbGetBlob(name){
   });
 }
 async function cloudCreds(title, reuseVideoId){
-  if(!cloudUseDirect()){
-    var headers = {"Content-Type": "application/json", "Accept": "application/json"};
-    var tok = cloudToken();
-    if(tok) headers["X-Signer-Token"] = tok;
-    var rs = await fetch(cloudSignerUrl(), {
-      method: "POST", headers: headers,
-      body: JSON.stringify(reuseVideoId ? {title: title, videoId: reuseVideoId} : {title: title})
-    });
-    if(!rs.ok) throw new Error("The Cloud signer refused (" + rs.status + "). Check the signer URL and token.");
-    var d = await rs.json();
-    if(!d.videoId || !d.signature || !d.expire) throw new Error("The Cloud signer returned incomplete credentials.");
-    if(d.libraryId){ cloudCfg.libraryId = String(d.libraryId); cloudSaveCfg(); }
-    return {videoId: d.videoId, expire: d.expire, signature: d.signature, libraryId: String(d.libraryId || cloudCfg.libraryId || "")};
-  }
-  var videoId = reuseVideoId || null;
-  if(!videoId){
-    var r = await fetch("https://video.bunnycdn.com/library/" + cloudCfg.libraryId + "/videos", {
-      method: "POST",
-      headers: {"AccessKey": cloudCfg.apiKey, "Accept": "application/json", "Content-Type": "application/json"},
-      body: JSON.stringify({title: title})
-    });
-    if(!r.ok) throw new Error("Cloud could not create the video (" + r.status + "). Check the library ID and API key.");
-    var v = await r.json();
-    videoId = v.guid || v.videoId || v.id;
-    if(!videoId) throw new Error("Cloud create returned no video ID.");
-  }
-  var expire = Math.floor(Date.now() / 1000) + 86400;
-  var signature = await sha256Hex(String(cloudCfg.libraryId) + cloudCfg.apiKey + expire + videoId);
-  return {videoId: videoId, expire: expire, signature: signature, libraryId: String(cloudCfg.libraryId)};
+  var headers = {"Content-Type": "application/json", "Accept": "application/json"};
+  var tok = cloudToken();
+  if(tok) headers["X-Signer-Token"] = tok;
+  var rs = await fetch(cloudSignerUrl(), {
+    method: "POST", headers: headers,
+    body: JSON.stringify(reuseVideoId ? {title: title, videoId: reuseVideoId} : {title: title})
+  });
+  if(!rs.ok) throw new Error("The Cloud signer refused (" + rs.status + "). Rebuild the app to stamp a fresh token.");
+  var d = await rs.json();
+  if(!d.videoId || !d.signature || !d.expire) throw new Error("The Cloud signer returned incomplete credentials.");
+  return {videoId: d.videoId, expire: d.expire, signature: d.signature, libraryId: String(d.libraryId || "")};
 }
 function cloudAuthHeaders(creds){
   return {
     "AuthorizationSignature": creds.signature,
     "AuthorizationExpire": String(creds.expire),
-    "LibraryId": String(creds.libraryId || cloudCfg.libraryId || ""),
+    "LibraryId": String(creds.libraryId || ""),
     "VideoId": creds.videoId,
     "Tus-Resumable": "1.0.0"
   };
@@ -513,33 +485,21 @@ async function tusSendAll(sess, blob, name){
   }
 }
 async function cloudDeleteVideo(videoId){
-  if(!cloudUseDirect()){
-    var surl = cloudSignerUrl(), sep = surl.indexOf("?") >= 0 ? "&" : "?";
-    var hs = {"Accept": "application/json"};
-    var tok = cloudToken();
-    if(tok) hs["X-Signer-Token"] = tok;
-    var rs = await fetch(surl + sep + "videoId=" + encodeURIComponent(videoId), {method: "DELETE", headers: hs});
-    if(!rs.ok) throw new Error("Cloud delete failed (" + rs.status + ").");
-    return;
-  }
-  var r = await fetch("https://video.bunnycdn.com/library/" + cloudCfg.libraryId + "/videos/" + videoId,
-    {method: "DELETE", headers: {"AccessKey": cloudCfg.apiKey, "Accept": "application/json"}});
-  if(!r.ok && r.status !== 404) throw new Error("Cloud delete failed (" + r.status + ").");
+  var surl = cloudSignerUrl(), sep = surl.indexOf("?") >= 0 ? "&" : "?";
+  var hs = {"Accept": "application/json"};
+  var tok = cloudToken();
+  if(tok) hs["X-Signer-Token"] = tok;
+  var rs = await fetch(surl + sep + "videoId=" + encodeURIComponent(videoId), {method: "DELETE", headers: hs});
+  if(!rs.ok) throw new Error("Cloud delete failed (" + rs.status + ").");
 }
 async function cloudGetVideo(videoId){
-  if(!cloudUseDirect()){
-    var sep = cloudSignerUrl().indexOf("?") >= 0 ? "&" : "?";
-    var hs = {"Accept": "application/json"};
-    var tok = cloudToken();
-    if(tok) hs["X-Signer-Token"] = tok;
-    var rs = await fetch(cloudSignerUrl() + sep + "videoId=" + encodeURIComponent(videoId), {headers: hs});
-    if(!rs.ok) throw new Error("Cloud status check failed (" + rs.status + ").");
-    return rs.json();
-  }
-  var r = await fetch("https://video.bunnycdn.com/library/" + cloudCfg.libraryId + "/videos/" + videoId,
-    {headers: {"AccessKey": cloudCfg.apiKey, "Accept": "application/json"}});
-  if(!r.ok) throw new Error("Cloud status check failed (" + r.status + ").");
-  return r.json();
+  var sep = cloudSignerUrl().indexOf("?") >= 0 ? "&" : "?";
+  var hs = {"Accept": "application/json"};
+  var tok = cloudToken();
+  if(tok) hs["X-Signer-Token"] = tok;
+  var rs = await fetch(cloudSignerUrl() + sep + "videoId=" + encodeURIComponent(videoId), {headers: hs});
+  if(!rs.ok) throw new Error("Cloud status check failed (" + rs.status + ").");
+  return rs.json();
 }
 async function pollCloudStatus(name, videoId){
   if(cloudPolling[name]) return;
@@ -574,7 +534,7 @@ async function startCloudUpload(name, blob, sess){
   if(!cloudCanUpload()){
     setCloudLink(name, {state: "failed"});
     renderClips();
-    $("status").innerHTML = "☁️ <b>Cloud credentials missing</b> — add the signer token in Cloud settings. The session is safe on this device.";
+    $("status").innerHTML = "☁️ <b>Cloud credentials missing</b> — this build carries no signer token. Rebuild the app to stamp one. The session is safe on this device.";
     return;
   }
   cloudActive[name] = true;
@@ -590,8 +550,12 @@ async function startCloudUpload(name, blob, sess){
       var uploadUrl = await tusCreateUpload(creds, blob, name);
       sess = {videoId: creds.videoId, uploadUrl: uploadUrl, offset: 0, creds: creds};
     }
+    /* The library id rides the lesson's own link row (fresh from the
+       signer each upload), so the share action needs no saved config. */
+    var prevLink = loadCloudLinks()[name] || {};
     setCloudLink(name, {state: "uploading", progress: Math.floor((sess.offset || 0) / blob.size * 100),
-                        videoId: sess.videoId, uploadUrl: sess.uploadUrl});
+                        videoId: sess.videoId, uploadUrl: sess.uploadUrl,
+                        libraryId: (sess.creds && sess.creds.libraryId) || prevLink.libraryId || ""});
     renderClips();
     $("status").innerHTML = "☁️ <b>Uploading to Cloud…</b> The session is already saved on this device.";
     /* The video id exists now, so a take that continues a session is
@@ -615,7 +579,7 @@ async function startCloudUpload(name, blob, sess){
 async function shareCloudLinkFor(name){
   var link = loadCloudLinks()[name];
   if(!link || !link.videoId) return;
-  var lib = link.libraryId || cloudCfg.libraryId;
+  var lib = link.libraryId || "";
   if(!lib){ $("status").innerHTML = "☁️ <b>No Cloud link yet</b> for this session — the upload hasn't finished."; return; }
   var url = "https://player.mediadelivery.net/embed/" + lib + "/" + link.videoId;
   try{ if(navigator.clipboard) await navigator.clipboard.writeText(url); }catch(e){}
@@ -676,7 +640,7 @@ async function cloudDeleteLesson(name){
 }
 /* The hub lives on the signer, so it needs a signer token. Direct
    (library-key) mode has no hub at all. */
-function hubAvailable(){ return !cloudUseDirect() && !!cloudToken(); }
+function hubAvailable(){ return !!cloudToken(); }
 
 /* ------------------------------------------------------------------
    Session parts: a lesson filmed in several takes, uploaded in pieces,
@@ -722,7 +686,7 @@ async function postParts(videoIds){
     headers: {"Content-Type": "application/json", "X-Signer-Token": cloudToken()},
     body: JSON.stringify({videoIds: videoIds})
   });
-  if(rs.status === 401) throw new Error("the signer refused the token — check it in Cloud settings");
+  if(rs.status === 401) throw new Error("the signer refused the build token — rebuild to stamp a fresh one");
   if(!rs.ok){
     var msg = "";
     try{ msg = (await rs.json()).error || ""; }catch(e){}
@@ -737,7 +701,7 @@ async function tieCloudPart(name){
   if(!hubAvailable()){
     var s0 = $("status");
     if(s0) s0.innerHTML = "☁️ <b>Couldn't tie this take to " + escHtml(link.joinTitle || "its session") +
-      "</b> — parts need the signer token (Cloud settings). It will retry once the token is set.";
+      "</b> — this build carries no signer token. Rebuild to stamp one; it will retry on the next upload.";
     return;
   }
   tieActive[name] = true;
@@ -785,7 +749,7 @@ function hubRowHTML(r){
 var hubDetail = null;
 function hubEmbedUrl(d){
   if(!d || !d.videoId) return "";
-  var lib = d.libraryId || cloudLibraryId();
+  var lib = d.libraryId || "";
   return lib ? "https://player.mediadelivery.net/embed/" + lib + "/" + d.videoId : "";
 }
 /* Write-ups are Markdown: inline bold and italic render (after
@@ -1042,16 +1006,14 @@ async function loadHub(){
     return;
   }
   if(!hubAvailable()){
-    st.innerHTML = cloudUseDirect()
-      ? "The hub lives on the signer — direct library-key mode has no hub."
-      : "Add the signer token in Cloud settings to see published lessons.";
+    st.innerHTML = "This build carries no signer token — rebuild it to stamp one.";
     box.innerHTML = "";
     return;
   }
   st.innerHTML = "Loading…";
   try{
     var rs = await fetch(cloudSignerUrl() + "/hub/sessions", {headers: {"X-Signer-Token": cloudToken()}});
-    if(rs.status === 401){ st.innerHTML = "Signer refused the token — check it in Cloud settings."; box.innerHTML = ""; return; }
+    if(rs.status === 401){ st.innerHTML = "Signer refused the token — rebuild the app to stamp a fresh one."; box.innerHTML = ""; return; }
     if(rs.status === 503){ st.innerHTML = "Hub isn't switched on at the server yet."; box.innerHTML = ""; return; }
     if(!rs.ok) throw new Error("HTTP " + rs.status);
     var rows = await rs.json();

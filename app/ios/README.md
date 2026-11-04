@@ -89,8 +89,8 @@ symbol, and that the source template carries no token afterwards.
 **Xcode route (normal dev machine / real iPhone):** open
 `UnwrittenRecorder.xcodeproj` in Xcode, pick a development team, run on
 a connected iPhone. A device run uses the template (empty token)
-unless the build stamps one — paste a token in ⚙️ Cloud settings, or
-run `build.sh` first and build from the same checkout.
+unless the build stamps one — run `build.sh` first and build from the
+same checkout (⚙️ Cloud settings only shows the build values).
 
 ## Cloud upload (on by default)
 

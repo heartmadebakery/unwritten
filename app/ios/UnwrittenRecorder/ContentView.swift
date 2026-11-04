@@ -836,10 +836,10 @@ struct ContentView: View {
                     .foregroundColor(DIM)
             }
 
-            // Debug overrides hide behind a small link at the bottom.
+            // Build values hide behind a small link at the bottom:
+            // shown for debugging, read fresh from the build.
             Section {
                 Button {
-                    if !showCloudPanel { loadCloudFields() }
                     showCloudPanel = true
                 } label: {
                     Text("Advanced settings")
@@ -1296,24 +1296,15 @@ struct ContentView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(CloudStore.CLOUD_SIGNER_DEFAULT, text: $signerUrl, prompt: Text(CloudStore.CLOUD_SIGNER_DEFAULT))
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    SecureField("Signer token", text: $signerToken, prompt: Text("baked into this build"))
+                    LabeledContent("Signer URL", value: store.cloud.effSignerUrl())
+                    LabeledContent("Signer token",
+                                   value: store.cloud.effSignerToken().isEmpty
+                                       ? "missing — rebuild the app to stamp one"
+                                       : "stamped into this build ✓")
                 } header: {
                     Text("Signer")
                 } footer: {
-                    Text("Prefilled by the build — override the URL only to point elsewhere, the token only if it was rotated.")
-                }
-                Section {
-                    TextField("Stream library ID", text: $libraryId, prompt: Text("e.g. 402315"))
-                        .keyboardType(.numberPad)
-                    SecureField("Library API key", text: $apiKey, prompt: Text("AccessKey from the library's API page"))
-                } header: {
-                    Text("Or, without a signer")
-                } footer: {
-                    Text("On by default and purely additive: every session is still saved on this device first, then a copy is uploaded for streamed playback, and the share action on the session offers its link when ready. A library key talks to the library directly instead of the signer (it can manage this one library, so keep it on the mentor's device only); it lives on this device.")
+                    Text("Build values, shown for debugging — they load fresh from this build and can't be changed here.")
                 }
             }
             .scrollContentBackground(.hidden)
@@ -1325,23 +1316,8 @@ struct ContentView: View {
                     Button("Done") { showCloudPanel = false }
                 }
             }
-            .onChange(of: signerUrl) { _, v in store.cloud.signerUrl = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-            .onChange(of: signerToken) { _, v in store.cloud.signerToken = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-            .onChange(of: libraryId) { _, v in store.cloud.libraryId = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
-            .onChange(of: apiKey) { _, v in store.cloud.apiKey = v.trimmingCharacters(in: .whitespacesAndNewlines); store.paintCloudToggle() }
         }
         .tint(EMBER_INK)
-    }
-
-    private func loadCloudFields() {
-        // Stored overrides only: loading effective values would
-        // persist the compiled defaults as overrides on open and
-        // shadow later stamp rotations. The placeholders (prompt)
-        // name the build defaults instead.
-        signerUrl = store.cloud.signerUrl
-        signerToken = store.cloud.signerToken
-        libraryId = store.cloud.libraryId
-        apiKey = store.cloud.apiKey
     }
 
     private static func fmt(_ s: Int) -> String {

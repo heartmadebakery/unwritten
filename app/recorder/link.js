@@ -32,7 +32,7 @@ $("urlfetchbtn").onclick = async function(){
     }
     return;
   }
-  if(!cloudToken()){ st.innerHTML = "⬇ Queuing needs the signer token — add it in Advanced settings on the record screen."; return; }
+  if(!cloudToken()){ st.innerHTML = "⬇ Queuing needs the signer token — rebuild the app to stamp one."; return; }
   st.textContent = "⬇ Queuing…";
   try{
     var res = await fetch(cloudSignerUrl() + "/fetch/jobs", {
@@ -42,7 +42,7 @@ $("urlfetchbtn").onclick = async function(){
          its next part (the signer ties it when the job is done). */
       body: JSON.stringify(joinTarget() ? {url: u, joinTo: joinTarget().videoId} : {url: u})
     });
-    if(res.status === 401){ st.innerHTML = "Signer refused the token — check it in Cloud settings."; return; }
+    if(res.status === 401){ st.innerHTML = "Signer refused the token — rebuild the app to stamp a fresh one."; return; }
     if(!res.ok) throw new Error("HTTP " + res.status);
     $("urlinput").value = "";
     st.innerHTML = "✅ <b>Queued.</b> The pipeline will fetch the video and process it like a recording." +

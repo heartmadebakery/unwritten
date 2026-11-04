@@ -88,8 +88,8 @@ Wrangler prints the Worker URL (`https://unwritten-cloud-signer.<you>.workers.de
 Nothing to type: each build stamps in the signer URL and one token from
 the pool (see `app/recorder/build.sh`, `app/android/build.sh`, and
 `app/ios/build.sh`), and Cloud saving is on by default. The Cloud panel
-/ Cloud settings still exist for overrides and for turning Cloud
-saving off.
+/ Cloud settings now only show those build values for debugging and
+offer the on/off switch — there are no overrides to type.
 
 ## Revoking one build's token
 

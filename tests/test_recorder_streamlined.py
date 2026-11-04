@@ -469,7 +469,8 @@ class AndroidRecorderTests(unittest.TestCase):
         # not switched on, load failure, or simply empty) instead of
         # hiding the section.
         for token in ["hubStatusText",
-                      "add the signer URL and token in Cloud settings",
+                      "no signer token",
+                      "rebuild it to stamp one",
                       "Signer refused the token",
                       "isn't switched on at the server yet",
                       "Hub couldn't load"]:
@@ -663,12 +664,25 @@ class CloudWebTests(unittest.TestCase):
         self.assertIn('id="cloudtoggle"', self.page)
         self.assertIn('id="cloudpanel"', self.page)
         self.assertIn('id="advancedlink"', self.page)
-        self.assertIn('id="cloudsigner"', self.page)
         self.assertIn("cloudReady()", self.common)
         self.assertIn("CLOUD_SIGNER_DEFAULT", self.common)
         self.assertIn("data-cloud-delete", self.common)
         self.assertIn("cloudDeleteLesson", self.common)
         self.assertNotIn("a.click()", self.pagejs)
+
+    def test_advanced_settings_are_read_only_debug_info(self):
+        # User-ordered Nov 4: a stale saved signer URL once broke
+        # every cloud request, so connection values no longer persist
+        # anywhere — they load fresh from the stamped build on every
+        # load, and Advanced settings only shows them for debugging.
+        for token in ['id="clouddbgurl"', 'id="clouddbgtoken"']:
+            self.assertIn(token, self.page, token)
+        for token in ['id="cloudsigner"', 'id="cloudsignertoken"',
+                      'id="cloudlib"', 'id="cloudkey"',
+                      '$("cloudsigner")', '$("cloudlib")',
+                      '$("cloudsignertoken")', '$("cloudkey")']:
+            self.assertNotIn(token, self.page, token)
+            self.assertNotIn(token, self.pagejs, token)
 
     def test_build_stamps_the_shared_core(self):
         # User-ordered Oct 31: the signer token placeholder lives in
@@ -695,12 +709,27 @@ class CloudWebTests(unittest.TestCase):
         self.assertIn("idbPut", save)
         self.assertLess(save.index("idbPut"), save.index("startCloudUpload"))
 
+    def test_connection_values_come_from_the_build(self):
+        # User-ordered Nov 4: the signer URL and token load fresh from
+        # the stamped build on every load — no saved override can
+        # shadow them. Direct library-key mode is gone with the
+        # overrides: every upload signs through the signer.
+        for token in ["function cloudSignerUrl(){ return CLOUD_SIGNER_DEFAULT; }",
+                      "function cloudToken(){ return CLOUD_SIGNER_TOKEN_DEFAULT; }"]:
+            self.assertIn(token, self.common, token)
+        for token in ["cloudCfg.signerUrl", "cloudCfg.signerToken",
+                      "cloudCfg.libraryId", "cloudCfg.apiKey",
+                      "cloudUseDirect", '"AccessKey"',
+                      "video.bunnycdn.com/library"]:
+            self.assertNotIn(token, self.common, token)
+
     def test_upload_fails_fast_without_credentials(self):
         # Fresh installs (Cloud on, no token yet) must not fire doomed
         # uploads that can only 401: cloudCanUpload gates the attempt,
-        # and the failure names the token instead of staying silent —
+        # and the failure names the rebuild instead of staying silent —
         # the same contract Android and iOS keep.
-        for token in ["cloudCanUpload", "Cloud credentials missing"]:
+        for token in ["cloudCanUpload", "Cloud credentials missing",
+                      "Rebuild the app to stamp one"]:
             self.assertIn(token, self.common, token)
         start = self.common.split("async function startCloudUpload", 1)[1]
         self.assertLess(start.index("cloudCanUpload"),
@@ -747,7 +776,10 @@ class CloudAndroidTests(unittest.TestCase):
     def test_uploader_speaks_presigned_tus(self):
         self.assertIn("https://video.bunnycdn.com/tusupload", self.uploader)
         self.assertIn("AuthorizationSignature", self.uploader)
-        self.assertIn("SHA-256", self.uploader)
+        # User-ordered Nov 4: signer-only — nothing signs locally, so
+        # the direct-mode SHA-256 helper is gone with the overrides.
+        self.assertNotIn("SHA-256", self.uploader)
+        self.assertNotIn("sha256Hex", self.uploader)
 
     def test_main_activity_gates_upload_behind_settings(self):
         self.assertIn("CloudUploader", self.main)
@@ -757,6 +789,13 @@ class CloudAndroidTests(unittest.TestCase):
         self.assertIn("CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT", self.main)
         self.assertIn("confirmDeleteLesson", self.main)
         self.assertIn("deleteLesson", self.main)
+        # User-ordered Nov 4: no saved connection overrides — the
+        # build constants are the whole config.
+        for token in ['cloudCfgString("signerUrl")',
+                      'cloudCfgString("signerToken")',
+                      'cloudCfgString("libraryId")',
+                      'cloudCfgString("apiKey")']:
+            self.assertNotIn(token, self.main, token)
 
     def test_share_never_serves_another_lesson_link(self):
         # The lastLink fallback must be scoped to the same lesson:
@@ -891,13 +930,15 @@ class CloudAndroidTests(unittest.TestCase):
     def test_configured_needs_a_token_in_signer_mode(self):
         # The signer URL always has a compiled default, so URL-alone
         # must not count as configured (same contract as canUpload):
-        # direct mode needs library ID + API key, signer mode needs
-        # its token — otherwise credential-less builds fire doomed
-        # uploads and hide the offline Export fallback.
+        # the token decides — otherwise credential-less builds fire
+        # doomed uploads and hide the offline Export fallback.
+        # User-ordered Nov 4: signer-only, no direct mode left.
         cfg = self.uploader.split("public boolean configured()", 1)[1] \
-                           .split("private boolean useDirect()", 1)[0]
+                           .split("public ", 1)[0]
         self.assertIn("signerToken", cfg)
         self.assertNotIn("if (!signerUrl.isEmpty()) return true;", cfg)
+        for token in ["useDirect", "apiKey", "AccessKey"]:
+            self.assertNotIn(token, self.uploader, token)
 
     def test_link_writes_are_serialized(self):
         # Upload callbacks persist from the cloud pool while the UI
@@ -913,21 +954,18 @@ class CloudAndroidTests(unittest.TestCase):
 
     def test_cloud_settings_screen_exists(self):
         # Error and hub messages send the user to "Cloud settings" —
-        # the dialog must exist, prefilled with stored values (never
-        # effective ones: no override shadowing), saving back to
-        # prefs and sweeping the backlog when Cloud is on.
-        # User-ordered Nov 1: it hides behind a small Advanced settings
-        # link instead of a full button.
+        # the dialog must exist. User-ordered Nov 1: it hides behind
+        # a small Advanced settings link instead of a full button.
+        # User-ordered Nov 4: read-only debug info — no fields, no
+        # saving, no override shadowing; values load from the build.
         self.assertIn("showCloudSettings()", self.main)
         self.assertIn("Advanced settings", self.main)
-        self.assertIn("EditText", self.main)
         dlg = self.main.split("private void showCloudSettings", 1)[1] \
                        .split("\n    private ", 1)[0]
-        for token in ["settingsField(", 'putString("signerToken"',
+        self.assertIn("cloudEffSignerUrl()", dlg)
+        for token in ["EditText", "putString(", "settingsField(",
                       "sweepBacklog()"]:
-            self.assertIn(token, dlg, token)
-        self.assertNotIn("cloudEffSignerToken()", dlg)
-        self.assertNotIn("cloudEffSignerUrl()", dlg)
+            self.assertNotIn(token, dlg, token)
 
 
 class AndroidScreensTests(unittest.TestCase):

@@ -950,7 +950,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) {
-            Toast.makeText(this, "Queuing needs the signer token — add it in Cloud settings.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Queuing needs the signer token — rebuild the app to stamp one.", Toast.LENGTH_LONG).show();
             return;
         }
         Toast.makeText(this, "⬇ Queuing…", Toast.LENGTH_SHORT).show();
@@ -1690,49 +1690,41 @@ public class MainActivity extends Activity {
 
     private SharedPreferences cloudPrefs() { return getSharedPreferences(CLOUD_PREFS, MODE_PRIVATE); }
     private void migrateCloudPrefs() {
-        // One-time move from the pre-rename store: the legacy release's
-        // keys are adopted, then the legacy store is cleared.
+        // One-time move from the pre-rename store: only the Cloud
+        // switch is adopted (connection values load fresh from the
+        // stamped build on every load — user-ordered Nov 4). Then the
+        // legacy store is cleared.
         try {
             SharedPreferences legacy = getSharedPreferences("unwritten_bunny", MODE_PRIVATE); // legacy store name
             if (legacy.getAll().isEmpty()) return;
-            SharedPreferences.Editor e = cloudPrefs().edit();
-            for (Map.Entry<String, ?> en : legacy.getAll().entrySet()) {
-                Object v = en.getValue();
-                if (v instanceof Boolean) e.putBoolean(en.getKey(), (Boolean) v);
-                else if (v != null) e.putString(en.getKey(), String.valueOf(v));
-            }
-            e.apply();
+            if (legacy.contains("enabled"))
+                cloudPrefs().edit().putBoolean("enabled", legacy.getBoolean("enabled", true)).apply();
             legacy.edit().clear().apply();
         } catch (Throwable ignored) { }
     }
-    private String cloudCfgString(String key) { return cloudPrefs().getString(key, ""); }
 
+    // Connection values load fresh from the stamped build on every
+    // load — nothing persists them. Only the Cloud on/off switch
+    // persists, under "enabled".
     private String cloudEffSignerUrl() {
-        String s = cloudCfgString("signerUrl");
-        return s.isEmpty() ? CLOUD_SIGNER_DEFAULT : s;
+        return CLOUD_SIGNER_DEFAULT;
     }
     private String cloudEffSignerToken() {
-        String t = cloudCfgString("signerToken");
-        return t.isEmpty() ? CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT : t;
+        return CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT;
     }
     private CloudUploader cloudUploader() {
-        CloudUploader up = new CloudUploader(cloudCfgString("libraryId"), cloudCfgString("apiKey"),
-                cloudEffSignerUrl(), cloudEffSignerToken());
+        CloudUploader up = new CloudUploader(cloudEffSignerUrl(), cloudEffSignerToken());
         return up.configured() ? up : null;
     }
     private boolean cloudEnabledCfg() {
         return cloudPrefs().getBoolean("enabled", true) && cloudUploader() != null;
     }
 
-    // True when an upload could possibly succeed. Signer mode needs
-    // its token — the URL always has a compiled default, so URL-alone
-    // must not count — and direct mode needs library ID + API key.
-    // Without this, fresh installs (Cloud on by default, no
-    // credentials yet) fire doomed uploads that can only 401.
+    // True when an upload could possibly succeed: the build carries
+    // a stamped signer token. Without this, token-less builds fire
+    // doomed uploads that can only 401.
     private boolean canUpload() {
-        if (HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) return true;
-        return !cloudCfgString("libraryId").trim().isEmpty()
-                && !cloudCfgString("apiKey").trim().isEmpty();
+        return HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken());
     }
 
     private void toggleCloudEnabled() {
@@ -1756,54 +1748,34 @@ public class MainActivity extends Activity {
     // prefill with STORED overrides only — never effective values, so
     // opening this can never persist the build defaults as overrides
     // and shadow a later stamp rotation. Hints name the defaults.
+    // Read-only debug info: connection values load fresh from the
+    // stamped build on every load and can't be changed here, so a
+    // stale saved URL can never break uploads again.
     private void showCloudSettings() {
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         int pad = dp(4);
         form.setPadding(pad, pad, pad, pad);
-        final EditText urlEt = settingsField(form, "Signer URL (build default unless overridden)",
-                cloudCfgString("signerUrl"), CLOUD_SIGNER_DEFAULT, false);
-        final EditText tokEt = settingsField(form, "Signer token (build default unless overridden)",
-                cloudCfgString("signerToken"), "baked into this build", true);
-        final EditText libEt = settingsField(form, "Stream library ID (no signer)",
-                cloudCfgString("libraryId"), "e.g. 402315", false);
-        final EditText keyEt = settingsField(form, "Library API key (lives on this device)",
-                cloudCfgString("apiKey"), "AccessKey from the library's API page", true);
+        form.addView(label("Build values, shown for debugging — they load fresh from this build and can't be changed here.", 14, DIM));
+        form.addView(label("Signer URL", 14, DIM));
+        TextView urlTv = new TextView(this);
+        urlTv.setText(cloudEffSignerUrl());
+        urlTv.setTextSize(16);
+        urlTv.setTextColor(TEXT);
+        form.addView(urlTv);
+        form.addView(label("Signer token", 14, DIM));
+        TextView tokTv = new TextView(this);
+        tokTv.setText(cloudEffSignerToken().isEmpty()
+                ? "missing — rebuild the app to stamp one"
+                : "stamped into this build ✓");
+        tokTv.setTextSize(16);
+        tokTv.setTextColor(TEXT);
+        form.addView(tokTv);
         new AlertDialog.Builder(this)
                 .setTitle("Cloud settings")
                 .setView(form)
-                .setPositiveButton("Save", new android.content.DialogInterface.OnClickListener() {
-                    @Override public void onClick(android.content.DialogInterface d, int which) {
-                        cloudPrefs().edit()
-                                .putString("signerUrl", urlEt.getText().toString().trim())
-                                .putString("signerToken", tokEt.getText().toString().trim())
-                                .putString("libraryId", libEt.getText().toString().trim())
-                                .putString("apiKey", keyEt.getText().toString().trim())
-                                .apply();
-                        paintCloudToggle();
-                        applyCloudDependentVisibility();
-                        if (cloudPrefs().getBoolean("enabled", true)) sweepBacklog();
-                    }
-                })
-                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Done", null)
                 .show();
-    }
-
-    private EditText settingsField(LinearLayout form, String labelText,
-                                   String value, String hint, boolean secret) {
-        form.addView(label(labelText, 14, DIM));
-        EditText et = new EditText(this);
-        et.setText(value);
-        et.setHint(hint);
-        et.setTextSize(16);
-        et.setTextColor(TEXT);
-        et.setHintTextColor(DIM);
-        if (secret) et.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        else et.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        form.addView(et);
-        return et;
     }
 
     private void applyCloudDependentVisibility() {
@@ -1907,7 +1879,6 @@ public class MainActivity extends Activity {
         String vid = link.optString("videoId", "");
         if (vid.isEmpty()) return null;
         String lib = link.optString("libraryId", "");
-        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
         if (lib == null || lib.isEmpty()) {
             CloudUploader up = cloudUploader();
             if (up != null && up.lastLibraryId != null) lib = up.lastLibraryId;
@@ -1947,7 +1918,7 @@ public class MainActivity extends Activity {
     // looking like a missing feature.
     private String hubStatusText() {
         if (!cloudPrefs().getBoolean("enabled", true)) return "Hub lives on the signer — turn Cloud on to see published lessons.";
-        if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) return "Hub lives on the signer — add the signer URL and token in Cloud settings.";
+        if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) return "This build carries no signer token — rebuild it to stamp one.";
         if (hubNotice != null && !hubNotice.isEmpty()) return hubNotice;
         return "No published sessions yet — run the pipeline's publish step.";
     }
@@ -1984,7 +1955,7 @@ public class MainActivity extends Activity {
                 android.util.Log.e("UnwrittenHub", "hub list failed", e);
                 final String msg = String.valueOf(e.getMessage());
                 if (msg.contains("(401)") || msg.contains("(403)")) {
-                    hubNotice = "Signer refused the token — check it in Cloud settings.";
+                    hubNotice = "Signer refused the token — rebuild the app to stamp a fresh one.";
                 } else if (msg.contains("(503)")) {
                     hubNotice = "Hub isn't switched on at the server yet.";
                 } else {
@@ -2343,7 +2314,6 @@ public class MainActivity extends Activity {
         String vid = obj.optString("videoId", "");
         if (vid == null || vid.isEmpty()) return null;
         String lib = obj.optString("libraryId", "");
-        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
         if (lib == null || lib.isEmpty()) return null;
         return "https://player.mediadelivery.net/embed/" + lib + "/" + vid;
     }
@@ -2480,7 +2450,7 @@ public class MainActivity extends Activity {
         cloudExec.execute(new Runnable() { @Override public void run() {
             try {
                 CloudUploader up = cloudUploader();
-                if (up == null) throw new IOException("Cloud settings incomplete.");
+                if (up == null) throw new IOException("This build carries no signer token.");
                 // Hub record first, then the Stream copy: a failure
                 // between the two leaves the bytes orphaned in Stream
                 // (still playable, still re-publishable) instead of a
@@ -2588,7 +2558,7 @@ public class MainActivity extends Activity {
         if (join.isEmpty() || vid.isEmpty() || link.optBoolean("joined", false)) return;
         if (!HubClient.available(cloudEffSignerUrl(), cloudEffSignerToken())) {
             if (status != null) status.setText("☁ Couldn't tie this take to " + jt
-                    + " — parts need the signer token (Cloud settings). It will retry once the token is set.");
+                    + " — this build carries no signer token. Rebuild to stamp one; it will retry on the next upload.");
             return;
         }
         synchronized (tieInFlight) { if (!tieInFlight.add(name)) return; }
@@ -2799,7 +2769,7 @@ public class MainActivity extends Activity {
                 if (!videoId.isEmpty()) {
                     try {
                         CloudUploader up = cloudUploader();
-                        if (up == null) throw new IOException("Cloud settings incomplete.");
+                        if (up == null) throw new IOException("This build carries no signer token.");
                         android.util.Log.i("UWCloud", "deleteLesson cloud delete videoId=" + videoId + " file=" + name);
                         up.deleteVideo(videoId);
                         android.util.Log.i("UWCloud", "deleteLesson cloud delete ok videoId=" + videoId);
@@ -2912,8 +2882,8 @@ public class MainActivity extends Activity {
         if (!cloudEnabledCfg()) { Toast.makeText(this, "Turn Cloud on first.", Toast.LENGTH_SHORT).show(); return; }
         final String name = f.getName();
         if (!canUpload()) {
-            cloudFailed(name, null, "Cloud credentials missing — add the signer token in Cloud settings.");
-            Toast.makeText(this, "Signer token missing — add it in Cloud settings.", Toast.LENGTH_LONG).show();
+            cloudFailed(name, null, "Cloud credentials missing — this build carries no signer token. Rebuild the app to stamp one.");
+            Toast.makeText(this, "Signer token missing — rebuild the app to stamp one.", Toast.LENGTH_LONG).show();
             return;
         }
         synchronized (cloudInFlight) { if (!cloudInFlight.add(name)) return; }
@@ -2926,7 +2896,7 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 try {
                     final CloudUploader up = cloudUploader();
-                    if (up == null) { cloudFailed(name, savedVid, "Cloud settings incomplete."); return; }
+                    if (up == null) { cloudFailed(name, savedVid, "This build carries no signer token."); return; }
                     up.upload(f, savedUrl, savedVid, new CloudUploader.Listener() {
                         @Override public void onSession(String videoId, String uploadUrl) {
                             setCloudLink(name, "uploading", videoId, null, uploadUrl, -1);
@@ -2961,7 +2931,6 @@ public class MainActivity extends Activity {
         JSONObject link = cloudLink(name);
         if (link != null) lib = link.optString("libraryId", "");
         if ((lib == null || lib.isEmpty()) && up != null && up.lastLibraryId != null && !up.lastLibraryId.isEmpty()) lib = up.lastLibraryId;
-        if (lib == null || lib.isEmpty()) lib = cloudCfgString("libraryId");
         setCloudLink(name, "ready", videoId, lib, null, 100);
         // A link is only published when the library id is known — an
         // embed//videoId URL helps nobody and poisons the fallback.
@@ -2987,7 +2956,7 @@ public class MainActivity extends Activity {
                 && (message.contains("(401)") || message.contains("(403)")
                     || message.contains("credentials missing"));
         runOnUiThread(new Runnable() { @Override public void run() {
-            if (auth) Toast.makeText(MainActivity.this, "Signer refused — check the token in Cloud settings.", Toast.LENGTH_LONG).show();
+            if (auth) Toast.makeText(MainActivity.this, "Signer refused — rebuild the app to stamp a fresh one.", Toast.LENGTH_LONG).show();
             refreshClipList();
         } });
     }

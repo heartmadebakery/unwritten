@@ -71,15 +71,11 @@
     <p id="caps"></p>
     <button class="advlink" id="advancedlink">Advanced settings</button>
     <div id="cloudpanel" class="hidden">
-      <label for="cloudsigner">Signer URL (prefilled by the build; override only to point elsewhere)</label>
-      <input id="cloudsigner" inputmode="url" autocomplete="off" placeholder="https://unwritten-cloud-signer.heartmade.workers.dev">
-      <label for="cloudsignertoken">Signer token (prefilled by the build; override only if rotated)</label>
-      <input id="cloudsignertoken" type="password" autocomplete="off" placeholder="baked into this build">
-      <label for="cloudlib">— or, without a signer: Stream library ID</label>
-      <input id="cloudlib" inputmode="numeric" autocomplete="off" placeholder="e.g. 402315">
-      <label for="cloudkey">Library API key (then lives on this device)</label>
-      <input id="cloudkey" type="password" autocomplete="off" placeholder="AccessKey from the library's API page">
-      <p class="bnote">Debug overrides only — the build already bakes in the signer URL and token, and every session is saved on this device first regardless.</p>
+      <p class="bnote">Build values, shown for debugging — they load fresh from this build on every load and can't be changed here.</p>
+      <dl class="dbg">
+        <div><dt>Signer URL</dt><dd id="clouddbgurl"></dd></div>
+        <div><dt>Signer token</dt><dd id="clouddbgtoken"></dd></div>
+      </dl>
     </div>
   </div>
 </div>

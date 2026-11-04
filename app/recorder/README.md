@@ -89,7 +89,8 @@ streaming (adaptive HLS player) link once Cloud finishes encoding —
 the link is also copied to the clipboard. Uploads are
 resumable (TUS), resume after reloads, and never delay or endanger the
 local take. the **Cloud** switch turns saving off (lessons stay on-device
-only); **Advanced settings** holds overrides; **Export sessions to
+only); **Advanced settings** shows the build's connection values for
+debugging (read-only); **Export sessions to
 Downloads** appears only with Cloud off, as the offline fallback.
 Long-pressing a session removes it from the device vault *and* the
 cloud copy (cloud first — if that fails, the local lesson is kept).

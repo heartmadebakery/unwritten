@@ -6,6 +6,20 @@ the same commit.** Entries cite the commit they describe; this file
 was compiled retroactively on Oct 27, 2026 from the full commit
 history (30 commits) and is maintained in the open from then on.
 
+## 2026-11-04
+
+### Changed
+- **Cloud settings are read-only build values.** (User-ordered: a
+  stale saved signer URL once broke every cloud request, so
+  connection values load fresh from the stamped build on every load
+  and nothing persists or overrides them.) *Web / Android / iOS:*
+  signer URL and token come from the build constants; the direct
+  library-key mode is gone (uploads always sign through the signer);
+  the library id rides each lesson's own link row. Advanced settings
+  (web) / Cloud settings (native) show the effective URL and token
+  status for debugging, and every failure message names the rebuild
+  instead of settings that no longer exist.
+
 ## 2026-11-03
 
 ### Changed

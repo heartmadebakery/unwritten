@@ -257,6 +257,10 @@ input[type=text],input[type=url],input[type=password],input[inputmode]{
 input::placeholder{color:var(--ink2);opacity:.8;}
 input:focus{outline:none;border-color:var(--ember);background:var(--surface);}
 #cloudpanel .bnote{color:var(--ink2);font-size:13.5px;line-height:1.5;margin-top:12px;}
+#cloudpanel .dbg{margin:4px 0 0;font-size:13.5px;line-height:1.5;}
+#cloudpanel .dbg div{display:flex;gap:8px;padding:6px 0;border-top:1px solid var(--line);}
+#cloudpanel .dbg dt{color:var(--ink2);flex:0 0 110px;}
+#cloudpanel .dbg dd{margin:0;color:var(--ink);word-break:break-all;}
 
 /* ---- hub detail: a lesson, Airbnb-listing style ---- */
 #hubstatus{color:var(--ink2);font-size:15px;padding:0 4px 10px;}

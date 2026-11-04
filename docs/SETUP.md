@@ -72,9 +72,10 @@ The apps and the pipeline proxy talk to one Cloudflare Worker
   must print `401` (protected route refusing anonymously = healthy).
 - **Deploy your own**: `cd app/cloud-signer`, `npx wrangler login`,
   create + migrate D1 (see `wrangler.toml` comments), set the two
-  secrets from step 1, `npx wrangler deploy`. Then either update the
-  `CLOUD_SIGNER_DEFAULT` baked into the three apps or override the
-  signer URL in each app's Cloud settings.
+  secrets from step 1, `npx wrangler deploy`. Then update the
+  `CLOUD_SIGNER_DEFAULT` baked into the three apps and rebuild them
+  (connection values load fresh from the build — the apps offer no
+  override).
 
 ## 4. Token pool
 

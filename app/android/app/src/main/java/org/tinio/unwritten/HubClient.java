@@ -81,7 +81,7 @@ public class HubClient {
             try { out.write(payload); } finally { try { out.close(); } catch (Throwable ignored) { } }
             int status = c.getResponseCode();
             String body = readBody(c);
-            if (status == 401) throw new IOException("Signer refused the token — check it in Cloud settings.");
+            if (status == 401) throw new IOException("Signer refused the token — rebuild the app to stamp a fresh one.");
             if (status < 200 || status >= 300) throw new IOException("Queue failed (" + status + "): " + body);
             String id = new JSONObject(body).optString("id", "");
             if (id.isEmpty()) throw new IOException("Queue returned no job id.");
@@ -99,7 +99,7 @@ public class HubClient {
         for (String v : videoIds) ids.put(v);
         Object[] r = send("POST", "/hub/parts", new JSONObject().put("videoIds", ids).toString());
         int status = (Integer) r[0];
-        if (status == 401) throw new IOException("Signer refused the token — check it in Cloud settings.");
+        if (status == 401) throw new IOException("Signer refused the token — rebuild the app to stamp a fresh one.");
         if (status < 200 || status >= 300) throw new IOException("Tie failed (" + status + "): " + r[1]);
         return new JSONObject((String) r[1]);
     }

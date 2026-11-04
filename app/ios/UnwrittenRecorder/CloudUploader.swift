@@ -1,15 +1,12 @@
-import CryptoKit
 import Foundation
 
 /// Optional Cloud upload: presigned TUS (resumable) upload of a
 /// finished lesson, then status polling until Cloud finishes encoding.
-/// Two credential modes, mirroring the Android and web apps:
-///  - signer mode: POST {title[, videoId]} to the signer URL (see
-///    app/cloud-signer) -> {videoId, libraryId, signature, expire};
-///    the library API key never lives on this device.
-///  - direct mode: the library API key is configured on-device; this
-///    type creates the video and signs locally (SHA-256 of
-///    libraryId + apiKey + expire + videoId, per the vendor's TUS docs).
+/// Signer mode only, mirroring the Android and web apps: POST
+/// {title[, videoId]} to the signer URL (see app/cloud-signer) ->
+/// {videoId, libraryId, signature, expire}; the library API key never
+/// lives on this device, and the signer URL + token load fresh from
+/// the stamped build on every launch.
 /// Framework APIs only, no third-party libraries. All methods are
 /// async; callers hop to the main actor for UI updates.
 struct CloudUploader {
@@ -17,33 +14,24 @@ struct CloudUploader {
     private static let API = "https://video.bunnycdn.com"
     private static let CHUNK = 5 * 1024 * 1024
 
-    let libraryId: String
-    let apiKey: String
     let signerUrl: String
     let signerToken: String
 
-    /// Library that credentials() most recently resolved (signer mode
-    /// learns it from the signer response). Mirrors Android's
-    /// lastLibraryId; the store persists it per lesson once known.
+    /// Library that credentials() most recently resolved from the
+    /// signer response. Mirrors Android's lastLibraryId; the store
+    /// persists it per lesson once known.
     private(set) var lastLibraryId: String = ""
 
-    init(libraryId: String, apiKey: String, signerUrl: String, signerToken: String) {
-        self.libraryId = libraryId.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+    init(signerUrl: String, signerToken: String) {
         self.signerUrl = signerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
         self.signerToken = signerToken.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Signer mode needs its token — the URL always has a compiled
-    /// default, so URL-alone must not count (same contract as
+    /// The token decides — the URL always has a compiled default, so
+    /// URL-alone must not count (same contract as
     /// CloudStore.canUpload and the web's cloudCanUpload).
     func configured() -> Bool {
-        if useDirect() { return true }
-        return !signerUrl.isEmpty && !signerToken.isEmpty
-    }
-
-    func useDirect() -> Bool {
-        !libraryId.isEmpty && !apiKey.isEmpty
+        !signerUrl.isEmpty && !signerToken.isEmpty
     }
 
     func embedUrl(libId: String, videoId: String) -> String {
@@ -60,76 +48,46 @@ struct CloudUploader {
     }
 
     mutating func credentials(title: String, reuseVideoId: String?) async throws -> Creds {
-        if !useDirect() {
-            var payload: [String: String] = ["title": title]
-            if let reuseVideoId, !reuseVideoId.isEmpty { payload["videoId"] = reuseVideoId }
-            guard let signerEndpoint = URL(string: signerUrl),
-                  signerEndpoint.scheme != nil, signerEndpoint.host != nil else {
-                throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
-            }
-            var req = URLRequest(url: signerEndpoint)
-            req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue("application/json", forHTTPHeaderField: "Accept")
-            if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
-            req.httpBody = try JSONSerialization.data(withJSONObject: payload)
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard status >= 200 && status < 300 else {
-                throw CloudError.message("signer refused (\(status)): \(String(data: data, encoding: .utf8) ?? "")")
-            }
-            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw CloudError.message("signer returned invalid JSON")
-            }
-            let videoId = (obj["videoId"] as? String) ?? ""
-            let signature = (obj["signature"] as? String) ?? ""
-            let expire = (obj["expire"] as? Int64) ?? Int64((obj["expire"] as? Int) ?? 0)
-            let lib = (obj["libraryId"] as? String) ?? libraryId
-            guard !videoId.isEmpty, !signature.isEmpty, expire != 0 else {
-                throw CloudError.message("signer returned incomplete credentials: \(String(data: data, encoding: .utf8) ?? "")")
-            }
-            lastLibraryId = lib
-            return Creds(videoId: videoId, signature: signature, libraryId: lib, expire: expire)
+        var payload: [String: String] = ["title": title]
+        if let reuseVideoId, !reuseVideoId.isEmpty { payload["videoId"] = reuseVideoId }
+        guard let signerEndpoint = URL(string: signerUrl),
+              signerEndpoint.scheme != nil, signerEndpoint.host != nil else {
+            throw CloudError.message("Signer URL is misconfigured — rebuild the app.")
         }
-        var videoId = reuseVideoId ?? ""
-        if videoId.isEmpty {
-            guard let createEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos") else {
-                throw CloudError.message("Library ID looks wrong — check it in Cloud settings.")
-            }
-            var req = URLRequest(url: createEndpoint)
-            req.httpMethod = "POST"
-            req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
-            req.setValue("application/json", forHTTPHeaderField: "Accept")
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try JSONSerialization.data(withJSONObject: ["title": title])
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard status >= 200 && status < 300 else {
-                throw CloudError.message("Cloud create failed (\(status)) — check library ID and API key")
-            }
-            let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
-            videoId = (obj["guid"] as? String) ?? ""
-            if videoId.isEmpty { videoId = (obj["videoId"] as? String) ?? "" }
-            guard !videoId.isEmpty else {
-                throw CloudError.message("Cloud create returned no video id")
-            }
+        var req = URLRequest(url: signerEndpoint)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
+        req.httpBody = try JSONSerialization.data(withJSONObject: payload)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard status >= 200 && status < 300 else {
+            throw CloudError.message("signer refused (\(status)): \(String(data: data, encoding: .utf8) ?? "")")
         }
-        lastLibraryId = libraryId
-        let expire = Int64(Date().timeIntervalSince1970) + 86400
-        let signature = Self.sha256Hex(libraryId + apiKey + String(expire) + videoId)
-        return Creds(videoId: videoId, signature: signature, libraryId: libraryId, expire: expire)
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CloudError.message("signer returned invalid JSON")
+        }
+        let videoId = (obj["videoId"] as? String) ?? ""
+        let signature = (obj["signature"] as? String) ?? ""
+        let expire = (obj["expire"] as? Int64) ?? Int64((obj["expire"] as? Int) ?? 0)
+        let lib = (obj["libraryId"] as? String) ?? ""
+        guard !videoId.isEmpty, !signature.isEmpty, expire != 0 else {
+            throw CloudError.message("signer returned incomplete credentials: \(String(data: data, encoding: .utf8) ?? "")")
+        }
+        lastLibraryId = lib
+        return Creds(videoId: videoId, signature: signature, libraryId: lib, expire: expire)
     }
 
     // ---------- delete + status ----------
 
-    /// Deletes a hub record. 404 counts as gone. Signer only — the
-    /// hub lives on the signer, so direct mode has no hub at all.
+    /// Deletes a hub record. 404 counts as gone. The hub lives on
+    /// the signer.
     func deleteHubRecord(_ videoId: String) async throws {
-        guard !useDirect() else { return }
         let encoded = videoId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? videoId
         guard let hubEndpoint = URL(string: signerUrl + "/hub/sessions/" + encoded),
               hubEndpoint.scheme != nil, hubEndpoint.host != nil else {
-            throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+            throw CloudError.message("Signer URL is misconfigured — rebuild the app.")
         }
         var req = URLRequest(url: hubEndpoint)
         req.httpMethod = "DELETE"
@@ -144,30 +102,17 @@ struct CloudUploader {
 
     /// Deletes the cloud copy. Throws on failure.
     func deleteVideo(_ videoId: String) async throws {
-        let status: Int
-        if !useDirect() {
-            let sep = signerUrl.contains("?") ? "&" : "?"
-            guard let deleteEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
-                  deleteEndpoint.scheme != nil, deleteEndpoint.host != nil else {
-                throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
-            }
-            var req = URLRequest(url: deleteEndpoint)
-            req.httpMethod = "DELETE"
-            req.setValue("application/json", forHTTPHeaderField: "Accept")
-            if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        } else {
-            guard let deleteEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId) else {
-                throw CloudError.message("Library ID looks wrong — check it in Cloud settings.")
-            }
-            var req = URLRequest(url: deleteEndpoint)
-            req.httpMethod = "DELETE"
-            req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
-            req.setValue("application/json", forHTTPHeaderField: "Accept")
-            let (_, resp) = try await URLSession.shared.data(for: req)
-            status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        let sep = signerUrl.contains("?") ? "&" : "?"
+        guard let deleteEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
+              deleteEndpoint.scheme != nil, deleteEndpoint.host != nil else {
+            throw CloudError.message("Signer URL is misconfigured — rebuild the app.")
         }
+        var req = URLRequest(url: deleteEndpoint)
+        req.httpMethod = "DELETE"
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
         if status != 200 && status != 204 && status != 404 {
             throw CloudError.message("Cloud delete failed (\(status))")
         }
@@ -177,27 +122,14 @@ struct CloudUploader {
     /// 4 finished/playable, 5 error, 6 upload failed. -1 on HTTP error.
     func videoStatus(_ videoId: String) async -> Int {
         do {
-            let data: Data
-            let status: Int
-            if !useDirect() {
-                let sep = signerUrl.contains("?") ? "&" : "?"
-                guard let statusEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
-                      statusEndpoint.host != nil else { return -1 }
-                var req = URLRequest(url: statusEndpoint)
-                req.setValue("application/json", forHTTPHeaderField: "Accept")
-                if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
-                let (d, resp) = try await URLSession.shared.data(for: req)
-                data = d
-                status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            } else {
-                guard let statusEndpoint = URL(string: Self.API + "/library/" + libraryId + "/videos/" + videoId) else { return -1 }
-                var req = URLRequest(url: statusEndpoint)
-                req.setValue(apiKey, forHTTPHeaderField: "AccessKey")
-                req.setValue("application/json", forHTTPHeaderField: "Accept")
-                let (d, resp) = try await URLSession.shared.data(for: req)
-                data = d
-                status = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            }
+            let sep = signerUrl.contains("?") ? "&" : "?"
+            guard let statusEndpoint = URL(string: signerUrl + sep + "videoId=" + videoId),
+                  statusEndpoint.host != nil else { return -1 }
+            var req = URLRequest(url: statusEndpoint)
+            req.setValue("application/json", forHTTPHeaderField: "Accept")
+            if !signerToken.isEmpty { req.setValue(signerToken, forHTTPHeaderField: "X-Signer-Token") }
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
             guard status >= 200 && status < 300 else { return -1 }
             let obj = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
             if let i = obj["status"] as? Int { return i }
@@ -387,11 +319,6 @@ struct CloudUploader {
             if let n = v as? Int { return Int64(n) }
         }
         return nil
-    }
-
-    static func sha256Hex(_ text: String) -> String {
-        let digest = SHA256.hash(data: Data(text.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
     }
 
     private static func b64(_ s: String) -> String {

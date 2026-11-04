@@ -251,24 +251,18 @@ function sweepBacklog(){
     if(isVideoLesson(null, c.name) && (!l || l.state === "failed")) cloudRetry(c.name);
   });
 }
-/* Debug overrides hide behind a small link at the page bottom. */
+/* Build values hide behind a small link at the page bottom: shown
+   for debugging, loaded fresh from the build on every load. */
 $("advancedlink").onclick = function(){
   var panel = $("cloudpanel");
   if(panel.classList.contains("hidden")){
-    $("cloudsigner").value = cloudSignerUrl();
-    $("cloudsignertoken").value = cloudToken();
-    $("cloudlib").value = cloudCfg.libraryId || "";
-    $("cloudkey").value = cloudCfg.apiKey || "";
+    $("clouddbgurl").textContent = cloudSignerUrl();
+    $("clouddbgtoken").textContent = cloudToken() ? "stamped into this build ✓" : "missing — rebuild the app to stamp one";
     panel.classList.remove("hidden");
   } else {
     panel.classList.add("hidden");
-    if($("hublist")) loadHub(); /* new signer settings show in the hub at once */
   }
 };
-$("cloudsigner").addEventListener("change", function(){ cloudCfg.signerUrl = this.value.trim(); cloudSaveCfg(); });
-$("cloudsignertoken").addEventListener("change", function(){ cloudCfg.signerToken = this.value.trim(); cloudSaveCfg(); });
-$("cloudlib").addEventListener("change", function(){ cloudCfg.libraryId = this.value.trim(); cloudSaveCfg(); });
-$("cloudkey").addEventListener("change", function(){ cloudCfg.apiKey = this.value.trim(); cloudSaveCfg(); });
 $("exportbtn").onclick = exportSessions;
 /* Tap a row to play it; long-press (touch or mouse) to delete it. */
 var pressTimer = null, pressFired = false;

@@ -5,7 +5,9 @@ import Foundation
 /// localStorage keys: lessons are always saved on-device first, and a
 /// copy uploads only when Cloud is on. Link states: uploading
 /// (progress/videoId/uploadUrl), processing, ready (videoId +
-/// libraryId), failed.
+/// libraryId), failed. Connection values load fresh from the stamped
+/// build on every launch — nothing persists them — while the Cloud
+/// switch and per-lesson link rows persist below.
 ///
 /// Sendable by hand: every accessor only touches UserDefaults, which is
 /// thread-safe, so the TUS progress callbacks can persist link state
@@ -20,13 +22,10 @@ final class CloudStore: @unchecked Sendable {
     // a finished state back to uploading.
     private let linksLock = NSLock()
     private static let kEnabled = "uw_cloud_enabled"
-    private static let kSignerUrl = "uw_cloud_signerUrl"
-    private static let kSignerToken = "uw_cloud_signerToken"
-    private static let kLibraryId = "uw_cloud_libraryId"
-    private static let kApiKey = "uw_cloud_apiKey"
     private static let kLinks = "uw_cloud_links"
     private static let kLastLink = "uw_cloud_lastLink"
     private static let kLastName = "uw_cloud_lastName"
+    private static let kFetchAttempts = "uw_cloud_fetchAttempts"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -47,52 +46,27 @@ final class CloudStore: @unchecked Sendable {
         set { defaults.set(newValue, forKey: Self.kEnabled) }
     }
 
-    var signerUrl: String {
-        get { str(Self.kSignerUrl) }
-        set { defaults.set(newValue, forKey: Self.kSignerUrl) }
-    }
-
-    var signerToken: String {
-        get { str(Self.kSignerToken) }
-        set { defaults.set(newValue, forKey: Self.kSignerToken) }
-    }
-
-    var libraryId: String {
-        get { str(Self.kLibraryId) }
-        set { defaults.set(newValue, forKey: Self.kLibraryId) }
-    }
-
-    var apiKey: String {
-        get { str(Self.kApiKey) }
-        set { defaults.set(newValue, forKey: Self.kApiKey) }
-    }
-
+    /// Build values, fresh on every launch: nothing persists or
+    /// overrides them, so a stale saved URL can never break uploads.
     func effSignerUrl() -> String {
-        let s = signerUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-        return s.isEmpty ? Self.CLOUD_SIGNER_DEFAULT : s
+        Self.CLOUD_SIGNER_DEFAULT
     }
 
     func effSignerToken() -> String {
-        let t = signerToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        return t.isEmpty ? CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT : t
+        CloudConfig.CLOUD_SIGNER_TOKEN_DEFAULT
     }
 
-    /// True when an upload could possibly succeed. Signer mode needs
-    /// its token — the URL always has a compiled default, so URL-alone
-    /// must not count — and direct mode needs library ID + API key.
-    /// Without this, fresh installs (Cloud on by default, no
-    /// credentials yet) fire doomed uploads that can only 401.
+    /// True when an upload could possibly succeed: the build carries
+    /// a stamped signer token. Without this, token-less builds fire
+    /// doomed uploads that can only 401.
     /// Uses the effective token so build-stamped tokens count, exactly
     /// like hubAvailable.
     func canUpload() -> Bool {
         !effSignerToken().isEmpty
-            || (!libraryId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                && !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
     }
 
     func uploader() -> CloudUploader? {
-        let up = CloudUploader(libraryId: libraryId, apiKey: apiKey,
-                               signerUrl: effSignerUrl(), signerToken: effSignerToken())
+        let up = CloudUploader(signerUrl: effSignerUrl(), signerToken: effSignerToken())
         return up.configured() ? up : nil
     }
 
@@ -187,8 +161,10 @@ final class CloudStore: @unchecked Sendable {
     // ---------- legacy migration ----------
 
     private func migrateLegacyPrefs() {
-        // One-time move from the pre-rename store: the legacy keys are
-        // adopted, then the legacy store is cleared. Mirrors Android's
+        // One-time move from the pre-rename store: only the Cloud
+        // switch and per-lesson link rows are adopted (connection
+        // values load fresh from the stamped build — user-ordered
+        // Nov 4). Then the legacy store is cleared. Mirrors Android's
         // migrateCloudPrefs and the web app's uw_bunny_* legacy fallback.
         guard let legacy = defaults.dictionary(forKey: "unwritten_bunny"),
               !legacy.isEmpty else { return }
@@ -196,10 +172,6 @@ final class CloudStore: @unchecked Sendable {
             switch key {
             case "enabled":
                 if let b = value as? Bool { defaults.set(b, forKey: Self.kEnabled) }
-            case "signerUrl": defaults.set("\(value)", forKey: Self.kSignerUrl)
-            case "signerToken": defaults.set("\(value)", forKey: Self.kSignerToken)
-            case "libraryId": defaults.set("\(value)", forKey: Self.kLibraryId)
-            case "apiKey": defaults.set("\(value)", forKey: Self.kApiKey)
             case "links": defaults.set("\(value)", forKey: Self.kLinks)
             case "lastLink": defaults.set("\(value)", forKey: Self.kLastLink)
             case "lastName": defaults.set("\(value)", forKey: Self.kLastName)

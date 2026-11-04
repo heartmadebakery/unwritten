@@ -488,7 +488,7 @@ final class SessionStore: ObservableObject {
         }
         guard cloud.canUpload() else {
             cloudFailed(name, videoId: nil,
-                        message: "Cloud credentials missing — add the signer token in Cloud settings.")
+                        message: "Cloud credentials missing — this build carries no signer token. Rebuild the app to stamp one.")
             return
         }
         guard !inFlight.contains(name) else { return }
@@ -517,7 +517,7 @@ final class SessionStore: ObservableObject {
                 self.uploadTasks.removeValue(forKey: name)
             }
             guard var uploader = self.cloud.uploader() else {
-                self.cloudFailed(name, videoId: savedVid, message: "Cloud settings incomplete.")
+                self.cloudFailed(name, videoId: savedVid, message: "This build carries no signer token.")
                 return
             }
             do {
@@ -553,8 +553,7 @@ final class SessionStore: ObservableObject {
 
     private func cloudFinished(_ name: String, videoId: String) {
         guard url(for: name) != nil else { return }  // deleted mid-flight: no zombie row
-        var lib = (cloud.cloudLink(name)?["libraryId"] as? String) ?? ""
-        if lib.isEmpty { lib = cloud.libraryId }
+        let lib = (cloud.cloudLink(name)?["libraryId"] as? String) ?? ""
         cloud.setCloudLink(name, state: "ready", videoId: videoId,
                            libraryId: lib, uploadUrl: nil, progress: 100)
         // A link is only published when the library id is known — an
@@ -575,7 +574,7 @@ final class SessionStore: ObservableObject {
                            libraryId: nil, uploadUrl: nil, progress: -1)
         if message.contains("(401)") || message.contains("(403)")
             || message.contains("credentials missing") {
-            status = "☁️ Signer refused the upload — check the token in Cloud settings. The session is safe on this device; tap ! on the session to retry."
+            status = "☁️ Signer refused the upload — rebuild the app to stamp a fresh one. The session is safe on this device; tap ! on the session to retry."
         } else {
             status = "☁️ Cloud upload didn't finish (\(message)) The session is safe on this device — tap ! on the session when the connection is better."
         }
@@ -661,7 +660,7 @@ final class SessionStore: ObservableObject {
             if !videoId.isEmpty {
                 do {
                     guard let uploader = self.cloud.uploader() else {
-                        throw CloudError.message("Cloud settings incomplete.")
+                        throw CloudError.message("This build carries no signer token.")
                     }
                     try await uploader.deleteVideo(videoId)
                 } catch {
@@ -737,7 +736,7 @@ final class SessionStore: ObservableObject {
             return "Hub lives on the signer — turn Cloud on to see published lessons."
         }
         if !hubAvailable() {
-            return "Hub lives on the signer — add the signer URL and token in Cloud settings."
+            return "This build carries no signer token — rebuild it to stamp one."
         }
         if hubLoading {
             return "Loading hub sessions…"
@@ -813,7 +812,7 @@ final class SessionStore: ObservableObject {
                 }
             } catch {
                 if failedStatus == 401 || failedStatus == 403 {
-                    self?.hubNotice = "Signer refused the token — check it in Cloud settings."
+                    self?.hubNotice = "Signer refused the token — rebuild the app to stamp a fresh one."
                 } else if failedStatus == 503 {
                     self?.hubNotice = "Hub isn't switched on at the server yet."
                 } else {
@@ -832,7 +831,7 @@ final class SessionStore: ObservableObject {
         guard !trimmed.isEmpty else { status = "Paste a link first."; return }
         guard hubAvailable(), let endpoint = URL(string: cloud.effSignerUrl() + "/fetch/jobs"),
               endpoint.scheme != nil, endpoint.host != nil else {
-            status = "Queuing needs the signer token — add it in Cloud settings."
+            status = "Queuing needs the signer token — rebuild the app to stamp one."
             return
         }
         var req = URLRequest(url: endpoint)
@@ -851,7 +850,7 @@ final class SessionStore: ObservableObject {
                 let (data, resp) = try await URLSession.shared.data(for: req)
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 401 {
-                    self?.status = "Signer refused the token — check it in Cloud settings."
+                    self?.status = "Signer refused the token — rebuild the app to stamp a fresh one."
                     return
                 }
                 guard code >= 200 && code < 300 else {
@@ -887,8 +886,7 @@ final class SessionStore: ObservableObject {
     }
 
     func hubEmbedUrl(_ session: HubSession) -> String? {
-        var lib = session.libraryId ?? ""
-        if lib.isEmpty { lib = cloud.libraryId }
+        let lib = session.libraryId ?? ""
         if lib.isEmpty || session.videoId.isEmpty { return nil }
         return "https://player.mediadelivery.net/embed/" + lib + "/" + session.videoId
     }
@@ -932,7 +930,7 @@ final class SessionStore: ObservableObject {
                 var err: String?
                 for p in parts {
                     do {
-                        guard let uploader = self.cloud.uploader() else { throw CloudError.message("Cloud settings incomplete.") }
+                        guard let uploader = self.cloud.uploader() else { throw CloudError.message("This build carries no signer token.") }
                         try await uploader.deleteHubRecord(p.videoId)
                         done += 1
                         try await uploader.deleteVideo(p.videoId)
@@ -955,7 +953,7 @@ final class SessionStore: ObservableObject {
             guard let self else { return }
             do {
                 guard let uploader = self.cloud.uploader() else {
-                    throw CloudError.message("Cloud settings incomplete.")
+                    throw CloudError.message("This build carries no signer token.")
                 }
                 try await uploader.deleteHubRecord(videoId)
                 do {
@@ -1011,7 +1009,7 @@ final class SessionStore: ObservableObject {
     private func postParts(_ method: String, _ path: String, _ body: [String: Any]?) async throws {
         guard let endpoint = URL(string: cloud.effSignerUrl() + path),
               endpoint.scheme != nil, endpoint.host != nil else {
-            throw CloudError.message("Signer URL looks wrong — check it in Cloud settings.")
+            throw CloudError.message("Signer URL is misconfigured — rebuild the app.")
         }
         var req = URLRequest(url: endpoint)
         req.httpMethod = method
@@ -1023,7 +1021,7 @@ final class SessionStore: ObservableObject {
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 401 { throw CloudError.message("the signer refused the token — check it in Cloud settings") }
+        if code == 401 { throw CloudError.message("the signer refused the build token — rebuild to stamp a fresh one") }
         guard code >= 200 && code < 300 else {
             throw CloudError.message("HTTP \(code): \(String(data: data, encoding: .utf8) ?? "")")
         }
@@ -1039,7 +1037,7 @@ final class SessionStore: ObservableObject {
               (link["joined"] as? Bool) != true, !tieInFlight.contains(name) else { return }
         let title = (link["joinTitle"] as? String) ?? "its session"
         guard hubAvailable() else {
-            status = "☁️ Couldn't tie this take to \(title) — parts need the signer token (Cloud settings). It will retry once the token is set."
+            status = "☁️ Couldn't tie this take to \(title) — this build carries no signer token. Rebuild to stamp one; it will retry on the next upload."
             return
         }
         tieInFlight.insert(name)

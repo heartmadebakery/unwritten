@@ -157,7 +157,8 @@ class IOSRecorderTests(unittest.TestCase):
         self.assertNotIn("if store.hubAvailable()", self.view)
         self.assertIn("hubStatusText()", self.view)
         for token in ["hubStatusText",
-                      "add the signer URL and token in Cloud settings",
+                      "no signer token",
+                      "rebuild it to stamp one",
                       "Signer refused the token",
                       "isn't switched on at the server yet",
                       "Hub couldn't load"]:
@@ -430,7 +431,9 @@ class CloudIOSTests(unittest.TestCase):
         self.assertIn("AuthorizationSignature", self.uploader)
         self.assertIn("AuthorizationExpire", self.uploader)
         self.assertIn("Upload-Offset", self.uploader)
-        self.assertIn("sha256Hex", self.uploader)
+        # User-ordered Nov 4: signer-only — nothing signs locally, so
+        # the direct-mode sha256Hex helper is gone with the overrides.
+        self.assertNotIn("sha256Hex", self.uploader)
 
     def test_streaming_link_is_cloud_embed(self):
         self.assertIn("https://player.mediadelivery.net/embed/", self.uploader)
@@ -446,6 +449,11 @@ class CloudIOSTests(unittest.TestCase):
         self.assertIn("CLOUD_SIGNER_TOKEN_DEFAULT", self.cloud)
         self.assertIn("confirmDeleteLesson", read(VIEW))
         self.assertIn("deleteLesson", self.store)
+        # User-ordered Nov 4: no saved connection overrides — the
+        # build constants are the whole config.
+        for token in ["uw_cloud_signerUrl", "uw_cloud_signerToken",
+                      "uw_cloud_libraryId", "uw_cloud_apiKey"]:
+            self.assertNotIn(token, self.cloud, token)
 
     def test_uploads_resume_after_restart(self):
         self.assertIn("cloudResumePending", self.store)
@@ -454,13 +462,15 @@ class CloudIOSTests(unittest.TestCase):
     def test_configured_needs_a_token_in_signer_mode(self):
         # The signer URL always has a compiled default, so URL-alone
         # must not count as configured (same contract as canUpload):
-        # direct mode needs library ID + API key, signer mode needs
-        # its token — otherwise credential-less builds fire doomed
-        # uploads and hide the offline Export fallback.
+        # the token decides — otherwise credential-less builds fire
+        # doomed uploads and hide the offline Export fallback.
+        # User-ordered Nov 4: signer-only, no direct mode left.
         cfg = self.uploader.split("func configured()", 1)[1] \
-                           .split("func useDirect()", 1)[0]
+                           .split("func ", 1)[0]
         self.assertIn("signerToken", cfg)
         self.assertNotIn("if !signerUrl.isEmpty { return true }", cfg)
+        for token in ["useDirect", "apiKey", "AccessKey"]:
+            self.assertNotIn(token, self.uploader, token)
 
     def test_link_writes_are_serialized(self):
         # TUS progress callbacks persist from background executors
@@ -615,18 +625,22 @@ class IOSParityTests(unittest.TestCase):
             self.assertIn(token, self.view, token)
         self.assertNotIn("PlayerView(player:", self.view)
 
-    def test_settings_show_stored_values_not_effective(self):
-        # Loading effective (compiled-default) values into the fields
-        # persists them as overrides on open, shadowing later stamp
-        # rotations. Fields bind stored values; placeholders name the
-        # build defaults.
-        load = self.view.split("private func loadCloudFields()", 1)[1] \
-                        .split("private static func fmt", 1)[0]
-        self.assertNotIn("effSignerUrl()", load)
-        self.assertNotIn("effSignerToken()", load)
-        self.assertIn("store.cloud.signerUrl", load)
-        self.assertIn("store.cloud.signerToken", load)
-        self.assertIn("prompt", self.view)
+    def test_settings_show_effective_values_read_only(self):
+        # User-ordered Nov 4: connection values load fresh from the
+        # stamped build on every load — nothing persists them, and the
+        # settings sheet only shows them for debugging.
+        self.assertNotIn("loadCloudFields", self.view)
+        for token in ["store.cloud.signerUrl", "store.cloud.signerToken",
+                      "store.cloud.libraryId", "store.cloud.apiKey",
+                      "$signerUrl", "$signerToken", "$libraryId",
+                      "$apiKey"]:
+            self.assertNotIn(token, self.view, token)
+        sheet = self.view.split("private var cloudSettingsSheet", 1)[1] \
+                         .split("private func confirmDeleteLesson", 1)[0]
+        self.assertIn("effSignerUrl()", sheet)
+        self.assertNotIn("TextField(", sheet)
+        self.assertNotIn("SecureField(", sheet)
+        self.assertNotIn(".onChange(", sheet)
 
     def test_delete_offers_device_only_when_cloud_unreachable(self):
         # A dead cloud delete must not trap local storage: the user

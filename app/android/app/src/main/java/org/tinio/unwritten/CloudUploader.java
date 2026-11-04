@@ -12,7 +12,6 @@ import java.io.OutputStream;
 import java.io.RandomAccessFile;
 import java.net.InetSocketAddress;
 import java.net.URI;
-import java.security.MessageDigest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,16 +22,14 @@ import javax.net.ssl.SSLSocketFactory;
 
 /** Optional Cloud upload: presigned TUS (resumable) upload of a
  *  finished lesson, then status polling until Cloud finishes encoding.
- *  Two credential modes, mirroring the web app:
- *   - signer mode: POST {title[, videoId]} to the signer URL (see
- *     app/cloud-signer) -> {videoId, libraryId, signature, expire};
- *     the library API key never lives on this device.
- *   - direct mode: the library API key is configured on-device; this
- *     class creates the video and signs locally (SHA-256 of
- *     libraryId + apiKey + expire + videoId, per the vendor's TUS docs).
- *  Implemented over a raw SSLSocket instead of HttpURLConnection so
- *  TUS PATCH works on every supported Android version. Framework APIs
- *  only, no third-party libraries. All methods block; call off-UI. */
+ *  Signer mode only, mirroring the web app: POST {title[, videoId]}
+ *  to the signer URL (see app/cloud-signer) ->
+ *  {videoId, libraryId, signature, expire}; the library API key never
+ *  lives on this device, and the signer URL + token load fresh from
+ *  the stamped build on every launch. Implemented over a raw SSLSocket
+ *  instead of HttpURLConnection so TUS PATCH works on every supported
+ *  Android version. Framework APIs only, no third-party libraries. All
+ *  methods block; call off-UI. */
 public final class CloudUploader {
 
     private static final String TAG = "UWCloud";
@@ -49,28 +46,19 @@ public final class CloudUploader {
     private static final String API = "https://video.bunnycdn.com";
     private static final int CHUNK = 5 * 1024 * 1024;
 
-    final String libraryId;
-    final String apiKey;       // direct mode only; "" in signer mode
-    final String signerUrl;    // "" in direct mode
-    final String signerToken;  // optional
+    final String signerUrl;
+    final String signerToken;
 
-    public CloudUploader(String libraryId, String apiKey, String signerUrl, String signerToken) {
-        this.libraryId = libraryId == null ? "" : libraryId.trim();
-        this.apiKey = apiKey == null ? "" : apiKey.trim();
+    public CloudUploader(String signerUrl, String signerToken) {
         this.signerUrl = signerUrl == null ? "" : signerUrl.trim();
         this.signerToken = signerToken == null ? "" : signerToken.trim();
     }
 
-    // Signer mode needs its token — the URL always has a compiled
-    // default, so URL-alone must not count (same contract as
-    // canUpload and the web's cloudCanUpload).
+    // The token decides — the URL always has a compiled default, so
+    // URL-alone must not count (same contract as canUpload and the
+    // web's cloudCanUpload).
     public boolean configured() {
-        if (useDirect()) return true;
         return !signerUrl.isEmpty() && !signerToken.isEmpty();
-    }
-
-    private boolean useDirect() {
-        return !libraryId.isEmpty() && !apiKey.isEmpty();
     }
 
     public String embedUrl(String libId, String videoId) {
@@ -89,52 +77,26 @@ public final class CloudUploader {
 
     public Creds credentials(String title, String reuseVideoId) throws Exception {
         Log.i(TAG, "credentials title=" + title + " reuse=" + reuseVideoId + " signerUrl=" + signerUrl);
-        if (!useDirect()) {
-            JSONObject body = new JSONObject();
-            body.put("title", title);
-            if (reuseVideoId != null) body.put("videoId", reuseVideoId);
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("Content-Type", "application/json");
-            h.put("Accept", "application/json");
-            if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
-            Resp r = request("POST", signerUrl, h, body.toString().getBytes("UTF-8"));
-            Log.i(TAG, "signer POST status=" + r.status + " body=" + r.text());
-            if (r.status < 200 || r.status >= 300) throw new IOException("signer refused (" + r.status + "): " + r.text());
-            JSONObject d = new JSONObject(r.text());
-            Creds c = new Creds();
-            lastLibraryId = d.optString("libraryId", libraryId);
-            c.videoId = d.optString("videoId", reuseVideoId == null ? "" : reuseVideoId);
-            c.signature = d.optString("signature", "");
-            c.expire = d.optLong("expire", 0);
-            c.libraryId = d.optString("libraryId", libraryId);
-            if (c.videoId.isEmpty() || c.signature.isEmpty() || c.expire == 0)
-                throw new IOException("signer returned incomplete credentials: " + r.text());
-            Log.i(TAG, "credentials ok videoId=" + c.videoId + " libraryId=" + c.libraryId);
-            return c;
-        }
-        String videoId = reuseVideoId;
-        if (videoId == null || videoId.isEmpty()) {
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("AccessKey", apiKey);
-            h.put("Accept", "application/json");
-            h.put("Content-Type", "application/json");
-            JSONObject body = new JSONObject();
-            body.put("title", title);
-            Resp r = request("POST", API + "/library/" + libraryId + "/videos", h,
-                    body.toString().getBytes("UTF-8"));
-            if (r.status < 200 || r.status >= 300)
-                throw new IOException("Cloud create failed (" + r.status + ") — check library ID and API key");
-            JSONObject v = new JSONObject(r.text());
-            videoId = v.optString("guid", "");
-            if (videoId.isEmpty()) videoId = v.optString("videoId", "");
-            if (videoId.isEmpty()) throw new IOException("Cloud create returned no video id");
-        }
+        JSONObject body = new JSONObject();
+        body.put("title", title);
+        if (reuseVideoId != null) body.put("videoId", reuseVideoId);
+        Map<String, String> h = new LinkedHashMap<String, String>();
+        h.put("Content-Type", "application/json");
+        h.put("Accept", "application/json");
+        if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
+        Resp r = request("POST", signerUrl, h, body.toString().getBytes("UTF-8"));
+        Log.i(TAG, "signer POST status=" + r.status + " body=" + r.text());
+        if (r.status < 200 || r.status >= 300) throw new IOException("signer refused (" + r.status + "): " + r.text());
+        JSONObject d = new JSONObject(r.text());
         Creds c = new Creds();
-        lastLibraryId = libraryId;
-        c.videoId = videoId;
-        c.expire = System.currentTimeMillis() / 1000L + 86400L;
-        c.signature = sha256Hex(libraryId + apiKey + c.expire + videoId);
-        c.libraryId = libraryId;
+        lastLibraryId = d.optString("libraryId", "");
+        c.videoId = d.optString("videoId", reuseVideoId == null ? "" : reuseVideoId);
+        c.signature = d.optString("signature", "");
+        c.expire = d.optLong("expire", 0);
+        c.libraryId = d.optString("libraryId", "");
+        if (c.videoId.isEmpty() || c.signature.isEmpty() || c.expire == 0)
+            throw new IOException("signer returned incomplete credentials: " + r.text());
+        Log.i(TAG, "credentials ok videoId=" + c.videoId + " libraryId=" + c.libraryId);
         return c;
     }
 
@@ -142,42 +104,24 @@ public final class CloudUploader {
      *  4 finished/playable, 5 error, 6 upload failed. -1 on HTTP error. */
     /** Deletes the cloud copy. Throws on failure. */
     public void deleteVideo(String videoId) throws Exception {
-        int status;
-        if (!useDirect()) {
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("Accept", "application/json");
-            if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
-            String sep = signerUrl.contains("?") ? "&" : "?";
-            Resp r = request("DELETE", signerUrl + sep + "videoId=" + videoId, h, null);
-            status = r.status;
-        } else {
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("AccessKey", apiKey);
-            h.put("Accept", "application/json");
-            Resp r = request("DELETE", API + "/library/" + libraryId + "/videos/" + videoId, h, null);
-            status = r.status;
-        }
+        Map<String, String> h = new LinkedHashMap<String, String>();
+        h.put("Accept", "application/json");
+        if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
+        String sep = signerUrl.contains("?") ? "&" : "?";
+        Resp r = request("DELETE", signerUrl + sep + "videoId=" + videoId, h, null);
+        int status = r.status;
         if (status != 200 && status != 204 && status != 404)
             throw new IOException("Cloud delete failed (" + status + ")");
     }
 
     public int videoStatus(String videoId) throws Exception {
-        String text;
-        int status;
-        if (!useDirect()) {
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("Accept", "application/json");
-            if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
-            String sep = signerUrl.contains("?") ? "&" : "?";
-            Resp r = request("GET", signerUrl + sep + "videoId=" + videoId, h, null);
-            status = r.status; text = r.text();
-        } else {
-            Map<String, String> h = new LinkedHashMap<String, String>();
-            h.put("AccessKey", apiKey);
-            h.put("Accept", "application/json");
-            Resp r = request("GET", API + "/library/" + libraryId + "/videos/" + videoId, h, null);
-            status = r.status; text = r.text();
-        }
+        Map<String, String> h = new LinkedHashMap<String, String>();
+        h.put("Accept", "application/json");
+        if (!signerToken.isEmpty()) h.put("X-Signer-Token", signerToken);
+        String sep = signerUrl.contains("?") ? "&" : "?";
+        Resp r = request("GET", signerUrl + sep + "videoId=" + videoId, h, null);
+        int status = r.status;
+        String text = r.text();
         if (status < 200 || status >= 300) return -1;
         return new JSONObject(text).optInt("status", -1);
     }
@@ -469,14 +413,6 @@ public final class CloudUploader {
                     lines[i].substring(colon + 1).trim());
         }
         return resp;
-    }
-
-    static String sha256Hex(String text) throws Exception {
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        byte[] digest = md.digest(text.getBytes("UTF-8"));
-        StringBuilder sb = new StringBuilder(digest.length * 2);
-        for (byte b : digest) sb.append(String.format("%02x", b & 0xff));
-        return sb.toString();
     }
 
     private static String b64(String s) throws Exception {
