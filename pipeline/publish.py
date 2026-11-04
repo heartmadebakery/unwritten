@@ -3,7 +3,9 @@
 Reads a work dir (writeup.md, corrections.json, chapters.json) plus the
 cloud video id, and POSTs it to the signer's /hub/publish route, where
 the apps' in-app hub reads it back. Video bytes stay in Stream —
-only playback URLs and the text artifacts travel here.
+only playback URLs and the text artifacts travel here. Each step
+screengrab (stills/step-NN.jpg) is inlined into writeupMd as a data:
+URL at publish time, so the hub shows the images with no still host.
 
 Usage:
   CLOUD_LIBRARY_ID=.. CLOUD_LIBRARY_KEY=.. CLOUD_CDN_HOSTNAME=.. \\
@@ -72,6 +74,61 @@ def read_json(path, default):
     except (OSError, ValueError):
         return default
     return obj
+
+
+STILL_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+              ".png": "image/png"}
+STILL_MAX_BYTES = 512 * 1024
+
+
+def embed_stills(work, writeup):
+    """Inline each step screengrab into the hub write-up as a data:
+    URL, so the hub shows the images with no still host — the hub
+    stays one text field. `![Step N](stills/...)` lines whose file is
+    present in the work dir (and small) become
+    `![Step N](data:image/...;base64,...)`; lines whose file is
+    missing or oversized are dropped, the step text always kept.
+    Returns the hub-bound markdown."""
+    import base64
+    import re
+
+    def repl(match):
+        rel = match.group(2).strip()
+        # Only work-local relative stills travel: absolute paths and
+        # escapes stay out of the hub payload either way.
+        if not rel or os.path.isabs(rel) or ".." in rel.split("/"):
+            return ""
+        path = os.path.join(work, rel)
+        try:
+            if not os.path.isfile(path):
+                return ""
+            if os.path.getsize(path) > STILL_MAX_BYTES:
+                print("[hub] still %s over %d bytes — left out"
+                      % (rel, STILL_MAX_BYTES))
+                return ""
+            with open(path, "rb") as fh:
+                blob = fh.read()
+        except OSError:
+            return ""
+        mime = STILL_MIME.get(os.path.splitext(path)[1].lower(), "")
+        if not mime or not blob:
+            return ""
+        return "![%s](data:%s;base64,%s)" % (
+            match.group(1), mime,
+            base64.b64encode(blob).decode("ascii"))
+
+    out = []
+    for line in (writeup or "").splitlines():
+        if re.match(r"^\s*!\[Step\s+\d+\]\(.*\)\s*$", line):
+            line = re.sub(r"!\[Step\s+(\d+)\]\(([^)]+)\)",
+                          repl, line, count=1)
+            if not line.strip():
+                continue
+        out.append(line)
+    text = "\n".join(out)
+    if (writeup or "").endswith("\n") and not text.endswith("\n"):
+        text += "\n"
+    return text
 
 
 def media_duration(path):
@@ -303,6 +360,9 @@ def main(argv=None):
     guid = resolve_guid(state, work, args.guid.strip())
     with open(md_path) as fh:
         writeup = fh.read()
+    # Step screengrabs ride into the hub inside the markdown (data:
+    # URLs) — no still host, no extra hub field.
+    writeup = embed_stills(work, writeup)
     title, date, _ = session_meta(work)
     corrections = read_json(os.path.join(work, "corrections.json"), [])
     chapters = read_json(os.path.join(work, "chapters.json"), [])

@@ -375,14 +375,23 @@ async function go(url, mode) {
             self.assertIn(token, detail, token)
         self.assertIn("openHubSession(", self.homejs)
 
-    def test_hub_writeup_strips_step_stills(self):
-        # User-ordered 2026-11-04: step screengrabs live in the page
-        # (stills/), not the hub — the hub has no still URLs, so the
-        # write-up renderer strips ![Step N](...) instead of showing
-        # raw markdown.
-        inline = self.common.split("function inlineMd", 1)[1].split("\n}\n", 1)[0]
-        self.assertIn("Step", inline)
-        self.assertIn("noImg", inline)
+    def test_hub_writeup_renders_blocks_and_step_images(self):
+        # User-ordered: the hub write-up is proper markdown, not
+        # inline-only — headings, lists, and the step screengrabs the
+        # pipeline embeds as data: URLs all render; raw HTML never does.
+        render = self.common.split("function renderMd", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("<h", render)
+        self.assertIn("<li>", render)
+        self.assertIn("<img", render)
+        self.assertIn("data:image", render)
+        self.assertIn("escHtml", render)
+
+    def test_hub_writeup_rejects_remote_and_relative_images(self):
+        # Only embedded (data:image) stills render — remote or relative
+        # image paths in server text must not become fetchable <img>.
+        render = self.common.split("function renderMd", 1)[1].split("\n}\n", 1)[0]
+        self.assertIn("data:image", render)
+        self.assertNotIn("http", render.replace("http-equiv", ""))
 
     def test_home_footer_links_android_dev_apk(self):
         # User-ordered: the home page bottom links the Android dev

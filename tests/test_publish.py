@@ -117,6 +117,61 @@ class TestPublish(unittest.TestCase):
         self.assertIn("playlist.m3u8", body["hlsUrl"])
         self.assertIn("play_720p", body["mp4Url"])
 
+    def test_publish_embeds_step_stills_as_data_urls(self):
+        # User-ordered: the hub write-up shows each step's screengrab,
+        # so publish embeds the work dir's stills/ files as data: URLs
+        # — the hub needs no still host and stays one text field.
+        import base64
+        import os
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as td:
+            work = os.path.join(td, "lesson1")
+            os.makedirs(os.path.join(work, "stills"))
+            with open(os.path.join(work, "writeup.md"), "w") as fh:
+                fh.write("# Bread\n\n## Steps\n\n1. Knead.\n"
+                         "![Step 1](stills/step-01.jpg)\n")
+            with open(os.path.join(work, "stills", "step-01.jpg"), "wb") as fh:
+                fh.write(b"\\xff\\xd8fakejpeg")
+            with open(os.path.join(work, "corrections.json"), "w") as fh:
+                json.dump([], fh)
+            state = os.path.join(td, "cloud_state.json")
+            with open(state, "w") as fh:
+                json.dump({"vid-1": {"title": "Bread", "workDir": work}}, fh)
+            publish.main(["--work", work, "--state", state,
+                          "--signer", "https://signer.test",
+                          "--token", "sekret"])
+        body = SENT["payload"]["writeupMd"]
+        self.assertIn("data:image/jpeg;base64,", body)
+        self.assertIn(base64.b64encode(b"\\xff\\xd8fakejpeg").decode(), body)
+        self.assertNotIn("stills/", body)
+        self.assertIn("Knead.", body)
+
+    def test_publish_drops_missing_step_stills(self):
+        # A still file lost after the run must not ship a dead image
+        # reference to the hub: the step text stays, the line goes.
+        import os
+        import tempfile
+        import json
+        with tempfile.TemporaryDirectory() as td:
+            work = os.path.join(td, "lesson1")
+            os.makedirs(work)
+            with open(os.path.join(work, "writeup.md"), "w") as fh:
+                fh.write("# Bread\n\n## Steps\n\n1. Knead.\n"
+                         "![Step 1](stills/step-01.jpg)\n")
+            with open(os.path.join(work, "corrections.json"), "w") as fh:
+                json.dump([], fh)
+            state = os.path.join(td, "cloud_state.json")
+            with open(state, "w") as fh:
+                json.dump({"vid-1": {"title": "Bread", "workDir": work}}, fh)
+            publish.main(["--work", work, "--state", state,
+                          "--signer", "https://signer.test",
+                          "--token", "sekret"])
+        body = SENT["payload"]["writeupMd"]
+        self.assertNotIn("stills/", body)
+        self.assertNotIn("<img", body)
+        self.assertIn("Knead.", body)
+
     def test_guid_override(self):
         with tempfile.TemporaryDirectory() as td:
             work = fixture_work(td)

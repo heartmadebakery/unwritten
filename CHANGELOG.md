@@ -18,6 +18,19 @@ history (30 commits) and is maintained in the open from then on.
   for iPad) builds succeed; 530 tests OK.
 
 ### Added
+- **Hub write-ups render full markdown with step screengrabs.**
+  (User-ordered: a proper write-up renderer that looks complete, with
+  step screenshots that resolve in the hub.) *Web:* `renderMd` renders
+  headings, paragraphs, lists, inline code, and images — everything
+  escaped first, and only embedded `data:image` stills become `<img>`;
+  anything else in an image slot is dropped. *Pipeline:* `publish.py`
+  inlines each `stills/step-NN.jpg` into `writeupMd` as a data: URL at
+  publish time (missing/oversized stills drop their line, never the
+  step), so the hub stays one text field with no still host. A real
+  640px still is ~28KB (~37KB base64), so even long write-ups add only
+  hundreds of KB. Native apps keep their inline reading (still
+  image-stripping) until the parity pass. Verified: renderer smoke
+  (headings/lists/images/XSS/inline), publish embed tests, full suite.
 - **Home page footer links the Android dev build.** (User-ordered: share
   the APK in the web app at the bottom of the page so others can use
   the install for dev without adb or a checkout.) *Web:* a quiet footer

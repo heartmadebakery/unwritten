@@ -767,14 +767,58 @@ function hubEmbedUrl(d){
   var lib = d.libraryId || "";
   return lib ? "https://player.mediadelivery.net/embed/" + lib + "/" + d.videoId : "";
 }
-/* Write-ups are Markdown: inline bold and italic render (after
-   escaping), line breaks stay — the same inline-only reading as iOS.
-   Step screengrabs (![Step N](stills/...)) live in the page, not the
-   hub: the hub has no still URLs, so they strip out here. */
-function inlineMd(text){
-  var noImg = String(text || "").replace(/!\[Step\s+\d+\]\([^)]+\)/g, "");
-  return escHtml(noImg).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
-                      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
+/* Write-ups are full Markdown: headings, paragraphs, lists, step
+   screengrabs, inline bold/italic/code — rendered only after escaping,
+   so server text can never inject markup. Images render solely when
+   embedded (data:image...); anything else in an image slot is dropped,
+   since the hub ships no still files. */
+function renderMd(text){
+  var lines = String(text || "").split("\n"), html = "",
+      items = null, tag = "";
+  function flush(){
+    if(items !== null){
+      html += "<" + tag + ">" + items.join("") + "</" + tag + ">";
+      items = null;
+    }
+  }
+  function inline(s){
+    return escHtml(s).replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+      .replace(/(^|[^*])\*([^*]+)\*/g, "$1<i>$2</i>")
+      .replace(/`([^`]+)`/g, "<code>$1</code>");
+  }
+  lines.forEach(function(raw){
+    var s = raw.replace(/\s+$/, ""), m;
+    if((m = s.match(/^(#{1,3})\s+(.*)$/))){
+      flush();
+      var lv = m[1].length;
+      html += "<h" + lv + ">" + inline(m[2]) + "</h" + lv + ">";
+    } else if((m = s.match(/^\s*[-*]\s+(.*)$/))){
+      if(items === null || tag !== "ul"){ flush(); items = []; tag = "ul"; }
+      items.push("<li>" + inline(m[1]) + "</li>");
+    } else if((m = s.match(/^\s*\d+[.)]\s+(.*)$/))){
+      if(items === null || tag !== "ol"){ flush(); items = []; tag = "ol"; }
+      items.push("<li>" + inline(m[1]) + "</li>");
+    } else if((m = s.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/))){
+      if(m[2].slice(0, 11) === "data:image/"){
+        var img = '<br><img src="' + escHtml(m[2]) + '" alt="' +
+          escHtml(m[1]) + '">';
+        if(items !== null && items.length){
+          var last = items.length - 1;
+          items[last] = items[last].replace(/<\/li>$/, img + "</li>");
+        }
+        else { flush(); html += "<p>" + img.slice(4) + "</p>"; }
+      } else {
+        flush();
+      }
+    } else if(/^\s*$/.test(s)){
+      flush();
+    } else {
+      flush();
+      html += "<p>" + inline(s) + "</p>";
+    }
+  });
+  flush();
+  return html;
 }
 /* A lesson, listing style: a warm cover banner with its initial, the
    title and date, an ember Play pill with round Share and Delete, the
@@ -812,7 +856,7 @@ function hubDetailHTML(d){
     "<a class='pill' href='upload.html?" + q + "'>Upload</a></div>" +
     "<button class='pill block' data-hub-act='tie'>Tie a session to this one</button>" +
     "<div id='tiepicker'></div>";
-  if(d.writeupMd) h += "<div class='writeup'>" + inlineMd(d.writeupMd) + "</div>";
+  if(d.writeupMd) h += "<div class='writeup'>" + renderMd(d.writeupMd) + "</div>";
   if((d.corrections || []).length) h += "<h4 class='dsec'>Corrections</h4>";
   (d.corrections || []).forEach(function(c){
     h += "<figure class='quote'><span class='tchip'>" + (multi && c.part ? "Part " + (c.part | 0) + " \u00b7 " : "") + escHtml(c.start || "") + "</span>" +
