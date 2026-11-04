@@ -8,6 +8,20 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-04
 
+### Added
+- **iOS TestFlight build (the iOS twin of the APK link).** An iPhone
+  cannot install a downloaded app, so `TESTFLIGHT=1
+  DEVELOPMENT_TEAM=<id> app/ios/build.sh` archives a token-stamped
+  Release build with a fresh UTC build number and uploads it to App
+  Store Connect, signed in by an App Store Connect API key
+  (`ASC_KEY_ID`/`ASC_ISSUER_ID`/`ASC_KEY_PATH`, `.p8` in the git-ignored
+  `.certs/`) or the Mac's Xcode account; failures name the fix.
+  Info.plist takes its versions from the build settings and declares
+  `ITSAppUsesNonExemptEncryption` false (HTTPS only). Tests in
+  `test_ios_testflight.py`. Archive verified; the upload waits on the
+  one-time App Store Connect app record, and the web footer link on
+  the TestFlight public URL.
+
 ### Changed
 - **App identifier is `com.heartmadebakery.unwritten` everywhere.**
   (User-ordered: match the web app's home, unwritten.heartmadebakery.com,
