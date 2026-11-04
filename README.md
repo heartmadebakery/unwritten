@@ -5,16 +5,15 @@
 When someone who knows a craft teaches it, the knowledge that matters most
 surfaces in the corrections — *"no, like this,"* a hand reaching in to redo
 yours. Those moments are where thirty years of judgment live, and they are
-exactly what a written recipe leaves out. They also vanish: nobody writes
-them down, and an ordinary video buries them in an hour of footage.
+exactly what a written process leaves out. They also vanish: nobody writes
+them down, and an ordinary video buries them in hours of footage.
 
 Unwritten Craft keeps them. Record an ordinary lesson — a mentor, a
-beginner, one phone. Afterwards, the session is transcribed, the steps are
+beginner, one recording device. Afterwards, the session is transcribed, the steps are
 drafted into a short **write-up** in the mentor's own words, and the
 moments where the mentor corrected the beginner are pulled out as
 **techniques**: each one the mentor's exact words, anchored to its
-clip. Together
-the techniques are the **Knack**.
+clip. Together the techniques are the **Knack**.
 
 No protocol during the lesson. No steps to perform for the machine. Teach
 the way you'd teach anyway; the system notices afterwards.
@@ -23,7 +22,7 @@ the way you'd teach anyway; the system notices afterwards.
 
 1. **The lesson video.** The primary source — the session itself, kept
    whole.
-2. **The correction clips.** Every moment the mentor corrected the
+2. **The steps and correction clips.** Along with the steps every moment the mentor corrected the
    beginner, cut and anchored to the mentor's exact words. This is the
    extracted gold.
 3. **The write-up.** A polished, sectioned document in the mentor's
