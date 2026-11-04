@@ -25,6 +25,14 @@ history (30 commits) and is maintained in the open from then on.
   iOS:* the upload page/screen ends with previous uploads (session
   rows) and previous fetches (link attempts logged locally with URL,
   date and outcome, newest first, capped at 20).
+- **Fetch from link moves into the upload page; the link page is
+  gone.** (User-ordered: no separate fetch/link page — the fetch
+  section sits after the upload section, history at the end.) *Web:*
+  `link.html`/`link.js` are deleted and the shell and build ship only
+  the upload page, which holds the picker, the link-fetch field and
+  the attempts history. *Android / iOS:* the link screen and its
+  routes are removed; the upload screen holds the fetch field after
+  the upload section with previous attempts at the end.
 
 ## 2026-11-03
 

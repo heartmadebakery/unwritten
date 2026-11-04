@@ -89,12 +89,11 @@ private struct SquishStyle: ButtonStyle {
 }
 
 /// Screens pushed over home. Record owns the camera; Upload offers a
-/// file or a link, and Fetch from link is a screen of its own; a hub
-/// session opens its own detail screen with its own player.
+/// file and a link field with previous attempts below; a hub session
+/// opens its own detail screen with its own player.
 enum Route: Hashable {
     case record
     case upload
-    case fetchLink
     case hub(String)
 }
 
@@ -140,10 +139,8 @@ struct ContentView: View {
     @State private var pendingHubDelete: HubSession?
     @State private var zoomProgress: Double = 0
 
-    @State private var signerUrl = ""
-    @State private var signerToken = ""
-    @State private var libraryId = ""
-    @State private var apiKey = ""
+    /// Build values shown for debugging (read-only): the effective
+    /// signer URL and whether this build carries a stamped token.
 
     @State private var cameraConfigured = false
     @State private var showUploadPicker = false
@@ -187,9 +184,6 @@ struct ContentView: View {
                             .readableColumn()
                     case .upload:
                         uploadView
-                            .readableColumn()
-                    case .fetchLink:
-                        fetchLinkView
                             .readableColumn()
                     case let .hub(videoId):
                         hubScreen(videoId)
@@ -550,12 +544,6 @@ struct ContentView: View {
                                  symbol: "square.and.arrow.up")
                 }
                 .accessibilityLabel("Choose a video")
-                Button {
-                    path.append(.fetchLink)
-                } label: {
-                    uploadOption("Fetch from link", "A YouTube or video link, instead of a file",
-                                 symbol: "link")
-                }
             } header: {
                 Text("Add a lesson video. It is saved as a session and uploaded to Cloud, and the pipeline picks it up like a recording.")
                     .font(.system(size: 15))
@@ -570,6 +558,32 @@ struct ContentView: View {
                 }
             }
             .listRowBackground(PANEL)
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "link")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(EMBER_INK)
+                        .frame(width: 36, height: 36)
+                        .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    TextField("Paste a video link…", text: $fetchUrl)
+                        .font(.system(size: 16))
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.go)
+                        .onSubmit { fetchLink() }
+                }
+                Button {
+                    fetchLink()
+                } label: {
+                    Label("Fetch from link", systemImage: "arrow.down.circle")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(canFetchLink ? EMBER_INK : DIM)
+                }
+                .disabled(!canFetchLink)
+            } header: {
+                Text("Fetch from link — a YouTube or video link, instead of a file")
+            }
             Section {
                 uploadHistory
             } header: {
@@ -679,57 +693,6 @@ struct ContentView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-    }
-
-    /// Fetch from link: paste a link, watch pages queue to the pipeline
-    /// fetcher, which downloads and processes them. Its status line
-    /// reports only on the fetch.
-    private var fetchLinkView: some View {
-        List {
-            joinBanner
-            Section {
-                HStack(spacing: 12) {
-                    Image(systemName: "link")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(EMBER_INK)
-                        .frame(width: 36, height: 36)
-                        .background(EMBER_SOFT, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    TextField("Paste a video link…", text: $fetchUrl)
-                        .font(.system(size: 16))
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.go)
-                        .onSubmit { fetchLink() }
-                }
-                Button {
-                    fetchLink()
-                } label: {
-                    Label("Fetch from link", systemImage: "arrow.down.circle")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(canFetchLink ? EMBER_INK : DIM)
-                }
-                .disabled(!canFetchLink)
-            } header: {
-                Text("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.")
-                    .font(.system(size: 15))
-                    .foregroundStyle(DIM)
-                    .textCase(nil)
-                    .padding(.bottom, 6)
-            } footer: {
-                if !store.status.isEmpty {
-                    Text(store.status)
-                        .font(.system(size: 14))
-                        .foregroundStyle(DIM)
-                }
-            }
-            .listRowBackground(PANEL)
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(BG)
-        .navigationTitle("Fetch from link")
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     private var recordView: some View {
@@ -1554,7 +1517,7 @@ struct ContentView: View {
             // fetched next becomes its next part.
             sectionTitle(Text("Add a part")).padding(.top, 18).padding(.bottom, 6)
             HStack(spacing: 8) {
-                ForEach([("Record", Route.record), ("Upload", Route.upload), ("Link", Route.fetchLink)], id: \.0) { name, route in
+                ForEach([("Record", Route.record), ("Upload", Route.upload)], id: \.0) { name, route in
                     Button {
                         store.joinTo = detail
                         stopHubPlayer()

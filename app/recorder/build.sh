@@ -10,8 +10,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 POOL="$HERE/../cloud-signer/tokens.txt"
 [ -f "$POOL" ] || { echo "Missing $POOL — run: bash ../cloud-signer/mint-tokens.sh" >&2; exit 1; }
 rm -rf "$HERE/dist" && mkdir -p "$HERE/dist"
-cp "$HERE/index.html" "$HERE/record.html" "$HERE/upload.html" "$HERE/link.html" "$HERE/app.css" \
-  "$HERE/common.js" "$HERE/home.js" "$HERE/record.js" "$HERE/upload.js" "$HERE/link.js" \
+cp "$HERE/index.html" "$HERE/record.html" "$HERE/upload.html" "$HERE/app.css" \
+  "$HERE/common.js" "$HERE/home.js" "$HERE/record.js" "$HERE/upload.js" \
   "$HERE/manifest.webmanifest" "$HERE/sw.js" "$HERE/dist/"
 [ -d "$HERE/icons" ] && cp -r "$HERE/icons" "$HERE/dist/"
 python3 - "$POOL" "$HERE/dist/common.js" <<'EOF'

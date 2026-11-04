@@ -1,12 +1,13 @@
 """User-ordered Nov 3: record, upload, or fetch a video as the next part
 of a previous session, or tie several sessions together, so they read
-as one overall session.
+as one overall session. User-ordered Nov 4: fetch folded into upload,
+so "Add a part" offers Record / Upload.
 
 The hub service owns the model (app/cloud-signer/worker.js:
 session_parts, POST/DELETE /hub/parts, grouped list and detail, fetch
 joinTo; behaviour lives in hub-check.mjs). These are the clients'
 source contracts: web, Android and iOS move together — each offers
-"Add a part" (Record / Upload / Fetch from link) and "Tie a session" on
+"Add a part" (Record / Upload) and "Tie a session" on
 a hub session, a visible "Adds a part to ..." note on the capture
 screens, ties a take as soon as its upload has a video id (retried
 until it lands), lists a tied session's parts, plays them in order,
@@ -51,9 +52,9 @@ class WebParts(unittest.TestCase):
     def setUpClass(cls):
         cls.common = read(REC, "common.js")
         cls.home = read(REC, "home.js")
-        cls.link = read(REC, "link.js")
+        cls.uploadjs = read(REC, "upload.js")
         cls.pages = {n: read(REC, n) for n in
-                     ("record.html", "upload.html", "link.html")}
+                     ("record.html", "upload.html")}
 
     def test_capture_pages_show_the_session_they_add_to(self):
         for name, page in self.pages.items():
@@ -64,8 +65,6 @@ class WebParts(unittest.TestCase):
         self.assertIn("Adds a part to", banner)
         # The way out is on the note itself: its own session instead.
         self.assertIn("data-join-clear", banner)
-        # Upload's "Fetch from link" keeps the choice.
-        self.assertIn("golink", banner)
 
     def test_a_take_is_tied_once_its_upload_has_an_id(self):
         save = between(self.common, "function saveBlob(", "\n}\n")
@@ -85,8 +84,9 @@ class WebParts(unittest.TestCase):
         self.assertIn("Part of", self.common)
 
     def test_link_queue_carries_the_session(self):
-        self.assertIn("joinTo:", self.link)
-        self.assertIn("joinTarget()", self.link)
+        # User-ordered Nov 4: fetch lives on the upload page now.
+        self.assertIn("joinTo:", self.uploadjs)
+        self.assertIn("joinTarget()", self.uploadjs)
 
     def test_hub_rows_and_detail_show_parts(self):
         row = between(self.common, "function hubRowHTML(", "\n}\n")
@@ -94,9 +94,10 @@ class WebParts(unittest.TestCase):
         self.assertIn("pendingParts", row)
         detail = between(self.common, "function hubDetailHTML(", "\n}\n")
         for token in ["data-hub-part-play", "data-hub-untie", "Add a part",
-                      "record.html?", "upload.html?", "link.html?",
+                      "record.html?", "upload.html?",
                       "data-hub-act='tie'", "still processing", "Part "]:
             self.assertIn(token, detail, token)
+        self.assertNotIn("link.html?", detail)
 
     def test_play_untie_tie_and_delete_whole_session(self):
         play = between(self.common, "function playHubSession(", "\n}\n")
@@ -134,9 +135,10 @@ class AndroidParts(unittest.TestCase):
         self.assertIn("Adds a part to", paint)
         self.assertIn("Make it its own session", banner)
         for screen in ["recordScreen.addView(joinBannerView())",
-                       "uploadScreen.addView(joinBannerView())",
-                       "linkScreen.addView(joinBannerView())"]:
+                       "uploadScreen.addView(joinBannerView())"]:
             self.assertIn(screen, self.main, screen)
+        # User-ordered Nov 4: no link screen left to banner.
+        self.assertNotIn("linkScreen.addView(joinBannerView())", self.main)
         show = between(self.main, "private void showScreen(String name)", "\n    }\n")
         self.assertIn("paintJoinBanners()", show)
         # Home is the end of a continue: the choice never lingers.
@@ -204,7 +206,8 @@ class IOSParts(unittest.TestCase):
         self.assertIn("@Published var joinTo: HubSession?", self.store)
         self.assertIn("Adds a part to", self.view)
         self.assertIn("Make it its own session", self.view)
-        self.assertGreaterEqual(self.view.count("joinBanner"), 4)  # def + 3 screens
+        # User-ordered Nov 4: def + record + upload (fetch folded in).
+        self.assertGreaterEqual(self.view.count("joinBanner"), 3)
         # Home is the end of a continue: the choice never lingers.
         on_path = between(self.view, ".onChange(of: path) { old, new in", "\n        }\n")
         self.assertIn("if new.isEmpty { store.joinTo = nil }", on_path)

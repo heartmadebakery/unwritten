@@ -107,8 +107,8 @@ all-caps grey labels of the previous palette.
   you'd teach anyway"); *Upload video* is a surface tile with an
   ember-wash glyph ("From your phone or a link"). Home carries nothing
   else above the hub — no link field, no status line. *Upload video*
-  opens its own screen with two options, *Choose a video* and *Fetch
-  from link*; Fetch from link is a screen of its own (web: `link.html`).
+  opens its own screen: *Choose a video*, then a *Fetch from link*
+  field, then previous upload/fetch attempts at the end.
 - **Status lines belong to their screen** — a status or help line
   (e.g. "Point the camera at the mentor's hands…") shows only on the
   screen it describes and is cleared when you leave it; the camera

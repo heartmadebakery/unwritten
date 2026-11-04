@@ -42,8 +42,8 @@ Hearth design language as the web and Android apps
 light/dark colours that follow the system, SF Pro Rounded titles, a
 `NavigationStack` home (a greeting, Record and Upload video action
 tiles, and the hub's
-lessons on warm cover tiles, pull to refresh) that pushes Upload (Choose a video from Photos or Files, or Fetch
-from link — a screen of its own, with previous attempts at the end of the page) and Record (an
+lessons on warm cover tiles, pull to refresh) that pushes Upload (Choose a video from Photos or Files, then a
+Fetch from link field, then previous attempts) and Record (an
 inset-grouped list: the rounded viewfinder with zoom, the shutter in a
 dock with haptics, the Cloud toggle on a sage badge, and the device
 sessions — a frame of the video, the date, a status chip; a swipe

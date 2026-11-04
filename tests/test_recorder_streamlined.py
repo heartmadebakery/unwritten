@@ -21,7 +21,6 @@ REC_COMMON = os.path.join(ROOT, "app", "recorder", "common.js")
 REC_HOME_JS = os.path.join(ROOT, "app", "recorder", "home.js")
 REC_RECORD_JS = os.path.join(ROOT, "app", "recorder", "record.js")
 REC_UPLOAD_JS = os.path.join(ROOT, "app", "recorder", "upload.js")
-REC_LINK_JS = os.path.join(ROOT, "app", "recorder", "link.js")
 REC_CSS = os.path.join(ROOT, "app", "recorder", "app.css")
 MANIFEST = os.path.join(ROOT, "app", "recorder", "manifest.webmanifest")
 MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
@@ -62,7 +61,6 @@ class WebRecorderTests(unittest.TestCase):
         cls.homejs = read(REC_HOME_JS)
         cls.recordjs = read(REC_RECORD_JS)
         cls.uploadjs = read(REC_UPLOAD_JS)
-        cls.linkjs = read(REC_LINK_JS)
         cls.all = "\n".join([cls.home, cls.record, cls.upload, cls.common,
                              cls.homejs, cls.recordjs, cls.uploadjs])
 
@@ -86,15 +84,15 @@ class WebRecorderTests(unittest.TestCase):
         # on this device — watch its progress on the record screen",
         # and leaving a page aborts its IndexedDB writes: a large
         # upload could vanish. saveBlob hands back the write; the
-        # page says "saved" only after it lands. Since the Nov 3
-        # split the file choice lives on the upload page and the link
-        # download on the link page; both handlers keep the promise.
+        # page says "saved" only after it lands. File choice and link
+        # download both live on the upload page now (Nov 4 merge); both
+        # handlers keep the promise.
         save = self.common.split("function saveBlob", 1)[1].split("\n}\n", 1)[0]
         self.assertIn("return saved", save)
         saved_msg = self.uploadjs.split("var SAVED_HERE", 1)[1].split(";\n", 1)[0]
         self.assertIn("Saved on this device", saved_msg)
         upload_handler = self.uploadjs.split('$("uploadbtn").onclick', 1)[1]
-        link_handler = self.linkjs.split('$("urlfetchbtn").onclick', 1)[1] \
+        link_handler = self.uploadjs.split('$("urlfetchbtn").onclick', 1)[1] \
                                   .split("cloudToken()", 1)[0]
         link_before, _, link_after = link_handler.partition("await saved")
         for handler in (upload_handler, link_before):
@@ -322,22 +320,22 @@ async function go(url, mode) {
     def test_url_upload_field_queues_watch_links(self):
         # User-ordered Oct 31: paste a link — direct files download
         # in the page, watch pages queue to the pipeline fetcher.
-        # User-ordered Nov 3: the link field moved off the upload page
-        # to its own page (link.html / link.js); see
-        # test_upload_link_screens.py for the split.
-        link = read(os.path.join(ROOT, "app", "recorder", "link.html"))
-        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
+        # User-ordered Nov 4: the link field folded back into the
+        # upload page (upload.html / upload.js); see
+        # test_upload_link_screens.py.
+        page = read(os.path.join(ROOT, "app", "recorder", "upload.html"))
+        pagejs = read(os.path.join(ROOT, "app", "recorder", "upload.js"))
         for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"']:
-            self.assertIn(token, link, token)
-        self.assertIn("/fetch/jobs", linkjs)
-        self.assertIn("Queued.", linkjs)
-        self.assertIn("Signer refused the token", linkjs)
+            self.assertIn(token, page, token)
+        self.assertIn("/fetch/jobs", pagejs)
+        self.assertIn("Queued.", pagejs)
+        self.assertIn("Signer refused the token", pagejs)
 
     def test_direct_links_download_in_browser(self):
-        # User-ordered Nov 3: lives in link.js now.
-        linkjs = read(os.path.join(ROOT, "app", "recorder", "link.js"))
-        self.assertIn("function isDirectMediaUrl", linkjs)
-        up = linkjs.split("isDirectMediaUrl(u)", 1)[1] \
+        # User-ordered Nov 4: lives in upload.js now.
+        pagejs = read(os.path.join(ROOT, "app", "recorder", "upload.js"))
+        self.assertIn("function isDirectMediaUrl", pagejs)
+        up = pagejs.split("isDirectMediaUrl(u)", 1)[1] \
                           .split("cloudToken()", 1)[0]
         self.assertIn("saveBlob(", up)
         self.assertIn("unwritten_lesson_upload_", up)
@@ -1449,10 +1447,11 @@ class WebNativeFeelTests(unittest.TestCase):
         # served scripts cache-first and cached the signer's API
         # answers; the same-origin network-first shell and the link
         # page ship as v12, dropping every older cache on activate.
-        # Bumped past v11, never back.
-        self.assertIn("unwritten-recorder-v12", self.sw)
+        # User-ordered Nov 4: the link page folds back into upload,
+        # so the shell ships as v13 — bumped past v12, never back.
+        self.assertIn("unwritten-recorder-v13", self.sw)
         for old in ("unwritten-recorder-v9", "unwritten-recorder-v10",
-                    "unwritten-recorder-v11"):
+                    "unwritten-recorder-v11", "unwritten-recorder-v12"):
             self.assertNotIn(old, self.sw)
 
 

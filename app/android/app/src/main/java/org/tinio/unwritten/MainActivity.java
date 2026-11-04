@@ -83,7 +83,7 @@ public class MainActivity extends Activity {
     private TextView status;
     private Button recordButton;
     private LinearLayout lessonContainer;
-    private LinearLayout homeScreen, recordScreen, uploadScreen, linkScreen;
+    private LinearLayout homeScreen, recordScreen, uploadScreen;
     private LinearLayout uploadHistory;
     private android.widget.ScrollView rootScroll;
     private String currentScreen = "home";
@@ -474,13 +474,8 @@ public class MainActivity extends Activity {
         uploadScreen.setOrientation(LinearLayout.VERTICAL);
         uploadScreen.setVisibility(View.GONE);
         l.addView(uploadScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        linkScreen = new LinearLayout(this);
-        linkScreen.setOrientation(LinearLayout.VERTICAL);
-        linkScreen.setVisibility(View.GONE);
-        l.addView(linkScreen, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         buildHomeScreen();
         buildUploadScreen();
-        buildLinkScreen();
         buildRecordScreen();
 
         status = label("", 16, TEXT); // hidden - status conveyed via list icons + toasts
@@ -568,13 +563,58 @@ public class MainActivity extends Activity {
         uploadScreen.addView(note);
         LinearLayout choose = optionRow("Choose a video", "From your library or Files", Glyphs.UPLOAD,
                 new View.OnClickListener() { @Override public void onClick(View v) { pickUpload(); } });
-        LinearLayout fetch = optionRow("Fetch from link", "A YouTube or video link, instead of a file", Glyphs.LINK,
-                new View.OnClickListener() { @Override public void onClick(View v) { showScreen("link"); } });
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.setMargins(0, 0, 0, dp(12));
         uploadScreen.addView(choose, lp);
-        uploadScreen.addView(fetch, lp);
+        // Fetch from link lives here now, after the upload section —
+        // no separate screen. Paste a link: YouTube/watch pages queue
+        // to the pipeline fetcher, which downloads and processes them
+        // like a take.
+        LinearLayout linkCard = new LinearLayout(this);
+        linkCard.setOrientation(LinearLayout.VERTICAL);
+        linkCard.setPadding(dp(16), dp(14), dp(16), dp(10));
+        cardStyle(linkCard);
+        LinearLayout linkHead = new LinearLayout(this);
+        linkHead.setOrientation(LinearLayout.HORIZONTAL);
+        linkHead.setGravity(Gravity.CENTER_VERTICAL);
+        linkHead.addView(glyphBadge(Glyphs.LINK, EMBER_INK, EMBER_SOFT, 36, 12));
+        TextView linkTitle = label("Fetch from link", 17, TEXT);
+        linkTitle.setTypeface(MEDIUM);
+        linkTitle.setPadding(dp(12), 0, 0, 0);
+        linkHead.addView(linkTitle);
+        linkCard.addView(linkHead);
+        linkCard.addView(label("A YouTube or video link, instead of a file", 14, DIM));
+        final EditText urlInput = new EditText(this);
+        urlInput.setHint("Paste a video link…");
+        urlInput.setTextSize(16);
+        urlInput.setTextColor(TEXT);
+        urlInput.setHintTextColor(DIM);
+        urlInput.setSingleLine(true);
+        urlInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
+        // The keyboard's Go submits, like iOS — the IME option alone
+        // would leave Go a dead key.
+        urlInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+            @Override public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent event) {
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
+                    queueFetchUrl(urlInput.getText().toString().trim());
+                    return true;
+                }
+                return false;
+            }
+        });
+        urlInput.setBackground(rounded(PRESSED, 14));
+        urlInput.setPadding(dp(16), dp(14), dp(16), dp(14));
+        urlInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
+        LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        urlLp.setMargins(0, dp(12), 0, dp(4));
+        linkCard.addView(urlInput, urlLp);
+        Button urlFetch = button("Fetch from link");
+        urlFetch.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { queueFetchUrl(urlInput.getText().toString().trim()); } });
+        linkCard.addView(urlFetch);
+        uploadScreen.addView(linkCard, lp);
         TextView histTitle = label("Previous uploads and fetches", 17, TEXT);
         histTitle.setTypeface(MEDIUM);
         histTitle.setPadding(dp(2), dp(10), dp(2), dp(4));
@@ -684,62 +724,6 @@ public class MainActivity extends Activity {
     }
 
     /** Fetch from link: a screen of its own, reached from Upload. */
-    private void buildLinkScreen() {
-        linkScreen.setClipChildren(false);
-        linkScreen.addView(joinBannerView());
-        TextView note = label("A YouTube or watch-page link queues to the pipeline, which fetches the video and processes it like a recording.", 15, DIM);
-        note.setPadding(dp(2), dp(8), dp(2), dp(4));
-        linkScreen.addView(note);
-        // Paste a link: YouTube/watch pages queue to the pipeline
-        // fetcher, which downloads and processes them like a take.
-        LinearLayout linkCard = new LinearLayout(this);
-        linkCard.setOrientation(LinearLayout.VERTICAL);
-        linkCard.setPadding(dp(16), dp(14), dp(16), dp(10));
-        cardStyle(linkCard);
-        LinearLayout linkHead = new LinearLayout(this);
-        linkHead.setOrientation(LinearLayout.HORIZONTAL);
-        linkHead.setGravity(Gravity.CENTER_VERTICAL);
-        linkHead.addView(glyphBadge(Glyphs.LINK, EMBER_INK, EMBER_SOFT, 36, 12));
-        TextView linkTitle = label("Paste a link", 17, TEXT);
-        linkTitle.setTypeface(MEDIUM);
-        linkTitle.setPadding(dp(12), 0, 0, 0);
-        linkHead.addView(linkTitle);
-        linkCard.addView(linkHead);
-        final EditText urlInput = new EditText(this);
-        urlInput.setHint("Paste a video link…");
-        urlInput.setTextSize(16);
-        urlInput.setTextColor(TEXT);
-        urlInput.setHintTextColor(DIM);
-        urlInput.setSingleLine(true);
-        urlInput.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_GO);
-        // The keyboard's Go submits, like iOS — the IME option alone
-        // would leave Go a dead key.
-        urlInput.setOnEditorActionListener(new TextView.OnEditorActionListener() {
-            @Override public boolean onEditorAction(TextView v, int actionId, android.view.KeyEvent event) {
-                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_GO) {
-                    queueFetchUrl(urlInput.getText().toString().trim());
-                    return true;
-                }
-                return false;
-            }
-        });
-        urlInput.setBackground(rounded(PRESSED, 14));
-        urlInput.setPadding(dp(16), dp(14), dp(16), dp(14));
-        urlInput.setInputType(android.text.InputType.TYPE_CLASS_TEXT
-                | android.text.InputType.TYPE_TEXT_VARIATION_URI);
-        LinearLayout.LayoutParams urlLp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        urlLp.setMargins(0, dp(12), 0, dp(4));
-        linkCard.addView(urlInput, urlLp);
-        Button urlFetch = button("Fetch from link");
-        urlFetch.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { queueFetchUrl(urlInput.getText().toString().trim()); } });
-        linkCard.addView(urlFetch);
-        LinearLayout.LayoutParams linkLp = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        linkLp.setMargins(0, dp(12), 0, 0);
-        linkScreen.addView(linkCard, linkLp);
-    }
-
     /** A personal hello over the title, by the phone's own clock. */
     private static String greeting() {
         int h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
@@ -989,8 +973,7 @@ public class MainActivity extends Activity {
         paintJoinBanners();
         android.app.ActionBar bar = getActionBar();
         if (bar != null) {
-            bar.setTitle(home ? "Unwritten Craft" : record ? "Record"
-                    : "upload".equals(name) ? "Upload video" : "Fetch from link");
+            bar.setTitle(home ? "Unwritten Craft" : record ? "Record" : "Upload video");
             bar.setDisplayHomeAsUpEnabled(!home);
             // Home carries its own greeting and large title; the bar
             // returns with the Up arrow on every other screen.
@@ -1001,7 +984,6 @@ public class MainActivity extends Activity {
         if (homeScreen != null) homeScreen.setVisibility(home ? View.VISIBLE : View.GONE);
         if (recordScreen != null) recordScreen.setVisibility(record ? View.VISIBLE : View.GONE);
         if (uploadScreen != null) uploadScreen.setVisibility("upload".equals(name) ? View.VISIBLE : View.GONE);
-        if (linkScreen != null) linkScreen.setVisibility("link".equals(name) ? View.VISIBLE : View.GONE);
         if (record) {
             if (hasPermissions()) openPreview();
             // Device sessions live on the record screen now: refresh
@@ -1982,8 +1964,7 @@ public class MainActivity extends Activity {
 
     @Override public void onBackPressed() {
         if (isViewfinderPlaying) { stopLocalPlayback(); return; }
-        // Fetch from link steps back to Upload; every other screen to home.
-        if ("link".equals(currentScreen)) { showScreen("upload"); return; }
+        // Every screen steps back to home.
         if (!"home".equals(currentScreen)) { showScreen("home"); return; }
         super.onBackPressed();
     }
@@ -2344,7 +2325,7 @@ public class MainActivity extends Activity {
         body.addView(detailHeader("Add a part"));
         LinearLayout add = new LinearLayout(this);
         add.setOrientation(LinearLayout.HORIZONTAL);
-        String[][] ways = { {"Record", "record"}, {"Upload", "upload"}, {"Link", "link"} };
+        String[][] ways = { {"Record", "record"}, {"Upload", "upload"} };
         for (final String[] way : ways) {
             Button b = smallHubButton(way[0]);
             b.setOnClickListener(new View.OnClickListener() { @Override public void onClick(View v) { startJoin(obj, way[1]); } });

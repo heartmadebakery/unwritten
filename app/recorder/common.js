@@ -679,8 +679,7 @@ function joinQuery(videoId, title){
 /* The capture screens say which session they add to, with the way
    out on the note itself. */
 function paintJoinBanner(){
-  var box = $("joinbanner"), jt = joinTarget(), gl = $("golink");
-  if(gl) gl.setAttribute("href", jt ? "link.html?" + joinQuery(jt.videoId, jt.title) : "link.html");
+  var box = $("joinbanner"), jt = joinTarget();
   if(!box) return;
   if(!jt){ box.innerHTML = ""; box.classList.add("hidden"); return; }
   box.classList.remove("hidden");
@@ -807,8 +806,7 @@ function hubDetailHTML(d){
   var q = joinQuery(d.videoId, d.title || d.videoId);
   h += "<h4 class='dsec'>Add a part</h4><div class='dacts addpart'>" +
     "<a class='pill' href='record.html?" + q + "'>Record</a>" +
-    "<a class='pill' href='upload.html?" + q + "'>Upload</a>" +
-    "<a class='pill' href='link.html?" + q + "'>Link</a></div>" +
+    "<a class='pill' href='upload.html?" + q + "'>Upload</a></div>" +
     "<button class='pill block' data-hub-act='tie'>Tie a session to this one</button>" +
     "<div id='tiepicker'></div>";
   if(d.writeupMd) h += "<div class='writeup'>" + inlineMd(d.writeupMd) + "</div>";

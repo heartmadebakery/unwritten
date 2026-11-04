@@ -5,10 +5,10 @@
    signer and Stream (hub lists, upload status polls) always go
    straight to the network. Clips never pass through here — they live
    in IndexedDB and downloads, as before. */
-var CACHE = "unwritten-recorder-v12";
-var ASSETS = ["./", "index.html", "record.html", "upload.html", "link.html",
+var CACHE = "unwritten-recorder-v13";
+var ASSETS = ["./", "index.html", "record.html", "upload.html",
               "app.css", "common.js", "home.js", "record.js",
-              "upload.js", "link.js", "manifest.webmanifest",
+              "upload.js", "manifest.webmanifest",
               "icons/apple-touch-icon.png", "icons/icon-192.png",
               "icons/icon-512.png", "icons/icon-512-maskable.png"];
 

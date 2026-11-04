@@ -32,7 +32,7 @@ function renderUploadHistory(){
   var attempts = loadFetchAttempts();
   fh.innerHTML = "<h3 class='subhead'>Fetches</h3>" +
     (attempts.map(fetchAttemptHTML).join("") ||
-      "<p class='note'>No links queued yet — fetch one from the link screen.</p>");
+      "<p class='note'>No links queued yet — fetch one with the link field above.</p>");
 }
 document.addEventListener("click", function(e){
   var r = e.target.closest ? e.target.closest("[data-cloud-retry]") : null;
@@ -41,6 +41,59 @@ document.addEventListener("click", function(e){
   cloudRetry(r.getAttribute("data-cloud-retry"));
   setTimeout(renderUploadHistory, 2000);
 });
+function isDirectMediaUrl(u){
+  try{
+    var p = new URL(u).pathname.toLowerCase();
+    return /\.(mp4|webm|mov|mkv|m4v|mp3|m4a|wav)$/.test(p);
+  }catch(e){ return false; }
+}
+$("urlfetchbtn").onclick = async function(){
+  var u = $("urlinput").value.trim();
+  var st = $("urlstatus");
+  if(!u){ st.textContent = "Paste a link first."; return; }
+  /* Direct files download in the page, into the normal session path;
+     watch pages (YouTube and the like) queue to the pipeline, which
+     fetches them with yt-dlp — the browser cannot download those. */
+  if(isDirectMediaUrl(u)){
+    st.textContent = "⬇ Downloading…";
+    try{
+      var rs = await fetch(u);
+      if(!rs.ok) throw new Error("HTTP " + rs.status);
+      var blob = await rs.blob();
+      if(!blob.size) throw new Error("empty file");
+      st.innerHTML = "⬇ <b>Saving on this device…</b> Keep this page open until it says saved.";
+      var saved = saveBlob(blob, "unwritten_lesson_upload_" + stamp() + "." + extFor({type: blob.type || "", name: u}, "mp4"));
+      $("urlinput").value = "";
+      await saved;
+      st.innerHTML = "✅ <b>Saved on this device.</b> The video is saved here and uploading to Cloud — watch its progress below.";
+      renderUploadHistory();
+    }catch(e){
+      st.innerHTML = "⬇ <b>Couldn't download that link</b> (" + escHtml(e.message) + ") The site may block cross-site downloads.";
+    }
+    return;
+  }
+  if(!cloudToken()){ st.innerHTML = "⬇ Queuing needs the signer token — rebuild the app to stamp one."; return; }
+  st.textContent = "⬇ Queuing…";
+  try{
+    var res = await fetch(cloudSignerUrl() + "/fetch/jobs", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "X-Signer-Token": cloudToken()},
+      /* Continuing a session: the pipeline's fetched video becomes
+         its next part (the signer ties it when the job is done). */
+      body: JSON.stringify(joinTarget() ? {url: u, joinTo: joinTarget().videoId} : {url: u})
+    });
+    if(res.status === 401){ st.innerHTML = "Signer refused the token — rebuild the app to stamp a fresh one."; logFetchAttempt(u, false); return; }
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    $("urlinput").value = "";
+    st.innerHTML = "✅ <b>Queued.</b> The pipeline will fetch the video and process it like a recording." +
+      (joinTarget() ? " It joins <b>" + escHtml(joinTarget().title) + "</b> as its next part." : "");
+    logFetchAttempt(u, true);
+    renderUploadHistory();
+  }catch(e){
+    st.innerHTML = "⬇ <b>Couldn't queue that link</b> (" + escHtml(e.message) + ") Check the connection and Cloud settings.";
+    logFetchAttempt(u, false);
+  }
+};
 $("uploadbtn").onclick = async function(){
   var f = $("uploadinput").files[0];
   if(!f){ $("uploadstatus").innerHTML = "Pick a video file first."; return; }

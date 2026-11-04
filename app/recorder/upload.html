@@ -38,15 +38,19 @@
     <button class="pill primary block" id="uploadbtn">Upload</button>
     <div id="uploadstatus"></div>
   </section>
+  <section class="card upcard" aria-labelledby="fetchhead">
+    <h2 id="fetchhead">Fetch from link</h2>
+    <p class="note">A direct video file downloads right here; a YouTube or watch-page link queues to the pipeline, which fetches and processes it like a recording.</p>
+    <label for="urlinput" class="vh">Video link</label>
+    <input type="url" id="urlinput" inputmode="url" autocomplete="off" placeholder="https://…">
+    <button class="pill block" id="urlfetchbtn">Fetch from link</button>
+    <div id="urlstatus"></div>
+  </section>
   <section class="card upcard" aria-labelledby="prevhead">
     <h2 id="prevhead">Previous uploads and fetches</h2>
     <div id="uphistory"></div>
     <div id="fetchhistory"></div>
   </section>
-  <a class="card upcard linkrow" id="golink" href="link.html">
-    <span class="eglyph" aria-hidden="true"><svg class="i" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></svg></span>
-    <span><b>Fetch from link</b><br><span class="note">A YouTube or video link, instead of a file</span></span>
-  </a>
 </div>
 <script src="common.js"></script>
 <script src="upload.js"></script>

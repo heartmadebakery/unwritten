@@ -217,7 +217,8 @@ class IOSNativeFeelTests(unittest.TestCase):
     Record is an inset-grouped List like home, so its swipe actions
     really fire (they are no-ops inside a ScrollView); the shutter is
     a camera-style ring and disc; an empty device list is a system
-    empty state; Fetch from link waits for a link."""
+    empty state; Fetch from link waits for a link (on the upload
+    screen since the Nov 4 merge)."""
 
     @classmethod
     def setUpClass(cls):

@@ -1,6 +1,6 @@
 """User-ordered Nov 3: home offers two main actions, Record or Upload
-video. Upload video opens its own screen with two ways in — choose a
-file, or Fetch from link — and Fetch from link is a screen of its own.
+video. User-ordered Nov 4: the upload screen holds file and link —
+choose a video, then Fetch from link, then previous attempts.
 Status lines belong to the screen they report on: the "Point the
 camera at the mentor's hands..." help is the Record screen's alone and
 nothing leaks onto home or a sibling screen.
@@ -32,14 +32,41 @@ class WebUploadLinkScreens(unittest.TestCase):
         cls.home = read(REC, "index.html")
         cls.upload = read(REC, "upload.html")
         cls.uploadjs = read(REC, "upload.js")
-        cls.link = read(REC, "link.html")
-        cls.linkjs = read(REC, "link.js")
 
     def test_home_has_no_link_fetcher(self):
         for token in ['id="urlinput"', 'id="urlfetchbtn"', "Fetch from link",
                       "Paste a video link"]:
             self.assertNotIn(token, self.home, token)
         self.assertIn('href="upload.html"', self.home)
+
+    def test_upload_holds_file_and_link(self):
+        # User-ordered Nov 4: no separate link page — the fetch field
+        # lives on the upload page after the upload section.
+        for token in ['id="uploadinput"', 'id="uploadbtn"',
+                      'id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"',
+                      "Fetch from link"]:
+            self.assertIn(token, self.upload, token)
+        self.assertIn('id="uphistory"', self.upload)
+        for token in ['href="link.html"', 'id="golink"', 'src="link.js"',
+                      'id="backbtn-link"']:
+            self.assertNotIn(token, self.upload, token)
+            self.assertNotIn(token, self.uploadjs, token)
+        for token in ["/fetch/jobs", "Queued.", "Signer refused the token",
+                      "function isDirectMediaUrl", "saveBlob(",
+                      "joinTarget()", "logFetchAttempt"]:
+            self.assertIn(token, self.uploadjs, token)
+        self.assertNotIn("openCamera", self.uploadjs)
+
+    def test_no_separate_link_page(self):
+        # User-ordered Nov 4: link.html / link.js are gone; the shell
+        # and the build ship only the upload page.
+        for name in ["link.html", "link.js"]:
+            self.assertFalse(os.path.exists(os.path.join(REC, name)), name)
+        sw = read(REC, "sw.js")
+        build = read(REC, "build.sh")
+        for asset in ["link.html", "link.js"]:
+            self.assertNotIn(asset, sw, asset)
+            self.assertNotIn(asset, build, asset)
 
     def test_upload_page_lists_previous_attempts(self):
         # User-ordered Nov 4: the upload page lists previous
@@ -58,40 +85,19 @@ class WebUploadLinkScreens(unittest.TestCase):
         for token in ["loadFetchAttempts", "logFetchAttempt",
                       "uw_fetch_attempts"]:
             self.assertIn(token, common, token)
-        self.assertIn("logFetchAttempt", self.linkjs)
+        self.assertIn("logFetchAttempt", self.uploadjs)
 
-    def test_upload_offers_file_or_link(self):
-        for token in ['id="uploadinput"', 'id="uploadbtn"',
-                      'id="golink"', 'href="link.html"', "Fetch from link"]:
-            self.assertIn(token, self.upload, token)
-        # The link fetcher itself lives on its own page.
-        for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"']:
-            self.assertNotIn(token, self.upload, token)
-        self.assertNotIn("/fetch/jobs", self.uploadjs)
-        self.assertNotIn("urlfetchbtn", self.uploadjs)
-
-    def test_link_page_is_its_own_screen(self):
-        for token in ['id="urlinput"', 'id="urlfetchbtn"', 'id="urlstatus"',
-                      'src="common.js"', 'src="link.js"', 'id="status"',
-                      'id="backbtn-link"', 'href="upload.html"']:
-            self.assertIn(token, self.link, token)
-        for token in ["/fetch/jobs", "Queued.", "Signer refused the token",
-                      "function isDirectMediaUrl", "saveBlob("]:
-            self.assertIn(token, self.linkjs, token)
-        self.assertNotIn("openCamera", self.linkjs)
-
-    def test_shell_precaches_and_ships_the_link_page(self):
+    def test_shell_precaches_and_ships_the_upload_page(self):
         sw = read(REC, "sw.js")
         build = read(REC, "build.sh")
-        for asset in ["link.html", "link.js"]:
+        for asset in ["upload.html", "upload.js"]:
             self.assertIn(asset, sw, asset)
             self.assertIn(asset, build, asset)
 
     def test_record_help_only_on_record_page(self):
         record = read(REC, "record.html")
         self.assertIn("teach the way you'd teach anyway", record)
-        for name, src in [("home", self.home), ("upload", self.upload),
-                          ("link", self.link)]:
+        for name, src in [("home", self.home), ("upload", self.upload)]:
             self.assertNotIn("Record a new lesson", src, name)
             self.assertNotIn("Point the camera", src, name)
 
@@ -109,19 +115,16 @@ class AndroidUploadLinkScreens(unittest.TestCase):
             self.assertNotIn(token, self.home, token)
         self.assertIn('showScreen("upload")', self.home)
 
-    def test_upload_screen_offers_file_or_link(self):
+    def test_upload_screen_offers_file_and_link(self):
+        # User-ordered Nov 4: no separate link screen — the fetch field
+        # lives on the upload screen after the upload section.
         up = between(self.main, "private void buildUploadScreen",
-                     "private void buildLinkScreen")
+                     "private void buildRecordScreen")
         for token in ["Choose a video", "pickUpload()", "Fetch from link",
-                      'showScreen("link")']:
+                      "urlInput", "queueFetchUrl", "uploadHistory"]:
             self.assertIn(token, up, token)
-        self.assertNotIn("urlInput", up)
-
-    def test_link_screen_is_its_own_screen(self):
-        link = between(self.main, "private void buildLinkScreen",
-                       "/** A personal hello")
-        for token in ["urlInput", "Fetch from link", "queueFetchUrl"]:
-            self.assertIn(token, link, token)
+        for token in ['showScreen("link")', "buildLinkScreen", "linkScreen"]:
+            self.assertNotIn(token, self.main, token)
 
     def test_upload_screen_lists_previous_attempts(self):
         # User-ordered Nov 4: previous upload/fetch attempts list on
@@ -141,13 +144,13 @@ class AndroidUploadLinkScreens(unittest.TestCase):
     def test_screens_route_and_back_steps_up_one_level(self):
         show = between(self.main, "private void showScreen",
                        "private void pickUpload")
-        for token in ['"upload"', '"link"', "uploadScreen", "linkScreen",
-                      "Upload video", "Fetch from link"]:
+        for token in ['"upload"', "uploadScreen", "Upload video"]:
             self.assertIn(token, show, token)
+        self.assertNotIn('"link"', show)
         back = between(self.main, "public void onBackPressed", "private String cloudWatchUrl")
-        # Link steps back to Upload, Upload to home.
-        self.assertIn('"link".equals(currentScreen)', back)
-        self.assertIn('showScreen("upload")', back)
+        # Upload steps back to home; no link screen remains.
+        self.assertNotIn('"link".equals(currentScreen)', back)
+        self.assertIn('showScreen("home")', back)
 
 
 class IOSUploadLinkScreens(unittest.TestCase):
@@ -158,18 +161,22 @@ class IOSUploadLinkScreens(unittest.TestCase):
         cls.home = between(cls.view, "private var homeView",
                            "private func actionTile")
         cls.upload = between(cls.view, "private var uploadView",
-                             "private var fetchLinkView")
-        cls.fetch = between(cls.view, "private var fetchLinkView",
-                            "private var recordView")
+                             "private var recordView")
 
     def test_routes(self):
+        # User-ordered Nov 4: no separate fetch screen — record and
+        # upload are the only capture routes.
         route = between(self.view, "enum Route", "}\n")
-        for case in ["case record", "case upload", "case fetchLink"]:
+        for case in ["case record", "case upload"]:
             self.assertIn(case, route, case)
+        self.assertNotIn("fetchLink", route)
         dest = between(self.view, ".navigationDestination(for: Route.self)",
                        "// Links, the back button")
-        for token in ["uploadView", "fetchLinkView"]:
-            self.assertIn(token, dest, token)
+        self.assertIn("uploadView", dest)
+        self.assertNotIn("fetchLinkView", dest)
+        for token in ["fetchLinkView", "case fetchLink",
+                      "path.append(.fetchLink)"]:
+            self.assertNotIn(token, self.view, token)
 
     def test_home_is_two_actions_then_hub(self):
         for token in ["Fetch from link", "fetchUrl", "TextField",
@@ -181,18 +188,13 @@ class IOSUploadLinkScreens(unittest.TestCase):
         self.assertLess(self.home.index("path.append(.upload)"),
                         self.home.index("store.hubRows"))
 
-    def test_upload_screen_offers_file_or_link(self):
+    def test_upload_screen_offers_file_and_link(self):
+        # User-ordered Nov 4: no separate fetch screen — the fetch
+        # field lives on the upload screen after the upload section.
         for token in ["Photo Library", "Files", "showPhotosPicker = true",
                       "showUploadPicker = true", "Fetch from link",
-                      "path.append(.fetchLink)"]:
+                      "TextField", "fetchUrl", "canFetchLink", "fetchLink()"]:
             self.assertIn(token, self.upload, token)
-        for token in ["TextField", "fetchUrl"]:
-            self.assertNotIn(token, self.upload, token)
-
-    def test_fetch_link_screen_is_its_own_screen(self):
-        for token in ["TextField", "fetchUrl", "canFetchLink", "fetchLink()",
-                      "Fetch from link", ".navigationTitle"]:
-            self.assertIn(token, self.fetch, token)
 
     def test_upload_screen_lists_previous_attempts(self):
         # User-ordered Nov 4: previous upload/fetch attempts list on
@@ -214,8 +216,7 @@ class IOSUploadLinkScreens(unittest.TestCase):
         record = between(self.view, "private var recordView",
                          "private func showScreen")
         self.assertIn("Point the camera at the mentor's hands", record)
-        for name, src in [("home", self.home), ("upload", self.upload),
-                          ("fetch", self.fetch)]:
+        for name, src in [("home", self.home), ("upload", self.upload)]:
             self.assertNotIn("Point the camera", src, name)
 
     def test_status_never_follows_you_to_another_screen(self):
@@ -223,9 +224,8 @@ class IOSUploadLinkScreens(unittest.TestCase):
                          ".onChange(of: engine.isRecording)")
         self.assertIn('store.status = ""', change)
 
-    def test_upload_and_fetch_screens_show_their_own_status(self):
-        for name, src in [("upload", self.upload), ("fetch", self.fetch)]:
-            self.assertIn("store.status", src, name)
+    def test_upload_screen_shows_its_own_status(self):
+        self.assertIn("store.status", self.upload)
 
 
 if __name__ == "__main__":

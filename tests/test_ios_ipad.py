@@ -76,7 +76,7 @@ class IPadSupportTests(unittest.TestCase):
         body = self.view.split("var body: some View", 1)[1] \
                         .split(".tint(EMBER_INK)", 1)[0]
         for screen in ["homeView", "recordView", "uploadView",
-                       "fetchLinkView", "hubScreen(videoId)"]:
+                       "hubScreen(videoId)"]:
             self.assertRegex(body, screen.replace("(", r"\(").replace(")", r"\)")
                              + r"\s*\.readableColumn\(\)", screen)
 
