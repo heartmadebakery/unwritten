@@ -8,6 +8,15 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-04
 
+### Fixed
+- **iOS build broken on `main` again.** The write-up screengrab strip
+  put a regex in a plain Swift literal (`"!\[Step\s+\d+\]…"`), whose
+  `\[`, `\s`, `\d` are invalid escapes; now a raw `#"…"#` string in
+  `ContentView.swift`. New guard
+  `test_plain_string_literals_use_only_swift_escapes` fails on any
+  non-Swift escape in a plain literal. Signed device and Mac (Designed
+  for iPad) builds succeed; 530 tests OK.
+
 ### Added
 - **Each write-up step carries its screengrab.** (User-ordered: when
   creating the write-up include a corresponding appropriate screengrab

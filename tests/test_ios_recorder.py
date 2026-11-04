@@ -930,6 +930,22 @@ class IOSSwiftSyntaxTests(unittest.TestCase):
                     "%s:%d uses \\uXXXX — write \\u{XXXX}"
                     % (os.path.basename(path), n))
 
+    def test_plain_string_literals_use_only_swift_escapes(self):
+        # Nov 4: a regex in a plain literal ("!\[Step\s+\d+\]") broke the
+        # build again. Swift allows only \0 \\ \t \n \r \" \' \u{..}
+        # \(..) in a plain literal; regexes belong in raw #"..."# strings.
+        lit = re.compile(r'(?<![#"])"((?:[^"\\]|\\.)*)"')
+        for path in glob.glob(os.path.join(SRC, "*.swift")):
+            for n, line in enumerate(read(path).splitlines(), 1):
+                if line.lstrip().startswith("//") or '"""' in line:
+                    continue
+                for m in lit.finditer(line):
+                    for esc in re.findall(r"\\(.)", m.group(1)):
+                        self.assertIn(
+                            esc, "0\\tnr\"'u(",
+                            "%s:%d has \\%s in a plain string — use #\"...\"#"
+                            % (os.path.basename(path), n, esc))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1594,7 +1594,7 @@ struct ContentView: View {
     /// Step screengrabs (![Step N](stills/...)) live in the page, not the
     /// hub: the hub has no still URLs, so they strip out here.
     private static func markdown(_ text: String) -> AttributedString {
-        let noImg = text.replacingOccurrences(of: "!\[Step\s+\d+\]\([^)]+\)", with: "", options: .regularExpression)
+        let noImg = text.replacingOccurrences(of: #"!\[Step\s+\d+\]\([^)]+\)"#, with: "", options: .regularExpression)
         let opts = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace)
         return (try? AttributedString(markdown: noImg, options: opts)) ?? AttributedString(noImg)
