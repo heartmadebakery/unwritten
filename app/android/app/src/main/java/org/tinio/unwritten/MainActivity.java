@@ -2200,9 +2200,12 @@ public class MainActivity extends Activity {
     }
 
     /** Write-ups are Markdown: inline bold and italic render, line
-     *  breaks stay — the same inline-only reading as iOS and the web. */
+     *  breaks stay — the same inline-only reading as iOS and the web.
+     *  Step screengrabs (![Step N](stills/...)) live in the page, not the
+     *  hub: the hub has no still URLs, so they strip out here. */
     private CharSequence inlineMarkdown(String md) {
-        String html = android.text.TextUtils.htmlEncode(md)
+        String noImg = md.replaceAll("!\\[Step\\s+\\d+\\]\\([^)]+\\)", "");
+        String html = android.text.TextUtils.htmlEncode(noImg)
             .replaceAll("\\*\\*([^*\\n]+)\\*\\*", "<b>$1</b>")
             .replaceAll("(^|[^*])\\*([^*\\n]+)\\*", "$1<i>$2</i>")
             .replace("\n", "<br>");

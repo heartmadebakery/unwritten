@@ -137,6 +137,13 @@ class IOSRecorderTests(unittest.TestCase):
         for token in ["playHubSession", "hubDetailCard", '"Hub"']:
             self.assertIn(token, self.view, token)
 
+    def test_hub_writeup_strips_step_stills(self):
+        # User-ordered 2026-11-04: parity with web/Android — the hub
+        # detail strips step stills (no still URLs in the hub).
+        body = read(VIEW).split("private static func markdown", 1)[1].split("\n    }\n", 1)[0]
+        self.assertIn("Step", body)
+        self.assertIn("noImg", body)
+
     def test_hub_delete_removes_record_before_video(self):
         # Hub record first, then the Stream video: a failure between
         # the two must leave the bytes orphaned (playable,

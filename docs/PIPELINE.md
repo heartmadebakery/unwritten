@@ -159,13 +159,18 @@ stdlib + ffmpeg + Muse calls.
 - **The write-up** is `draft_writeup.py`: a polished, sectioned
   document in the mentor's voice; the transcript is the spine, and
   what it leaves unsaid is filled in from the lesson video — never
-  from outside knowledge. With `MODEL_API_KEY` set, Spark watches
+  from outside knowledge. Each step carries its screengrab
+  (`stills/step-NN.jpg`, cut from the lesson video in step order and
+  embedded as `![Step N](stills/step-NN.jpg)` in `writeup.md`; the
+  optional page shows them, the hub strips them since it has no
+  still URLs). With `MODEL_API_KEY` set, Spark watches
   the whole video (Meta video understanding, visuals and speech; a
   non-MP4 lesson is remuxed, or transcoded to H.264/AAC when its
   codecs cannot ride in MP4, like the web's VP8 WebM takes);
   otherwise evenly spaced still frames go along (`--image`
   attachments), and without lesson media it degrades to
-  transcript-only.
+  transcript-only (no stills). A failed still cut keeps the step
+  without its image — stills never block a run.
 - **Correction highlights** ride on the clips: when the finder names
   a visible subject (`"segment"`) and `MODEL_API_KEY` is set, SAM
   3.1 tracks it through the cut clip (Meta media segmentation) and

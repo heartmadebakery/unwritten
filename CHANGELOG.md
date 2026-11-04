@@ -8,6 +8,20 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-04
 
+### Added
+- **Each write-up step carries its screengrab.** (User-ordered: when
+  creating the write-up include a corresponding appropriate screengrab
+  from the video for the step being described.) *Pipeline:*
+  `draft_writeup.py` cuts one JPEG per step (`stills/step-NN.jpg`,
+  spread across the lesson in step order) and embeds
+  `![Step N](stills/step-NN.jpg)` in `writeup.md`; transcript-only runs
+  keep text only, failed cuts keep the step without its still — stills
+  never block a run. Stale `stills/` clears with the run. *Page/site:*
+  `make_page.py` renders each still under its step when the file
+  exists. *Apps (web, Android, iOS):* the hub write-up strips step
+  images (no still URLs in the hub) instead of showing raw markdown.
+  Verified: focused still/page/strip tests plus the full suite.
+
 ### Changed
 - **Cloud settings are read-only build values.** (User-ordered: a
   stale saved signer URL once broke every cloud request, so

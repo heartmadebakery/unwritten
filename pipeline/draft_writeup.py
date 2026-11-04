@@ -7,7 +7,9 @@ anything the transcript leaves unsaid is filled in from the lesson
 video itself — never from outside knowledge. With MODEL_API_KEY set,
 Spark watches the whole video (Meta video understanding); otherwise
 evenly spaced still frames go along instead, and without lesson media
-at all the draft is written from the transcript alone.
+at all the draft is written from the transcript alone. Each step also
+carries its screengrab (stills/step-NN.jpg, cut in step order alongside
+writeup.md) — transcript-only runs keep text only.
 
 Usage: draft_writeup.py <transcript_file> <writeup_out.md> [lesson_media]
 """
@@ -109,9 +111,13 @@ def parse_draft(raw):
     return obj
 
 
-def render_writeup(obj):
+def render_writeup(obj, stills=None):
     """Deterministic markdown from a validated draft object. Same shape
-    the page parser has always read."""
+    the page parser has always read, plus one screengrab line per step
+    when stills are given: stills[i] is the relative stills/ path for
+    step i+1, or "" to skip it. Image lines are ignored by the text
+    parser, so old readers keep working."""
+    stills = list(stills or [])
     lines = ["# %s" % obj["title"].strip(), ""]
     if obj.get("intro", "").strip():
         lines += [obj["intro"].strip(), ""]
@@ -122,8 +128,10 @@ def render_writeup(obj):
         lines.append("")
     lines.append("## Steps")
     lines.append("")
-    lines += ["%d. %s" % (i, step.strip())
-              for i, step in enumerate(obj["steps"], 1)]
+    for i, step in enumerate(obj["steps"], 1):
+        lines.append("%d. %s" % (i, step.strip()))
+        if i - 1 < len(stills) and stills[i - 1]:
+            lines.append("![Step %d](%s)" % (i, stills[i - 1]))
     lines.append("")
     if obj.get("knows"):
         lines.append("## What the mentor knows")
@@ -131,6 +139,127 @@ def render_writeup(obj):
         lines += ["- %s" % item.strip() for item in obj["knows"]]
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+STILLS_DIRNAME = "stills"
+STILL_WIDTH = 640
+
+
+def step_times(duration, count):
+    """One screengrab moment per step, spread across the lesson in
+    order: steps run in lesson order, so step i takes the i-th slice.
+    [] when there is no duration or no steps."""
+    try:
+        dur = float(duration)
+    except (TypeError, ValueError):
+        return []
+    try:
+        n = int(count)
+    except (TypeError, ValueError):
+        return []
+    if not dur or dur <= 0 or n <= 0:
+        return []
+    return [dur * (i + 1) / (n + 1) for i in range(n)]
+
+
+def count_steps(md_text):
+    """Numbered steps in rendered markdown."""
+    return len(re.findall(r"^\s*\d+[.)]\s+\S", md_text or "",
+                          re.MULTILINE))
+
+
+def parse_step_images(md_text):
+    """Step number (1-based) -> stills/ path from ![Step N](path)
+    lines. Anything else is ignored, so hand-written markdown without
+    stills parses to {}."""
+    found = {}
+    for m in re.finditer(r"!\[Step\s+(\d+)\]\(([^)]+)\)",
+                         md_text or ""):
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            continue
+        path = m.group(2).strip()
+        if n > 0 and path:
+            found[n] = path
+    return found
+
+
+def attach_stills(md_text, stills):
+    """Insert ![Step N](path) after each numbered step line. stills[N-1]
+    is the path for step N, or "" to skip it. Lines for missing stills
+    are left untouched, so a partial extraction still reads cleanly."""
+    stills = list(stills or [])
+    if not stills:
+        return md_text
+    out = []
+    index = 0
+    for line in (md_text or "").splitlines():
+        out.append(line)
+        if re.match(r"^\s*\d+[.)]\s+\S", line):
+            index += 1
+            if index - 1 < len(stills) and stills[index - 1]:
+                out.append("![Step %d](%s)" % (index,
+                                               stills[index - 1]))
+    text = "\n".join(out)
+    if (md_text or "").endswith("\n") and not text.endswith("\n"):
+        text += "\n"
+    return text
+
+
+def extract_step_stills(media, out_md_path, count):
+    """Cut one JPEG per write-up step from the lesson video into
+    <work>/stills/step-NN.jpg. Times spread across the duration in
+    step order, so each still shows its step's moment. Returns the
+    relative stills/ paths in step order ([] when there is no media,
+    no duration, or no steps); a failed cut leaves "" for that step
+    and never raises — the write-up stands without it."""
+    try:
+        n = int(count)
+    except (TypeError, ValueError):
+        return []
+    if n <= 0 or not media or not os.path.isfile(media):
+        return []
+    if not out_md_path:
+        return []
+    dur = media_duration(media)
+    if not dur or dur <= 0:
+        return []
+    times = step_times(dur, n)
+    if not times:
+        return []
+    stills_dir = os.path.join(os.path.dirname(os.path.abspath(out_md_path)),
+                              STILLS_DIRNAME)
+    try:
+        os.makedirs(stills_dir, exist_ok=True)
+    except OSError:
+        return []
+    rels = []
+    for i, stamp in enumerate(times, 1):
+        name = "step-%02d.jpg" % i
+        dest = os.path.join(stills_dir, name)
+        try:
+            proc = subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-ss", "%.1f" % stamp,
+                 "-i", media, "-frames:v", "1", "-vf",
+                 "scale=%d:-1" % STILL_WIDTH, dest],
+                capture_output=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            rels.append("")
+            continue
+        if proc.returncode == 0 and os.path.exists(dest) \
+                and os.path.getsize(dest) > 0:
+            rels.append("%s/%s" % (STILLS_DIRNAME, name))
+        else:
+            try:
+                if os.path.exists(dest):
+                    os.unlink(dest)
+            except OSError:
+                pass
+            rels.append("")
+    if not any(rels):
+        return []
+    return rels
 
 
 def validate_writeup(text):
@@ -280,6 +409,20 @@ def main():
     args = ap.parse_args()
     with open(args.transcript) as fh:
         writeup = draft(fh.read(), args.media or "")
+    # One screengrab per step, cut from the lesson video in step
+    # order. Transcript-only runs keep the text write-up; a failed
+    # cut keeps the step without its still — never blocks the run.
+    if args.media:
+        try:
+            stills = extract_step_stills(args.media, args.out,
+                                         count_steps(writeup))
+        except Exception as exc:
+            print(f"  [write-up] step stills skipped ({exc})")
+            stills = []
+        if stills:
+            writeup = attach_stills(writeup, stills)
+            print(f"  [write-up] {len([s for s in stills if s])} "
+                  f"step still(s) cut")
     with open(args.out, "w") as fh:
         fh.write(writeup + "\n")
     print(f"write-up drafted -> {args.out}")

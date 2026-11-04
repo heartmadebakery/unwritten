@@ -6,10 +6,10 @@ single shareable page — a guide or manual for someone who wasn't in the
 room — for when there is a recipient for it. Nothing in the core
 depends on it, and the core pipeline never calls it.
 
-It consumes only core outputs: writeup.md (the mentor's steps + the
-mentor's judgment) and corrections.json (the techniques, each with
-the mentor's exact words and,
-where run_pipeline cut them, a clip file under clips/).
+It consumes only core outputs: writeup.md (the mentor's steps, each
+with its screengrab stills/step-NN.jpg, + the mentor's judgment) and
+corrections.json (the techniques, each with the mentor's exact words
+and, where run_pipeline cut them, a clip file under clips/).
 
 Usage: make_page.py --work DIR --title "Mom's Bread"
 Reads <work>/writeup.md and <work>/corrections.json; writes
@@ -26,7 +26,9 @@ def parse_writeup(md_text):
     """Split a write-up into (intro, needs, steps, wisdom). Intro is
     the first paragraph after the title; needs are the bullets under
     a 'need' heading; steps are numbered lines outside the wisdom
-    section; wisdom bullets live under a 'know' heading."""
+    section; wisdom bullets live under a 'know' heading. Step
+    screengrab lines (![Step N](...)) are ignored here — see
+    parse_step_images."""
     intro, needs, steps, wisdom = "", [], [], []
     section, seen_title = "", False
     for line in md_text.splitlines():
@@ -47,7 +49,9 @@ def parse_writeup(md_text):
             continue
         if not seen_title:
             continue
-        if not intro and not s.startswith(("#", "-", "*")) \
+        if s.startswith("!["):
+            continue
+        if not intro and not s.startswith(("#", "-", "*", "!")) \
                 and not re.match(r"^\d+[.)]\s+", s):
             intro = s
         if section == "wisdom":
@@ -61,6 +65,22 @@ def parse_writeup(md_text):
     return intro, needs, steps, wisdom
 
 
+def parse_step_images(md_text):
+    """Step number (1-based) -> stills/ path from ![Step N](path)
+    lines. Missing stills parse to {}."""
+    found = {}
+    for m in re.finditer(r"!\[Step\s+(\d+)\]\(([^)]+)\)",
+                         md_text or ""):
+        try:
+            n = int(m.group(1))
+        except ValueError:
+            continue
+        path = m.group(2).strip()
+        if n > 0 and path:
+            found[n] = path
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--work", required=True)
@@ -69,7 +89,9 @@ def main():
     work = args.work
 
     with open(os.path.join(work, "writeup.md")) as fh:
-        intro, needs, steps, wisdom = parse_writeup(fh.read())
+        md_text = fh.read()
+    intro, needs, steps, wisdom = parse_writeup(md_text)
+    step_images = parse_step_images(md_text)
     hits = []
     corrections_path = os.path.join(work, "corrections.json")
     if os.path.exists(corrections_path):
@@ -87,7 +109,15 @@ def main():
     needs_html = "".join(f"<li>{esc(n)}</li>" for n in needs)
     needs_block = (f"<h2>What you need</h2><ul>{needs_html}</ul>"
                    if needs else "")
-    steps_html = "".join(f"<li>{esc(s)}</li>" for s in steps)
+    parts = []
+    for i, s in enumerate(steps, 1):
+        img = ""
+        rel = step_images.get(i, "")
+        if rel and os.path.exists(os.path.join(work, rel)):
+            img = (f'<br><img src="{esc(rel)}" '
+                   f'alt="Step {i} screengrab">')
+        parts.append(f"<li>{esc(s)}{img}</li>")
+    steps_html = "".join(parts)
     wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
     wisdom_block = (f"<h2>What the mentor knows</h2><ul>{wisdom_html}</ul>"
                     if wisdom else "")

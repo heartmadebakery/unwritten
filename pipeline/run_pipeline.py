@@ -61,7 +61,7 @@ STALE_FILES = ("manifest.json", "transcript.txt",
                "transcript_timestamped.txt", "segments.json",
                "writeup.md", "corrections.json", "corrections.md",
                "poster.jpg", "chapters.json")
-STALE_DIRS = ("clips", "transcript")
+STALE_DIRS = ("clips", "transcript", "stills")
 
 
 def py():

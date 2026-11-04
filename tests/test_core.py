@@ -269,6 +269,45 @@ class TestDraftWriteup(unittest.TestCase):
         self.assertEqual(steps, ["Cut the pork.", "Simmer until tender."])
         self.assertEqual(wisdom, ["Taste before serving."])
 
+    def test_render_writeup_embeds_step_stills(self):
+        # User-ordered 2026-11-04: each write-up step carries its
+        # screengrab from the lesson video.
+        md = dw.render_writeup(
+            {"title": "Soup", "intro": "Intro.",
+             "needs": [], "steps": ["Boil.", "Serve."], "knows": []},
+            stills=["stills/step-01.jpg", "stills/step-02.jpg"])
+        self.assertIn("![Step 1](stills/step-01.jpg)", md)
+        self.assertIn("![Step 2](stills/step-02.jpg)", md)
+        self.assertEqual(dw.validate_writeup(md), "")
+        _, _, steps, _ = make_page.parse_writeup(md)
+        self.assertEqual(steps, ["Boil.", "Serve."])
+
+    def test_step_times_spread_across_duration(self):
+        times = dw.step_times(90.0, 2)
+        self.assertEqual(len(times), 2)
+        self.assertLess(times[0], times[1])
+        self.assertGreater(times[0], 0)
+        self.assertLess(times[1], 90.0)
+
+    def test_extract_step_stills_degrades_without_media(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = os.path.join(td, "writeup.md")
+            self.assertEqual(dw.extract_step_stills("", out, 2), [])
+            self.assertEqual(
+                dw.extract_step_stills("/nonexistent/x.mp4", out, 2), [])
+
+    def test_attach_stills_skips_missing(self):
+        md = "# T\n\n## Steps\n\n1. A.\n2. B.\n"
+        out = dw.attach_stills(md, ["stills/step-01.jpg", ""])
+        self.assertIn("![Step 1](stills/step-01.jpg)", out)
+        self.assertNotIn("Step 2", out)
+
+    def test_parse_step_images_maps_steps(self):
+        md = ("# T\n\n## Steps\n\n1. A.\n![Step 1](stills/step-01.jpg)\n"
+              "2. B.\n")
+        self.assertEqual(dw.parse_step_images(md),
+                         {1: "stills/step-01.jpg"})
+
 
 class TestParseWriteup(unittest.TestCase):
     def test_steps_and_wisdom_split(self):
@@ -281,6 +320,27 @@ class TestParseWriteup(unittest.TestCase):
         self.assertEqual(steps, ["Mix the flour.",
                                  "Knead until it stops fighting you."])
         self.assertEqual(wisdom, ["Warm water, like bath water."])
+
+    def test_page_renders_step_stills(self):
+        # User-ordered 2026-11-04: the page shows each step's
+        # screengrab beside the step.
+        import sys
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            os.makedirs(os.path.join(td, "stills"))
+            with open(os.path.join(td, "writeup.md"), "w") as fh:
+                fh.write("# T\n\nIntro.\n\n## Steps\n\n1. Do it.\n"
+                         "![Step 1](stills/step-01.jpg)\n")
+            with open(os.path.join(td, "stills", "step-01.jpg"), "wb") as fh:
+                fh.write(b"x")
+            with open(os.path.join(td, "corrections.json"), "w") as fh:
+                fh.write("[]")
+            argv = ["make_page.py", "--work", td, "--title", "T"]
+            with mock.patch.object(sys, "argv", argv):
+                make_page.main()
+            with open(os.path.join(td, "page.html")) as fh:
+                page = fh.read()
+            self.assertIn('src="stills/step-01.jpg"', page)
 
     def test_page_renders_audio_clips_and_survives_corrupt_json(self):
         # Audio-only lessons cut correction-NN.m4a; a corrupt

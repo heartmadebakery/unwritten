@@ -768,9 +768,12 @@ function hubEmbedUrl(d){
   return lib ? "https://player.mediadelivery.net/embed/" + lib + "/" + d.videoId : "";
 }
 /* Write-ups are Markdown: inline bold and italic render (after
-   escaping), line breaks stay — the same inline-only reading as iOS. */
+   escaping), line breaks stay — the same inline-only reading as iOS.
+   Step screengrabs (![Step N](stills/...)) live in the page, not the
+   hub: the hub has no still URLs, so they strip out here. */
 function inlineMd(text){
-  return escHtml(text).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+  var noImg = String(text || "").replace(/!\[Step\s+\d+\]\([^)]+\)/g, "");
+  return escHtml(noImg).replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
                       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>");
 }
 /* A lesson, listing style: a warm cover banner with its initial, the
