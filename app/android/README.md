@@ -66,7 +66,7 @@ app/build.gradle
 app/src/main/AndroidManifest.xml
 app/src/main/cpp/        CMakeLists.txt, uwcore.{h,cpp}, jni_bridge.cpp
 app/src/main/res/         drawable/uw_icon_fg.xml, mipmap-anydpi-v26/ icons, values/colors.xml
-app/src/main/java/org/tinio/unwritten/
+app/src/main/java/com/heartmadebakery/unwritten/
     MainActivity.java    home + record screens, upload picker + link queue, cloud, hub
     Glyphs.java          the line icons, drawn in code (Hearth)
     TinyFileProvider.java read-only content:// clips for external players
@@ -140,7 +140,7 @@ Android.
   calls. Export uses MediaStore Downloads (API 29+),
   which needs no storage permission.
 - Lessons live in the app's external files dir (`Android/data/
-  org.tinio.unwritten/files/clips`) — visible over USB, no permission
+  com.heartmadebakery.unwritten/files/clips`) — visible over USB, no permission
   needed. **Export** copies all lessons to `Downloads/Unwritten`.
 - Verified so far: clean build, signature, badging (sdkVersion 29),
   JNI symbol table, and the Nov 1 on-device shakeout (Pixel 4, wireless

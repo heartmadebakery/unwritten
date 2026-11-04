@@ -6,8 +6,9 @@
 # restores the template — so the committed file NEVER carries a real
 # token. Default is a simulator build (no paid developer account, no
 # device needed); pass DEVELOPMENT_TEAM=<id> for a signed real-iPhone
-# build instead. Both paths stamp, so device installs never need
-# hand-pasted credentials.
+# build instead; add TESTFLIGHT=1 to archive a Release build and upload
+# it to App Store Connect for TestFlight (the iOS install link). Every
+# path stamps, so installs never need hand-pasted credentials.
 #
 # On a dev machine with a team, open UnwrittenRecorder.xcodeproj in
 # Xcode to run on a real iPhone.
@@ -39,7 +40,54 @@ open(target, "w").write(src.replace(old, 'static let CLOUD_SIGNER_TOKEN_DEFAULT 
 print("stamped token #%d of %d into CloudConfig.swift (restored after build)" % (i + 1, len(tokens)))
 EOF
 
-if [ -n "${DEVELOPMENT_TEAM:-}" ]; then
+if [ -n "${TESTFLIGHT:-}" ]; then
+# TestFlight: the iOS twin of the Android APK link. Archive a stamped
+# Release build and upload it to App Store Connect with the Mac's
+# Xcode account; testers install from the TestFlight public link.
+[ -n "${DEVELOPMENT_TEAM:-}" ] || { echo "TESTFLIGHT=1 needs DEVELOPMENT_TEAM=<team id> (Xcode → Settings → Accounts)" >&2; exit 1; }
+BUILD_NUMBER="$(date -u +%Y%m%d%H%M)"
+echo "== archive (Release, team $DEVELOPMENT_TEAM, build $BUILD_NUMBER) =="
+rm -rf "$OUT/testflight" && mkdir -p "$OUT/testflight"
+xcodebuild archive \
+  -project "$HERE/UnwrittenRecorder.xcodeproj" \
+  -scheme UnwrittenRecorder \
+  -configuration Release \
+  -destination 'generic/platform=iOS' \
+  -archivePath "$OUT/testflight/UnwrittenRecorder.xcarchive" \
+  -derivedDataPath "$OUT/testflight/DerivedData" \
+  DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+  CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
+  -allowProvisioningUpdates
+cat > "$OUT/testflight/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>upload</string>
+  <key>teamID</key><string>$DEVELOPMENT_TEAM</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>manageAppVersionAndBuildNumber</key><false/>
+</dict></plist>
+PLIST
+echo "== upload to App Store Connect (TestFlight) =="
+# Upload auth: an App Store Connect API key when ASC_KEY_ID,
+# ASC_ISSUER_ID and ASC_KEY_PATH are set (keep the .p8 in the
+# git-ignored .certs/), else the Mac's Xcode account.
+AUTH=""
+if [ -n "${ASC_KEY_ID:-}" ]; then
+  [ -n "${ASC_ISSUER_ID:-}" ] && [ -f "${ASC_KEY_PATH:-}" ] || { echo "ASC_KEY_ID set: also set ASC_ISSUER_ID and ASC_KEY_PATH (the AuthKey .p8 file)" >&2; exit 1; }
+  AUTH="-authenticationKeyPath $ASC_KEY_PATH -authenticationKeyID $ASC_KEY_ID -authenticationKeyIssuerID $ASC_ISSUER_ID"
+fi
+# shellcheck disable=SC2086
+xcodebuild -exportArchive \
+  -archivePath "$OUT/testflight/UnwrittenRecorder.xcarchive" \
+  -exportOptionsPlist "$OUT/testflight/ExportOptions.plist" \
+  -exportPath "$OUT/testflight/export" \
+  -allowProvisioningUpdates $AUTH \
+  || { echo "Upload failed (error above). 'Failed to Use Accounts' = no App Store Connect access: re-add the account in Xcode → Settings → Accounts, or set ASC_KEY_ID/ASC_ISSUER_ID/ASC_KEY_PATH (App Store Connect → Users and Access → Integrations → Keys). 'App record ... not found' = create it once: App Store Connect → Apps → + → New App, bundle ID com.heartmadebakery.unwritten." >&2; exit 1; }
+echo "Uploaded build $BUILD_NUMBER — it shows in App Store Connect → TestFlight once processed."
+exit 0
+elif [ -n "${DEVELOPMENT_TEAM:-}" ]; then
 echo "== build (xcodebuild, device, team $DEVELOPMENT_TEAM) =="
 rm -rf "$OUT"
 xcodebuild \

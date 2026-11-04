@@ -1,4 +1,4 @@
-package org.tinio.unwritten;
+package com.heartmadebakery.unwritten;
 
 import android.content.ContentProvider;
 import android.content.ContentValues;
@@ -19,13 +19,13 @@ import java.io.FileNotFoundException;
  * dependencies by design: this is the androidx FileProvider's job
  * in ~80 lines, serving exactly one directory.
  *
- * URIs look like content://org.tinio.unwritten.files/clips/&lt;name&gt;
+ * URIs look like content://com.heartmadebakery.unwritten.files/clips/&lt;name&gt;
  * and resolve only to files physically inside the clips dir —
  * anything else (.., absolute paths, missing files) is refused.
  */
 public class TinyFileProvider extends ContentProvider {
 
-    public static final String AUTHORITY = "org.tinio.unwritten.files";
+    public static final String AUTHORITY = "com.heartmadebakery.unwritten.files";
 
     /** Content URI for a clip, or null when the file is not servable. */
     public static Uri uriForFile(Context ctx, File file) {

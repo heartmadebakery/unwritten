@@ -92,6 +92,23 @@ a connected iPhone. A device run uses the template (empty token)
 unless the build stamps one — run `build.sh` first and build from the
 same checkout (⚙️ Cloud settings only shows the build values).
 
+**TestFlight (the iOS install link):** an iPhone cannot install a
+downloaded app the way Android installs the APK, so the iOS twin of the
+web footer's APK link is a TestFlight public link.
+
+```sh
+TESTFLIGHT=1 DEVELOPMENT_TEAM=<team id> ./build.sh
+```
+
+This archives a token-stamped Release build with a fresh build number
+(UTC `yyyymmddHHMM`) and uploads it to App Store Connect. It signs in
+with the Mac's Xcode account, or with an App Store Connect API key when
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_PATH` are set (keep the
+`.p8` in the git-ignored `.certs/`). One-time setup in App Store
+Connect: an app record for `com.heartmadebakery.unwritten`, then TestFlight →
+an external testing group → Enable Public Link. The first external
+build goes through Beta App Review.
+
 ## Cloud upload (on by default)
 
 Lessons are always saved on-device first — with Cloud on, a copy then

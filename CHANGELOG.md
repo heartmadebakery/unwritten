@@ -8,6 +8,34 @@ history (30 commits) and is maintained in the open from then on.
 
 ## 2026-11-04
 
+### Added
+- **iOS TestFlight build (the iOS twin of the APK link).** An iPhone
+  cannot install a downloaded app, so `TESTFLIGHT=1
+  DEVELOPMENT_TEAM=<id> app/ios/build.sh` archives a token-stamped
+  Release build with a fresh UTC build number and uploads it to App
+  Store Connect, signed in by an App Store Connect API key
+  (`ASC_KEY_ID`/`ASC_ISSUER_ID`/`ASC_KEY_PATH`, `.p8` in the git-ignored
+  `.certs/`) or the Mac's Xcode account; failures name the fix.
+  Info.plist takes its versions from the build settings and declares
+  `ITSAppUsesNonExemptEncryption` false (HTTPS only). Tests in
+  `test_ios_testflight.py`. Archive verified; the upload waits on the
+  one-time App Store Connect app record, and the web footer link on
+  the TestFlight public URL.
+
+### Changed
+- **App identifier is `com.heartmadebakery.unwritten` everywhere.**
+  (User-ordered: match the web app's home, unwritten.heartmadebakery.com,
+  with no trace of the old prefix.) iOS bundle ID (Info.plist now reads
+  `$(PRODUCT_BUNDLE_IDENTIFIER)`), Android applicationId, manifest
+  package, Gradle namespace, Java package (sources moved to
+  `java/com/heartmadebakery/unwritten/`), the 8 JNI symbols in
+  `jni_bridge.cpp`, the file-provider authority, queue labels, tests,
+  READMEs and worklogs. New guard
+  `test_no_reference_to_the_old_identifier_anywhere` scans the repo for
+  the old prefix in any spelling. Installs under the new ID are a new
+  app on each device. Android not compiled on this host (no SDK): the
+  committed APK still carries the old ID until it is rebuilt.
+
 ### Fixed
 - **iOS build broken on `main` again.** The write-up screengrab strip
   put a regex in a plain Swift literal (`"!\[Step\s+\d+\]…"`), whose

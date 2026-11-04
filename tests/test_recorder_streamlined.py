@@ -24,17 +24,17 @@ REC_UPLOAD_JS = os.path.join(ROOT, "app", "recorder", "upload.js")
 REC_CSS = os.path.join(ROOT, "app", "recorder", "app.css")
 MANIFEST = os.path.join(ROOT, "app", "recorder", "manifest.webmanifest")
 MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                    "org", "tinio", "unwritten", "MainActivity.java")
+                    "com", "heartmadebakery", "unwritten", "MainActivity.java")
 NAMES = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                     "org", "tinio", "unwritten", "Names.java")
+                     "com", "heartmadebakery", "unwritten", "Names.java")
 ENGINE = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                      "org", "tinio", "unwritten", "CameraEngine.java")
+                      "com", "heartmadebakery", "unwritten", "CameraEngine.java")
 HUB = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                   "org", "tinio", "unwritten", "HubClient.java")
+                   "com", "heartmadebakery", "unwritten", "HubClient.java")
 PREFS = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                     "org", "tinio", "unwritten", "Prefs.java")
+                     "com", "heartmadebakery", "unwritten", "Prefs.java")
 PROVIDER = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                        "org", "tinio", "unwritten", "TinyFileProvider.java")
+                        "com", "heartmadebakery", "unwritten", "TinyFileProvider.java")
 ANDROID_MANIFEST = os.path.join(ROOT, "app", "android", "app", "src", "main",
                                 "AndroidManifest.xml")
 
@@ -688,7 +688,7 @@ class AndroidBuildExitTests(unittest.TestCase):
 
 
 CLOUD_UPLOADER = os.path.join(ROOT, "app", "android", "app", "src", "main",
-                              "java", "org", "tinio", "unwritten",
+                              "java", "com", "heartmadebakery", "unwritten",
                               "CloudUploader.java")
 SIGNER = os.path.join(ROOT, "app", "cloud-signer", "worker.js")
 ANDROID_MANIFEST = os.path.join(ROOT, "app", "android", "app", "src", "main",
@@ -954,7 +954,10 @@ class CloudAndroidTests(unittest.TestCase):
     def test_file_provider_declared_and_guarded(self):
         manifest = read(ANDROID_MANIFEST)
         self.assertIn("TinyFileProvider", manifest)
-        self.assertIn("org.tinio.unwritten.files", manifest)
+        # User-ordered Nov 4: the app ID (and so the authority) moved to
+        # com.heartmadebakery.unwritten; the provider and manifest agree.
+        self.assertIn("com.heartmadebakery.unwritten.files", manifest)
+        self.assertIn('"com.heartmadebakery.unwritten.files"', read(PROVIDER))
         prov = read(PROVIDER)
         for token in ["getCanonicalPath", "MODE_READ_ONLY",
                       "OpenableColumns", "uriForFile"]:

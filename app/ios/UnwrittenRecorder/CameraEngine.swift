@@ -28,9 +28,9 @@ final class CameraEngine: NSObject, ObservableObject {
     var recordingFinishedHandler: ((URL?) -> Void)?
 
     private let session = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "org.tinio.unwritten.cam")
-    private let lumaQueue = DispatchQueue(label: "org.tinio.unwritten.luma")
-    private let audioQueue = DispatchQueue(label: "org.tinio.unwritten.audio")
+    private let sessionQueue = DispatchQueue(label: "com.heartmadebakery.unwritten.cam")
+    private let lumaQueue = DispatchQueue(label: "com.heartmadebakery.unwritten.luma")
+    private let audioQueue = DispatchQueue(label: "com.heartmadebakery.unwritten.audio")
     private let movieOutput = AVCaptureMovieFileOutput()
     private var videoDataOutput: AVCaptureVideoDataOutput?
     private var audioDataOutput: AVCaptureAudioDataOutput?

@@ -1,4 +1,4 @@
-package org.tinio.unwritten;
+package com.heartmadebakery.unwritten;
 
 public final class NativeCore {
 

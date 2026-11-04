@@ -13,7 +13,7 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REC = os.path.join(ROOT, "app", "recorder")
 MAIN = os.path.join(ROOT, "app", "android", "app", "src", "main", "java",
-                    "org", "tinio", "unwritten", "MainActivity.java")
+                    "com", "heartmadebakery", "unwritten", "MainActivity.java")
 IOS = os.path.join(ROOT, "app", "ios", "UnwrittenRecorder")
 
 

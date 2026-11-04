@@ -104,7 +104,7 @@ C++ core.
 
 ## What was built
 
-Package `org.tinio.unwritten` (same identifier as Android), **iOS
+Package `com.heartmadebakery.unwritten` (same identifier as Android), **iOS
 17+**, iPhone only, base device iPhone (2019-class — the iOS
 counterpart to the Pixel 4). SwiftUI with no storyboards, no
 third-party libraries, one C++17 core. Full inventory is in the app

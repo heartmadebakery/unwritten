@@ -385,8 +385,43 @@ class IOSBaselineTests(unittest.TestCase):
                       self.pbxproj)
 
     def test_same_bundle_id_as_android(self):
-        self.assertIn("org.tinio.unwritten", self.plist)
-        self.assertIn("org.tinio.unwritten", self.pbxproj)
+        # User-ordered Nov 4: both apps (and the Android Java package)
+        # are com.heartmadebakery.unwritten, matching the web app's home
+        # (unwritten.heartmadebakery.com), still one ID on both.
+        new = "com.heartmadebakery.unwritten"
+        self.assertEqual(
+            re.findall(r"PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);", self.pbxproj),
+            [new, new])
+        self.assertIn("<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>",
+                      self.plist)
+        android = os.path.join(ROOT, "app", "android", "app")
+        self.assertIn('package="%s"' % new,
+                      read(os.path.join(android, "src", "main", "AndroidManifest.xml")))
+        self.assertIn("namespace '%s'" % new,
+                      read(os.path.join(android, "build.gradle")))
+
+    def test_no_reference_to_the_old_identifier_anywhere(self):
+        # User-ordered Nov 4: no trace of the old reverse-DNS prefix in
+        # any spelling — dotted, a path, or a JNI symbol. (Spelled in
+        # parts here so this file passes its own check.)
+        old = ["org" + sep + "tinio" for sep in (".", "/", "_")]
+        skip = {".git", ".venv", ".venv-python", "build", "dist", "work",
+                "build-manual", "node_modules", ".certs", "__pycache__"}
+        hits = []
+        for dirpath, dirs, files in os.walk(ROOT):
+            dirs[:] = [d for d in dirs if d not in skip]
+            if any(p in dirpath for p in old):
+                hits.append(dirpath)
+            for name in files:
+                path = os.path.join(dirpath, name)
+                try:
+                    with open(path, encoding="utf-8") as f:
+                        text = f.read()
+                except (UnicodeDecodeError, OSError):
+                    continue  # binaries (the APK is rebuilt, not edited)
+                hits += ["%s: %s" % (os.path.relpath(path, ROOT), o)
+                         for o in old if o in text]
+        self.assertEqual(hits, [])
 
     def test_camera_and_mic_permissions_declared(self):
         self.assertIn("NSCameraUsageDescription", self.plist)

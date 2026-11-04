@@ -68,7 +68,7 @@ echo "== resources (aapt2) =="
 echo "== stamp (signer token) =="
 POOL="$HERE/../cloud-signer/tokens.txt"
 [ -f "$POOL" ] || { echo "Missing $POOL — run: bash ../cloud-signer/mint-tokens.sh" >&2; exit 1; }
-CFG="$APP/src/main/java/org/tinio/unwritten/CloudConfig.java"
+CFG="$APP/src/main/java/com/heartmadebakery/unwritten/CloudConfig.java"
 CFG_BAK="$OUT/CloudConfig.java.template"
 cp "$CFG" "$CFG_BAK"
 restore_cfg() { cp "$CFG_BAK" "$CFG"; }
