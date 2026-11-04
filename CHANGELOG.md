@@ -18,6 +18,14 @@ history (30 commits) and is maintained in the open from then on.
   for iPad) builds succeed; 530 tests OK.
 
 ### Added
+- **Home page footer links the Android dev build.** (User-ordered: share
+  the APK in the web app at the bottom of the page so others can use
+  the install for dev without adb or a checkout.) *Web:* a quiet footer
+  link (`Android dev build (.apk)`) in the established bottom-link
+  style; `build.sh` ships the prebuilt debug-signed APK into `dist/`
+  beside the pages; the service worker leaves `.apk` downloads
+  uncached so they never go stale. Verified: 3 new contract tests plus
+  the full suite.
 - **Each write-up step carries its screengrab.** (User-ordered: when
   creating the write-up include a corresponding appropriate screengrab
   from the video for the step being described.) *Pipeline:*

@@ -28,6 +28,9 @@ self.addEventListener("fetch", function(e){
      hub list showed forever and every upload status poll saw the
      first "processing" until the upload was marked failed. */
   if(new URL(e.request.url).origin !== self.location.origin) return;
+  /* Dev APKs download straight from the network, never cached: a
+     cached copy would go stale on every rebuild. */
+  if(new URL(e.request.url).pathname.slice(-4) === ".apk") return;
   var isPage = e.request.mode === "navigate" ||
                (e.request.headers.get("accept") || "").indexOf("text/html") >= 0;
   e.respondWith(fetch(e.request).then(function(res){

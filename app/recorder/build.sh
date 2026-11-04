@@ -13,6 +13,10 @@ rm -rf "$HERE/dist" && mkdir -p "$HERE/dist"
 cp "$HERE/index.html" "$HERE/record.html" "$HERE/upload.html" "$HERE/app.css" \
   "$HERE/common.js" "$HERE/home.js" "$HERE/record.js" "$HERE/upload.js" \
   "$HERE/manifest.webmanifest" "$HERE/sw.js" "$HERE/dist/"
+# The home page footer links the Android dev build: ship the prebuilt
+# debug-signed APK beside the pages so the link resolves on the served
+# site (missing APK fails here, naming it, instead of shipping a 404).
+cp "$HERE/../android/unwritten-craft.apk" "$HERE/dist/"
 [ -d "$HERE/icons" ] && cp -r "$HERE/icons" "$HERE/dist/"
 python3 - "$POOL" "$HERE/dist/common.js" <<'EOF'
 import random, sys

@@ -384,6 +384,25 @@ async function go(url, mode) {
         self.assertIn("Step", inline)
         self.assertIn("noImg", inline)
 
+    def test_home_footer_links_android_dev_apk(self):
+        # User-ordered: the home page bottom links the Android dev
+        # build, so others can sideload it without adb or a checkout.
+        self.assertIn("unwritten-craft.apk", self.home)
+        self.assertIn("advlink", self.home)
+
+    def test_web_build_ships_the_apk(self):
+        # build.sh copies the prebuilt debug APK into dist/ beside
+        # the pages, so the footer link resolves on the served site.
+        build = read(os.path.join(ROOT, "app", "recorder", "build.sh"))
+        self.assertIn("unwritten-craft.apk", build)
+        self.assertIn("dist/", build)
+
+    def test_service_worker_leaves_apk_downloads_alone(self):
+        # Dev APKs download straight from the network, never cached:
+        # a cached copy would go stale on every rebuild.
+        sw = read(SW)
+        self.assertIn(".apk", sw)
+
     def test_web_hub_playback_falls_back_to_embed(self):
         # An HLS-only session can't play in a plain <video> on Chrome:
         # a player error opens the Cloud embed page and says so.

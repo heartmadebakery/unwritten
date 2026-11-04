@@ -97,8 +97,9 @@ Long-pressing a session removes it from the device vault *and* the
 cloud copy (cloud first — if that fails, the local lesson is kept).
 
 No typing needed: `bash build.sh` copies the app to `dist/` (gitignored,
-this is what you serve) and stamps one random token from the signer
-pool into it:
+this is what you serve), ships the prebuilt Android dev APK beside it
+for the home page footer link, and stamps one random token from the
+signer pool into it:
 
 ```sh
 cd app/recorder && bash build.sh        # stamps token #N of 10 into dist/
