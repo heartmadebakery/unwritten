@@ -114,8 +114,8 @@ def main():
         img = ""
         rel = step_images.get(i, "")
         if rel and os.path.exists(os.path.join(work, rel)):
-            img = (f'<br><img src="{esc(rel)}" '
-                   f'alt="Step {i} screengrab">')
+            img = (f'<br><a href="{esc(rel)}"><img class="still" '
+                   f'src="{esc(rel)}" alt="Step {i} screengrab"></a>')
         parts.append(f"<li>{esc(s)}{img}</li>")
     steps_html = "".join(parts)
     wisdom_html = "".join(f"<li>{esc(w)}</li>" for w in wisdom)
@@ -163,6 +163,7 @@ max-width:760px;margin:0 auto;padding:28px 18px;line-height:1.6}}
 h1{{font-weight:normal}} h2{{color:#e8a13a;font-weight:normal;margin-top:34px}}
 video{{max-width:100%;border-radius:10px}} li{{margin:7px 0}}
 img{{max-width:100%;border-radius:10px}}
+img.still{{max-width:50%;height:auto}}
 blockquote{{border-left:3px solid #e8a13a;margin-left:0;padding-left:14px;
 font-style:italic}}
 footer{{color:#b8a888;margin-top:40px;font-style:italic}}

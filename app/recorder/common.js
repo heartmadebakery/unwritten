@@ -800,8 +800,8 @@ function renderMd(text){
       items.push("<li>" + inline(m[1]) + "</li>");
     } else if((m = s.match(/^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$/))){
       if(m[2].slice(0, 11) === "data:image/"){
-        var img = '<br><img src="' + escHtml(m[2]) + '" alt="' +
-          escHtml(m[1]) + '">';
+        var img = '<br><a href="' + escHtml(m[2]) + '"><img class="still" src="' +
+          escHtml(m[2]) + '" alt="' + escHtml(m[1]) + '"></a>';
         if(items !== null && items.length){
           var last = items.length - 1;
           items[last] = items[last].replace(/<\/li>$/, img + "</li>");

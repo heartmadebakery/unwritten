@@ -385,6 +385,13 @@ async function go(url, mode) {
         self.assertIn("<img", render)
         self.assertIn("data:image", render)
         self.assertIn("escHtml", render)
+        # Step screengrabs render at half width by default, via a
+        # stylesheet hook — never full-bleed.
+        self.assertIn('class="still"', render)
+        self.assertIn('<a href="', render)
+        css = read(os.path.join(ROOT, "app", "recorder", "app.css"))
+        still = css.split(".still", 1)[1].split("}", 1)[0]
+        self.assertIn("50%", still)
 
     def test_hub_writeup_rejects_remote_and_relative_images(self):
         # Only embedded (data:image) stills render — remote or relative

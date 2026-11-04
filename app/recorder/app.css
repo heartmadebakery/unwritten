@@ -185,6 +185,9 @@ a.chip{min-height:32px;}
 .advlink{background:none;border:none;color:var(--ink2);font-size:14px;min-height:44px;
   padding:8px 6px;text-align:left;text-decoration:underline;text-underline-offset:3px;}
 .note{color:var(--ink2);font-size:14px;line-height:1.55;margin:12px 4px 0;}
+/* Step screengrabs read beside the step, not full-bleed: half width
+   by default, full image one tap away (it opens alone). */
+.writeup img.still{max-width:50%;height:auto;border-radius:10px;display:block;margin:8px 0;}
 
 /* ---- viewfinder ---- */
 #stage{position:relative;background:#000;border-radius:var(--r-tile);overflow:hidden;

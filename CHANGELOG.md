@@ -31,6 +31,10 @@ history (30 commits) and is maintained in the open from then on.
   hundreds of KB. Native apps keep their inline reading (still
   image-stripping) until the parity pass. Verified: renderer smoke
   (headings/lists/images/XSS/inline), publish embed tests, full suite.
+- **Step screenshots display at half width.** (User-ordered: smaller
+  images by default.) *Web / page:* step `<img>`s carry a `still`
+  class capped at 50% width, each linking through to the full image.
+  Verified: sizing-hook contract tests plus the full suite.
 - **Home page footer links the Android dev build.** (User-ordered: share
   the APK in the web app at the bottom of the page so others can use
   the install for dev without adb or a checkout.) *Web:* a quiet footer

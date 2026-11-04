@@ -341,6 +341,8 @@ class TestParseWriteup(unittest.TestCase):
             with open(os.path.join(td, "page.html")) as fh:
                 page = fh.read()
             self.assertIn('src="stills/step-01.jpg"', page)
+            self.assertIn('class="still"', page)
+            self.assertIn('<a href="stills/step-01.jpg"', page)
 
     def test_page_renders_audio_clips_and_survives_corrupt_json(self):
         # Audio-only lessons cut correction-NN.m4a; a corrupt
