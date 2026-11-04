@@ -1,6 +1,6 @@
 # Unwritten Craft
 
-**Film a lesson. Keep the corrections.**
+**Film a lesson. Keep the steps and corrections.**
 
 When someone who knows a craft teaches it, the knowledge that matters most
 surfaces in the corrections — *"no, like this,"* a hand reaching in to redo
