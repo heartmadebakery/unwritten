@@ -695,8 +695,12 @@ class IOSScreensTests(unittest.TestCase):
         cls.names = read(NAMES)
 
     def test_home_is_the_landing_with_record_and_upload_above_hub(self):
+        # User-ordered Nov 4: the home slice ends at the next view
+        # (uploadView) — the old recordView bound spanned the upload
+        # and fetch views too, and the upload history reuses session
+        # rows.
         home = self.view.split("private var homeView", 1)[1] \
-                        .split("private var recordView", 1)[0]
+                        .split("private var uploadView", 1)[0]
         record = self.view.split("private var recordView", 1)[1] \
                           .split("private func showScreen", 1)[0]
         # User-ordered Nov 1 (native iOS idioms): home's actions are

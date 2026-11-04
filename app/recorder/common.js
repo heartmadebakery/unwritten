@@ -398,6 +398,22 @@ function setCloudLink(name, patch){
   m[name] = cur;
   try{ localStorage.setItem("uw_cloud_links", JSON.stringify(m)); localStorage.removeItem("uw_bunny_links"); }catch(e){} // legacy key dropped on first save
 }
+/* Fetch attempts: links queued to the pipeline for fetching, logged
+   locally (newest first, capped) so the upload page can list them
+   afterwards — the pipeline's outcome shows up in the hub. */
+function loadFetchAttempts(){
+  try{
+    var list = JSON.parse(localStorage.getItem("uw_fetch_attempts") || "[]");
+    return Array.isArray(list) ? list : [];
+  }catch(e){ return []; }
+}
+function logFetchAttempt(url, ok){
+  try{
+    var list = loadFetchAttempts();
+    list.unshift({url: String(url || "").slice(0, 2000), date: new Date().toISOString(), ok: !!ok});
+    localStorage.setItem("uw_fetch_attempts", JSON.stringify(list.slice(0, 20)));
+  }catch(e){}
+}
 function sleep(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 function b64utf8(s){ return btoa(unescape(encodeURIComponent(s))); }
 function isVideoLesson(blob, name){

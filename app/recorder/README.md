@@ -4,7 +4,7 @@ One page per screen sharing a common core: home (`index.html`) holds
 Record and Upload actions with the published hub last, `record.html`
 is the viewfinder screen with cloud, device sessions, and a debug
 Advanced settings link below, `upload.html` takes a video file or points to `link.html`, the
-Fetch from link page.
+Fetch from link page, and lists previous upload/fetch attempts at the end of the page.
 `common.js` holds the vault, cloud, hub (rows open a session's detail
 — write-up, corrections, chapters — with Play, Share, and Delete, as
 on Android and iOS), and session rows;

@@ -84,6 +84,7 @@ public class MainActivity extends Activity {
     private Button recordButton;
     private LinearLayout lessonContainer;
     private LinearLayout homeScreen, recordScreen, uploadScreen, linkScreen;
+    private LinearLayout uploadHistory;
     private android.widget.ScrollView rootScroll;
     private String currentScreen = "home";
     private final List<String> clipNames = new ArrayList<String>();
@@ -574,6 +575,90 @@ public class MainActivity extends Activity {
         lp.setMargins(0, 0, 0, dp(12));
         uploadScreen.addView(choose, lp);
         uploadScreen.addView(fetch, lp);
+        TextView histTitle = label("Previous uploads and fetches", 17, TEXT);
+        histTitle.setTypeface(MEDIUM);
+        histTitle.setPadding(dp(2), dp(10), dp(2), dp(4));
+        uploadScreen.addView(histTitle, lp);
+        uploadHistory = new LinearLayout(this);
+        uploadHistory.setOrientation(LinearLayout.VERTICAL);
+        uploadScreen.addView(uploadHistory, lp);
+    }
+
+    /** Previous upload/fetch attempts, like the record screen lists
+     *  sessions — an indicator that an upload or fetch occurred. */
+    private void renderUploadHistory() {
+        if (uploadHistory == null) return;
+        uploadHistory.removeAllViews();
+        uploadHistory.addView(label("Uploads", 14, DIM));
+        boolean anyUp = false;
+        for (File f : clipFiles()) {
+            if (!f.getName().contains("upload_")) continue;
+            anyUp = true;
+            uploadHistory.addView(uploadHistoryRow(f.getName()));
+        }
+        if (!anyUp) uploadHistory.addView(label("No uploads yet.", 14, DIM));
+        uploadHistory.addView(label("Fetches", 14, DIM));
+        JSONArray attempts = fetchAttempts();
+        if (attempts.length() == 0) {
+            uploadHistory.addView(label("No links queued yet.", 14, DIM));
+            return;
+        }
+        for (int i = 0; i < attempts.length(); i++) {
+            try {
+                JSONObject a = attempts.getJSONObject(i);
+                String url = a.optString("url", "");
+                long date = a.optLong("date", 0);
+                boolean ok = a.optBoolean("ok", true);
+                String when = date > 0 ? java.text.DateFormat
+                        .getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                        .format(new java.util.Date(date)) : "";
+                uploadHistory.addView(historyTextRow(url,
+                        (ok ? "Queued ✓" : "Couldn't queue") + (when.isEmpty() ? "" : " · " + when)));
+            } catch (Throwable ignored) { }
+        }
+    }
+
+    private LinearLayout uploadHistoryRow(final String name) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(2), dp(8), dp(2), dp(8));
+        LinearLayout mid = new LinearLayout(this);
+        mid.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        mid.setLayoutParams(mp);
+        TextView title = label(displayDateFor(name), 16, TEXT);
+        title.setTypeface(MEDIUM);
+        title.setSingleLine(true);
+        title.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        mid.addView(title);
+        mid.addView(label(leftIconWords(name) + cloudSuffix(name), 14, DIM));
+        row.addView(mid);
+        JSONObject link = cloudLink(name);
+        if (link != null && "failed".equals(link.optString("state", ""))) {
+            Button retry = new Button(this);
+            retry.setText("Retry");
+            retry.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) {
+                    retryCloud(name);
+                    renderUploadHistory();
+                }
+            });
+            row.addView(retry);
+        }
+        return row;
+    }
+
+    private LinearLayout historyTextRow(String title, String sub) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setPadding(dp(2), dp(8), dp(2), dp(8));
+        TextView t = label(title, 16, TEXT);
+        t.setSingleLine(true);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        row.addView(t);
+        row.addView(label(sub, 14, DIM));
+        return row;
     }
 
     /** One tappable card of the Upload screen: glyph, title, a line of help. */
@@ -931,6 +1016,9 @@ public class MainActivity extends Activity {
             try { if (engine != null && !engine.isRecording()) { engine.close(); engine = null; } } catch (Throwable ignored) {}
             if (home) loadHub();
         }
+        // The upload screen lists previous attempts: refresh on entry
+        // so a just-saved pick shows immediately.
+        if ("upload".equals(name)) renderUploadHistory();
     }
 
     private void pickUpload() {
@@ -942,6 +1030,27 @@ public class MainActivity extends Activity {
         } catch (Throwable e) {
             Toast.makeText(this, "No file picker on this device.", Toast.LENGTH_LONG).show();
         }
+    }
+
+    // Fetch attempts: links queued to the pipeline for fetching, logged
+    // locally (newest first, capped) so the upload screen can list them
+    // afterwards — the pipeline's outcome shows up in the hub.
+    private JSONArray fetchAttempts() {
+        try { return new JSONArray(cloudPrefs().getString("fetchAttempts", "[]")); }
+        catch (Throwable ignored) { return new JSONArray(); }
+    }
+    private void logFetchAttempt(String url, boolean ok) {
+        try {
+            JSONArray prev = fetchAttempts();
+            JSONObject e = new JSONObject();
+            e.put("url", url);
+            e.put("date", System.currentTimeMillis());
+            e.put("ok", ok);
+            JSONArray next = new JSONArray();
+            next.put(e);
+            for (int i = 0; i < prev.length() && next.length() < 20; i++) next.put(prev.get(i));
+            cloudPrefs().edit().putString("fetchAttempts", next.toString()).apply();
+        } catch (Throwable ignored) { }
     }
 
     private void queueFetchUrl(final String url) {
@@ -960,7 +1069,9 @@ public class MainActivity extends Activity {
         cloudExec.execute(new Runnable() { @Override public void run() {
             try {
                 new HubClient(surl, stok).queueFetchJob(url, join);
+                logFetchAttempt(url, true);
             } catch (final Exception e) {
+                logFetchAttempt(url, false);
                 runOnUiThread(new Runnable() { @Override public void run() {
                     Toast.makeText(MainActivity.this, "Couldn't queue that link (" + e.getMessage() + ")", Toast.LENGTH_LONG).show();
                 } });
@@ -1023,6 +1134,7 @@ public class MainActivity extends Activity {
             runOnUiThread(new Runnable() { @Override public void run() {
                 refreshClipList();
                 maybeCloudUpload(dest);
+                renderUploadHistory();
                 Toast.makeText(MainActivity.this, "Upload saved — on this device and uploading to Cloud.", Toast.LENGTH_LONG).show();
             } });
         } });
@@ -1574,6 +1686,9 @@ public class MainActivity extends Activity {
 
             lessonContainer.addView(row);
         }
+        // Cloud progress changed: the upload screen's history shows the
+        // same session states, so refresh it alongside.
+        renderUploadHistory();
     }
 
     /** Upload progress as a ring: a sunken track with an ember arc. */

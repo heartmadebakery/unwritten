@@ -42,12 +42,14 @@ $("urlfetchbtn").onclick = async function(){
          its next part (the signer ties it when the job is done). */
       body: JSON.stringify(joinTarget() ? {url: u, joinTo: joinTarget().videoId} : {url: u})
     });
-    if(res.status === 401){ st.innerHTML = "Signer refused the token — rebuild the app to stamp a fresh one."; return; }
+    if(res.status === 401){ st.innerHTML = "Signer refused the token — rebuild the app to stamp a fresh one."; logFetchAttempt(u, false); return; }
     if(!res.ok) throw new Error("HTTP " + res.status);
     $("urlinput").value = "";
     st.innerHTML = "✅ <b>Queued.</b> The pipeline will fetch the video and process it like a recording." +
       (joinTarget() ? " It joins <b>" + escHtml(joinTarget().title) + "</b> as its next part." : "");
+    logFetchAttempt(u, true);
   }catch(e){
     st.innerHTML = "⬇ <b>Couldn't queue that link</b> (" + escHtml(e.message) + ") Check the connection and Cloud settings.";
+    logFetchAttempt(u, false);
   }
 };

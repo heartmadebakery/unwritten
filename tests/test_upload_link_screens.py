@@ -41,6 +41,25 @@ class WebUploadLinkScreens(unittest.TestCase):
             self.assertNotIn(token, self.home, token)
         self.assertIn('href="upload.html"', self.home)
 
+    def test_upload_page_lists_previous_attempts(self):
+        # User-ordered Nov 4: the upload page lists previous
+        # upload/fetch attempts, like the record page lists sessions —
+        # an indicator that an upload or fetch occurred.
+        for token in ['id="uphistory"', 'id="fetchhistory"']:
+            self.assertIn(token, self.upload, token)
+        for token in ["renderUploadHistory", '"upload_"', "map(clipHTML)",
+                      "loadFetchAttempts", "data-cloud-retry"]:
+            self.assertIn(token, self.uploadjs, token)
+
+    def test_fetch_attempts_persist_locally(self):
+        # Queue attempts log locally (URL + date + outcome, newest
+        # first, capped) so the upload page can list them afterwards.
+        common = read(REC, "common.js")
+        for token in ["loadFetchAttempts", "logFetchAttempt",
+                      "uw_fetch_attempts"]:
+            self.assertIn(token, common, token)
+        self.assertIn("logFetchAttempt", self.linkjs)
+
     def test_upload_offers_file_or_link(self):
         for token in ['id="uploadinput"', 'id="uploadbtn"',
                       'id="golink"', 'href="link.html"', "Fetch from link"]:
@@ -104,6 +123,21 @@ class AndroidUploadLinkScreens(unittest.TestCase):
         for token in ["urlInput", "Fetch from link", "queueFetchUrl"]:
             self.assertIn(token, link, token)
 
+    def test_upload_screen_lists_previous_attempts(self):
+        # User-ordered Nov 4: previous upload/fetch attempts list on
+        # the upload screen like sessions list on the record screen —
+        # an indicator that an upload or fetch occurred.
+        up = between(self.main, "private void buildUploadScreen",
+                     "private void buildRecordScreen")
+        for token in ["uploadHistory", "renderUploadHistory()"]:
+            self.assertIn(token, up, token)
+        show = between(self.main, "private void showScreen",
+                       "private void pickUpload")
+        self.assertIn("renderUploadHistory()", show)
+        for token in ["logFetchAttempt", "fetchAttempts",
+                      '"upload_"', "retryCloud"]:
+            self.assertIn(token, self.main, token)
+
     def test_screens_route_and_back_steps_up_one_level(self):
         show = between(self.main, "private void showScreen",
                        "private void pickUpload")
@@ -159,6 +193,18 @@ class IOSUploadLinkScreens(unittest.TestCase):
         for token in ["TextField", "fetchUrl", "canFetchLink", "fetchLink()",
                       "Fetch from link", ".navigationTitle"]:
             self.assertIn(token, self.fetch, token)
+
+    def test_upload_screen_lists_previous_attempts(self):
+        # User-ordered Nov 4: previous upload/fetch attempts list on
+        # the upload screen like sessions list on the record screen —
+        # an indicator that an upload or fetch occurred.
+        for token in ["uploadHistory", "fetchAttempts", "upload_"]:
+            self.assertIn(token, self.upload, token)
+        cloud = read(IOS, "CloudStore.swift")
+        for token in ["func fetchAttempts", "func logFetchAttempt",
+                      "uw_cloud_fetchAttempts"]:
+            self.assertIn(token, cloud, token)
+        self.assertIn("logFetchAttempt", self.store)
 
     def test_record_help_is_the_record_screens_alone(self):
         # The store no longer boots with the camera help (it leaked onto

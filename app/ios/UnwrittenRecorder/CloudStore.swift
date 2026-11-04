@@ -149,11 +149,36 @@ final class CloudStore: @unchecked Sendable {
         defaults.removeObject(forKey: Self.kLastName)
     }
 
+    /// Fetch attempts: links queued to the pipeline for fetching,
+    /// logged locally (newest first, capped) so the upload screen can
+    /// list them afterwards — the pipeline's outcome shows up in
+    /// the hub.
+    struct FetchAttempt: Codable {
+        var url: String
+        var date: Date
+        var ok: Bool
+    }
+
+    func fetchAttempts() -> [FetchAttempt] {
+        guard let raw = defaults.string(forKey: Self.kFetchAttempts),
+              let data = raw.data(using: .utf8),
+              let list = try? JSONDecoder().decode([FetchAttempt].self, from: data) else { return [] }
+        return list
+    }
+
+    func logFetchAttempt(url: String, ok: Bool) {
+        var list = [FetchAttempt(url: url, date: Date(), ok: ok)] + fetchAttempts()
+        list = Array(list.prefix(20))
+        if let data = try? JSONEncoder().encode(list),
+           let raw = String(data: data, encoding: .utf8) {
+            defaults.set(raw, forKey: Self.kFetchAttempts)
+        }
+    }
+
     func watchUrl(for name: String) -> String? {
         guard let link = cloudLink(name),
               let videoId = link["videoId"] as? String, !videoId.isEmpty else { return nil }
-        var lib = (link["libraryId"] as? String) ?? ""
-        if lib.isEmpty { lib = libraryId }
+        let lib = (link["libraryId"] as? String) ?? ""
         if lib.isEmpty { return nil }
         return "https://player.mediadelivery.net/embed/" + lib + "/" + videoId
     }

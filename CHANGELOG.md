@@ -19,6 +19,12 @@ history (30 commits) and is maintained in the open from then on.
   (web) / Cloud settings (native) show the effective URL and token
   status for debugging, and every failure message names the rebuild
   instead of settings that no longer exist.
+- **The upload screen lists previous upload/fetch attempts.**
+  (User-ordered: the list is the indicator that an upload or fetch
+  occurred, like the record page's session list.) *Web / Android /
+  iOS:* the upload page/screen ends with previous uploads (session
+  rows) and previous fetches (link attempts logged locally with URL,
+  date and outcome, newest first, capped at 20).
 
 ## 2026-11-03
 

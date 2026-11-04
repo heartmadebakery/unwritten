@@ -570,6 +570,16 @@ struct ContentView: View {
                 }
             }
             .listRowBackground(PANEL)
+            Section {
+                uploadHistory
+            } header: {
+                Text("Previous uploads")
+            }
+            Section {
+                uploadFetchHistory
+            } header: {
+                Text("Previous fetches")
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -577,6 +587,55 @@ struct ContentView: View {
         .navigationTitle("Upload video")
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    /// Previous upload/fetch attempts, like the record screen lists
+    /// sessions — an indicator that an upload or fetch occurred.
+    private var uploadHistory: some View {
+        let ups = store.rows.filter { $0.name.contains("upload_") }
+        return Group {
+            if ups.isEmpty {
+                Text("No uploads yet.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DIM)
+            } else {
+                ForEach(ups) { row in sessionRow(row) }
+            }
+        }
+    }
+
+    private var uploadFetchHistory: some View {
+        let attempts = store.cloud.fetchAttempts()
+        return Group {
+            if attempts.isEmpty {
+                Text("No links queued yet.")
+                    .font(.system(size: 15))
+                    .foregroundStyle(DIM)
+            } else {
+                ForEach(attempts.indices, id: \.self) { i in
+                    let a = attempts[i]
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(a.url)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(INK)
+                            .lineLimit(1)
+                        Text((a.ok ? "Queued ✓" : "Couldn't queue") + " · " + Self.fetchDate(a.date))
+                            .font(.system(size: 14))
+                            .foregroundStyle(DIM)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    private static let fetchDateFmt: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    private static func fetchDate(_ d: Date) -> String { fetchDateFmt.string(from: d) }
 
     /// The capture screens' note: which session these takes join, with
     /// the way out on the note itself. Absent when nothing is joined.

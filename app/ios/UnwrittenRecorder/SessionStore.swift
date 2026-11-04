@@ -851,6 +851,7 @@ final class SessionStore: ObservableObject {
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 401 {
                     self?.status = "Signer refused the token — rebuild the app to stamp a fresh one."
+                    self?.cloud.logFetchAttempt(url: trimmed, ok: false)
                     return
                 }
                 guard code >= 200 && code < 300 else {
@@ -858,9 +859,11 @@ final class SessionStore: ObservableObject {
                 }
                 self?.status = "✅ Queued — the pipeline will fetch the video."
                     + (join.map { " It joins \($0.title ?? $0.videoId) as its next part." } ?? "")
+                self?.cloud.logFetchAttempt(url: trimmed, ok: true)
             } catch {
                 let cause = String(error.localizedDescription.prefix(180))
                 self?.status = "Couldn't queue that link (\(cause)) — check the connection and Cloud settings."
+                self?.cloud.logFetchAttempt(url: trimmed, ok: false)
             }
         }
     }

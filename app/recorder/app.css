@@ -306,6 +306,9 @@ input:focus{outline:none;border-color:var(--ember);background:var(--surface);}
 .dropzone b{font-size:17px;}
 .dropzone span{color:var(--ink2);font-size:14px;word-break:break-all;}
 #uploadstatus,#urlstatus{color:var(--ink2);font-size:15px;line-height:1.5;padding:8px 4px 0;}
+#fetchhistory{margin-top:14px;}
+#uphistory .subhead,#fetchhistory .subhead{font-size:14px;font-weight:600;color:var(--ink2);margin:12px 0 4px;}
+#fetchhistory .ltitle.linkurl{font-size:14px;font-weight:400;white-space:normal;overflow-wrap:anywhere;}
 #uploadstatus:empty,#urlstatus:empty{display:none;}
 #uploadstatus b,#urlstatus b{color:var(--ink);}
 #caps{color:var(--ink2);font-size:13px;line-height:1.55;margin:10px 4px 0;}
