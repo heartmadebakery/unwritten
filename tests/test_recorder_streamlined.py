@@ -550,12 +550,14 @@ class AndroidRecorderTests(unittest.TestCase):
         for token in ["Fetch from link", "queueFetchJob", "Queued"]:
             self.assertIn(token, self.main, token)
 
-    def test_hub_writeup_strips_step_stills(self):
-        # User-ordered 2026-11-04: parity with web/iOS — the hub detail
-        # strips step stills (no still URLs in the hub).
-        body = self.main.split("private CharSequence inlineMarkdown", 1)[1].split("\n    }\n", 1)[0]
-        self.assertIn("Step", body)
-        self.assertIn("noImg", body)
+    def test_hub_writeup_renders_blocks_and_step_images(self):
+        # User-ordered: web parity — the hub write-up renders headings,
+        # lists, and embedded data:image stills (decoded to bitmaps at
+        # half width, tap for full), never raw markdown or remote URLs.
+        body = self.main.split("private void renderWriteup", 1)[1].split("private View hubDetailView", 1)[0]
+        for token in ["data:image", "Base64", "BitmapFactory",
+                      "decodeByteArray", "AlertDialog"]:
+            self.assertIn(token, body, token)
 
     def test_home_actions_then_hub_last(self):
         # User-ordered Nov 1: home is actions with the hub last; cloud

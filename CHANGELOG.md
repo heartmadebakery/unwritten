@@ -68,6 +68,16 @@ history (30 commits) and is maintained in the open from then on.
   hundreds of KB. Native apps keep their inline reading (still
   image-stripping) until the parity pass. Verified: renderer smoke
   (headings/lists/images/XSS/inline), publish embed tests, full suite.
+- **Native hub write-ups match the web renderer.** (User-ordered:
+  markdown + step-image parity on the mobile apps.) *Android:*
+  `renderWriteup` builds headings, paragraphs, lists, and inline
+  code spans; embedded `data:image` stills decode to bitmaps at half
+  screen width with tap-for-full dialog — anything else in an image
+  slot is dropped. *iOS:* `writeupBlocks`/`WriteupImage` do the same
+  with SwiftUI blocks (half width via trailing spacer, tap for
+  full-screen). iOS ships as contract tests only (no Xcode on this
+  host). Verified: parity contract tests, javac-clean device build,
+  full suite.
 - **Step screenshots display at half width.** (User-ordered: smaller
   images by default.) *Web / page:* step `<img>`s carry a `still`
   class capped at 50% width, each linking through to the full image.

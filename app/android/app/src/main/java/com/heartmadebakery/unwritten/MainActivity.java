@@ -6,6 +6,8 @@ import android.app.AlertDialog;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
@@ -13,6 +15,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.provider.MediaStore;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.TextureView;
 import android.view.View;
@@ -20,6 +23,7 @@ import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.ImageView;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
@@ -2199,17 +2203,111 @@ public class MainActivity extends Activity {
         return b;
     }
 
-    /** Write-ups are Markdown: inline bold and italic render, line
-     *  breaks stay — the same inline-only reading as iOS and the web.
-     *  Step screengrabs (![Step N](stills/...)) live in the page, not the
-     *  hub: the hub has no still URLs, so they strip out here. */
-    private CharSequence inlineMarkdown(String md) {
-        String noImg = md.replaceAll("!\\[Step\\s+\\d+\\]\\([^)]+\\)", "");
-        String html = android.text.TextUtils.htmlEncode(noImg)
-            .replaceAll("\\*\\*([^*\\n]+)\\*\\*", "<b>$1</b>")
-            .replaceAll("(^|[^*])\\*([^*\\n]+)\\*", "$1<i>$2</i>")
-            .replace("\n", "<br>");
+    /** Write-ups are full Markdown — web parity: headings,
+     *  paragraphs, lists, step screengrabs, inline bold/italic/code.
+     *  Everything is escaped before rendering, so server text can never
+     *  inject markup. Images render solely when embedded (data:image...,
+     *  decoded to bitmaps at half width, tap for full); anything else in
+     *  an image slot is dropped, since the hub ships no still files. */
+    private CharSequence inlineSpan(String s) {
+        String html = android.text.TextUtils.htmlEncode(s)
+            .replaceAll("\\*\\*([^*]+)\\*\\*", "<b>$1</b>")
+            .replaceAll("(^|[^*])\\*([^*]+)\\*", "$1<i>$2</i>")
+            .replaceAll("`([^`]+)`", "<tt>$1</tt>");
         return android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY);
+    }
+
+    private TextView writeupText(CharSequence content, int sp, boolean bold) {
+        TextView tv = label("", sp, TEXT);
+        tv.setText(content);
+        if (bold) tv.setTypeface(BOLD);
+        tv.setLineSpacing(0, 1.3f);
+        tv.setTextIsSelectable(true);
+        tv.setPadding(0, dp(2), 0, dp(2));
+        return tv;
+    }
+
+    private void renderWriteup(LinearLayout parent, String md) {
+        LinearLayout cur = null;
+        boolean curOrdered = false;
+        for (String raw : md.split("\n")) {
+            String s = raw.replaceAll("\\s+$", "");
+            if (s.matches("#{1,3} .*")) {
+                cur = null;
+                int level = 0;
+                while (level < s.length() && s.charAt(level) == '#') level++;
+                parent.addView(writeupText(inlineSpan(s.substring(level + 1)),
+                        level == 1 ? 22 : level == 2 ? 19 : 17, true));
+            } else if (s.matches("\\s*[-*] .*")) {
+                if (cur == null || !curOrdered) { cur = null; }
+                if (cur == null) {
+                    cur = new LinearLayout(this);
+                    cur.setOrientation(LinearLayout.VERTICAL);
+                    parent.addView(cur);
+                    curOrdered = false;
+                }
+                cur.addView(writeupText("•  " + inlineSpan(s.replaceFirst("^\\s*[-*] ", "")), 16, false));
+            } else if (s.matches("\\s*\\d+[.)] .*")) {
+                if (cur == null || curOrdered) { cur = null; }
+                if (cur == null) {
+                    cur = new LinearLayout(this);
+                    cur.setOrientation(LinearLayout.VERTICAL);
+                    parent.addView(cur);
+                    curOrdered = true;
+                }
+                String num = s.replaceFirst("^\\s*(\\d+)[.)] .*", "$1");
+                cur.addView(writeupText(num + ".  " + inlineSpan(s.replaceFirst("^\\s*\\d+[.)] ", "")), 16, false));
+            } else if (s.matches("\\s*!\\[.*\\]\\(.*\\)\\s*")) {
+                cur = null;
+                int a = s.indexOf("](");
+                if (a > 2) {
+                    String alt = s.substring(s.indexOf("![") + 2, a);
+                    String src = s.substring(a + 2, s.length() - 1).trim();
+                    addStillImage(parent, alt, src);
+                }
+            } else if (s.trim().isEmpty()) {
+                cur = null;
+            } else {
+                cur = null;
+                parent.addView(writeupText(inlineSpan(s), 16, false));
+            }
+        }
+    }
+
+    private void addStillImage(LinearLayout parent, String alt, String src) {
+        if (!src.startsWith("data:image/")) return; // hub ships no still files
+        int c = src.indexOf(";base64,");
+        if (c < 0) return;
+        byte[] blob;
+        try {
+            blob = Base64.decode(src.substring(c + 8), Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            return;
+        }
+        Bitmap bmp = BitmapFactory.decodeByteArray(blob, 0, blob.length);
+        if (bmp == null || bmp.getWidth() <= 0) return;
+        int half = getResources().getDisplayMetrics().widthPixels / 2 - dp(36);
+        if (half <= 0) half = bmp.getWidth();
+        int h = bmp.getHeight() * half / bmp.getWidth();
+        Bitmap small = Bitmap.createScaledBitmap(bmp, half, h, true);
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(small);
+        iv.setScaleType(ImageView.ScaleType.FIT_XY);
+        iv.setLayoutParams(new LinearLayout.LayoutParams(half, h));
+        iv.setPadding(0, dp(8), 0, dp(8));
+        final Bitmap full = bmp;
+        iv.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { showFullImage(full); }
+        });
+        parent.addView(iv);
+    }
+
+    private void showFullImage(Bitmap bmp) {
+        ImageView iv = new ImageView(this);
+        iv.setImageBitmap(bmp);
+        iv.setAdjustViewBounds(true);
+        new AlertDialog.Builder(this).setView(iv)
+            .setPositiveButton("Close", null).show();
     }
 
     /** A lesson, listing style: a warm cover banner with its initial,
@@ -2346,11 +2444,9 @@ public class MainActivity extends Activity {
             LinearLayout.LayoutParams rl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1);
             rl.setMargins(0, dp(12), 0, dp(12));
             body.addView(rule, rl);
-            TextView wu = label("", 16, TEXT);
-            wu.setText(inlineMarkdown(writeup));
-            wu.setLineSpacing(0, 1.3f);
-            wu.setTextIsSelectable(true);
-            wu.setPadding(0, 0, 0, 0);
+            LinearLayout wu = new LinearLayout(this);
+            wu.setOrientation(LinearLayout.VERTICAL);
+            renderWriteup(wu, writeup);
             body.addView(wu);
         }
         JSONArray corrections = obj.optJSONArray("corrections");

@@ -1539,12 +1539,14 @@ struct ContentView: View {
             .padding(.top, 8)
             if let writeup = detail.writeupMd, !writeup.isEmpty {
                 Divider().overlay(LINE).padding(.top, 18)
-                Text(ContentView.markdown(writeup))
-                    .font(.system(size: 17))
-                    .foregroundColor(INK)
-                    .lineSpacing(5)
-                    .textSelection(.enabled)
-                    .padding(.top, 16)
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(Array(writeupBlocks(writeup).enumerated()), id: \.offset) { _, b in
+                        writeupBlockView(b)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .padding(.top, 16)
             }
             if let corrections = detail.corrections, !corrections.isEmpty {
                 sectionTitle(Text("Corrections")).padding(.top, 14).padding(.bottom, 6)
@@ -1590,14 +1592,119 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// Write-ups are Markdown; inline styling renders, line breaks stay.
-    /// Step screengrabs (![Step N](stills/...)) live in the page, not the
-    /// hub: the hub has no still URLs, so they strip out here.
+    /// Write-ups are full Markdown — web parity: headings,
+    /// paragraphs, lists, step screengrabs, inline styling. Images render
+    /// solely when embedded (data:image...); anything else in an image
+    /// slot is dropped, since the hub ships no still files.
+    private enum WriteupBlock {
+        case heading(level: Int, text: String)
+        case paragraph(String)
+        case bullet(String)
+        case numbered(Int, String)
+        case still(alt: String, image: UIImage)
+    }
+
+    private func writeupBlocks(_ text: String) -> [WriteupBlock] {
+        var blocks: [WriteupBlock] = []
+        for raw in text.components(separatedBy: "\n") {
+            let s = raw.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("### ") {
+                blocks.append(.heading(level: 3, text: String(s.dropFirst(4))))
+            } else if s.hasPrefix("## ") {
+                blocks.append(.heading(level: 2, text: String(s.dropFirst(3))))
+            } else if s.hasPrefix("# ") {
+                blocks.append(.heading(level: 1, text: String(s.dropFirst(2))))
+            } else if s.hasPrefix("- ") || s.hasPrefix("* ") {
+                blocks.append(.bullet(String(s.dropFirst(2))))
+            } else if s.range(of: #"^\d+[.)] "#, options: .regularExpression) != nil {
+                let numEnd = s.firstIndex(where: { !$0.isNumber }) ?? s.endIndex
+                let n = Int(s[..<numEnd]) ?? 0
+                let rest = s[numEnd...].drop(while: { $0 == "." || $0 == ")" || $0 == " " })
+                blocks.append(.numbered(n, String(rest)))
+            } else if s.hasPrefix("![") && s.hasSuffix(")") {
+                if let mid = s.range(of: "]("),
+                   s.distance(from: s.startIndex, to: mid.lowerBound) > 2 {
+                    let alt = String(s[s.index(s.startIndex, offsetBy: 2)..<mid.lowerBound])
+                    let src = String(s[mid.upperBound...].dropLast())
+                    if src.hasPrefix("data:image/"),
+                       let comma = src.firstIndex(of: ","),
+                       let data = Data(base64Encoded: String(src[src.index(after: comma)...])),
+                       let img = UIImage(data: data) {
+                        blocks.append(.still(alt: alt, image: img))
+                    }
+                }
+            } else if !s.isEmpty {
+                blocks.append(.paragraph(s))
+            }
+        }
+        return blocks
+    }
+
+    @ViewBuilder
+    private func writeupBlockView(_ b: WriteupBlock) -> some View {
+        switch b {
+        case .heading(let lv, let t):
+            Text(ContentView.markdown(t))
+                .font(.system(size: lv == 1 ? 22 : lv == 2 ? 19 : 17, weight: .bold))
+                .foregroundColor(INK)
+        case .paragraph(let t):
+            Text(ContentView.markdown(t))
+                .font(.system(size: 17))
+                .foregroundColor(INK)
+                .lineSpacing(5)
+        case .bullet(let t):
+            HStack(alignment: .top, spacing: 8) {
+                Text("\u{2022}").foregroundColor(INK)
+                Text(ContentView.markdown(t))
+                    .font(.system(size: 16))
+                    .foregroundColor(INK)
+            }
+        case .numbered(let n, let t):
+            HStack(alignment: .top, spacing: 8) {
+                Text("\(n).").foregroundColor(INK)
+                Text(ContentView.markdown(t))
+                    .font(.system(size: 16))
+                    .foregroundColor(INK)
+            }
+        case .still(let alt, let img):
+            WriteupImage(image: img, label: alt)
+        }
+    }
+
+    /// Inline styling for one block of write-up text.
     private static func markdown(_ text: String) -> AttributedString {
-        let noImg = text.replacingOccurrences(of: #"!\[Step\s+\d+\]\([^)]+\)"#, with: "", options: .regularExpression)
         let opts = AttributedString.MarkdownParsingOptions(
             interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        return (try? AttributedString(markdown: noImg, options: opts)) ?? AttributedString(noImg)
+        return (try? AttributedString(markdown: text, options: opts)) ?? AttributedString(text)
+    }
+
+    /// A hub write-up step screengrab: half width in the flow (a trailing
+    /// spacer takes the other half), full screen on tap.
+    private struct WriteupImage: View {
+        let image: UIImage
+        let label: String
+        @State private var full = false
+        var body: some View {
+            HStack(spacing: 0) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity)
+                    .cornerRadius(10)
+                    .accessibilityLabel(label)
+                    .onTapGesture { full = true }
+                Spacer()
+            }
+            .fullScreenCover(isPresented: $full) {
+                ZStack {
+                    Color.black.ignoresSafeArea()
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .onTapGesture { full = false }
+                }
+            }
+        }
     }
 }
 

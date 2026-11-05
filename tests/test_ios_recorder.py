@@ -137,12 +137,16 @@ class IOSRecorderTests(unittest.TestCase):
         for token in ["playHubSession", "hubDetailCard", '"Hub"']:
             self.assertIn(token, self.view, token)
 
-    def test_hub_writeup_strips_step_stills(self):
-        # User-ordered 2026-11-04: parity with web/Android — the hub
-        # detail strips step stills (no still URLs in the hub).
-        body = read(VIEW).split("private static func markdown", 1)[1].split("\n    }\n", 1)[0]
-        self.assertIn("Step", body)
-        self.assertIn("noImg", body)
+    def test_hub_writeup_renders_blocks_and_step_images(self):
+        # User-ordered: web parity — the hub write-up renders blocks
+        # and embedded data:image stills (decoded to UIImages at half
+        # width, tap for full), never remote URLs.
+        body = read(VIEW).split("private func writeupBlocks", 1)[1].split("\n    }\n", 1)[0]
+        for token in ["data:image", "base64Encoded", "UIImage"]:
+            self.assertIn(token, body, token)
+        view = read(VIEW).split("struct WriteupImage", 1)[1].split("\n}\n", 1)[0]
+        for token in ["fullScreenCover", "Spacer"]:
+            self.assertIn(token, view, token)
 
     def test_hub_delete_removes_record_before_video(self):
         # Hub record first, then the Stream video: a failure between
