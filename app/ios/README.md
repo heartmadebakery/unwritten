@@ -107,7 +107,9 @@ with the Mac's Xcode account, or with an App Store Connect API key when
 `.p8` in the git-ignored `.certs/`). One-time setup in App Store
 Connect: an app record for `com.heartmadebakery.unwritten`, then TestFlight →
 an external testing group → Enable Public Link. The first external
-build goes through Beta App Review.
+build goes through Beta App Review. The public group is "Public":
+https://testflight.apple.com/join/fwbSpfDD (linked from the web home
+page footer).
 
 ## Cloud upload (on by default)
 

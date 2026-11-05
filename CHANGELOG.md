@@ -9,6 +9,15 @@ history (30 commits) and is maintained in the open from then on.
 ## 2026-11-04
 
 ### Added
+- **Home page footer links the iOS dev build (TestFlight).** Beside
+  the Android APK link: "iOS dev build (TestFlight)" opens the public
+  link https://testflight.apple.com/join/fwbSpfDD (group "Public", app
+  "Unwritten Craft", bundle `com.heartmadebakery.unwritten`). First
+  build 202611042358 uploaded via `TESTFLIGHT=1 app/ios/build.sh` and
+  submitted to Beta App Review (testers can join once approved).
+  Test `test_home_footer_links_ios_testflight`; READMEs note the link.
+  Site not yet redeployed.
+
 - **iOS TestFlight build (the iOS twin of the APK link).** An iPhone
   cannot install a downloaded app, so `TESTFLIGHT=1
   DEVELOPMENT_TEAM=<id> app/ios/build.sh` archives a token-stamped

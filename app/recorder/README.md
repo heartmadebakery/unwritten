@@ -98,7 +98,8 @@ cloud copy (cloud first — if that fails, the local lesson is kept).
 
 No typing needed: `bash build.sh` copies the app to `dist/` (gitignored,
 this is what you serve), ships the prebuilt Android dev APK beside it
-for the home page footer link, and stamps one random token from the
+for the home page footer link (the iOS footer link is the TestFlight
+public link, nothing to ship), and stamps one random token from the
 signer pool into it:
 
 ```sh

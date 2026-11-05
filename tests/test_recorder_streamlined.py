@@ -406,6 +406,17 @@ async function go(url, mode) {
         self.assertIn("unwritten-craft.apk", self.home)
         self.assertIn("advlink", self.home)
 
+    def test_home_footer_links_ios_testflight(self):
+        # User-ordered Nov 4: the iOS twin of the APK link. An iPhone
+        # cannot sideload a download, so it is the TestFlight public
+        # link, opened in a new tab beside the Android one.
+        footer = self.home.split("<footer>", 1)[1].split("</footer>", 1)[0]
+        self.assertIn("unwritten-craft.apk", footer)
+        self.assertIn('href="https://testflight.apple.com/join/fwbSpfDD"',
+                      footer)
+        self.assertIn("iOS dev build (TestFlight)", footer)
+        self.assertIn('rel="noopener"', footer)
+
     def test_web_build_ships_the_apk(self):
         # build.sh copies the prebuilt debug APK into dist/ beside
         # the pages, so the footer link resolves on the served site.
